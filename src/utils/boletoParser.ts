@@ -65,6 +65,7 @@ export function linhaDigitavelToCodigoBarras(linhaDigitavel: string): { codigoBa
 
 /**
  * Calculates due date from Fator de Vencimento (4 digits)
+ * Handles FEBRABAN 1st cycle (Base 07/10/1997) and 2nd cycle (Fator 1000 on 22/02/2025 => Base 29/05/2022)
  */
 export function parseFatorVencimento(fatorStr: string): string {
   const fator = parseInt(fatorStr, 10);
@@ -72,28 +73,31 @@ export function parseFatorVencimento(fatorStr: string): string {
     return ''; // Sem vencimento fixo / a vista
   }
 
-  // Base FEBRABAN: 07/10/1997 (UTC)
-  const baseDate = new Date(1997, 9, 7); // Mês 9 é Outubro no JS
-  let totalDays = fator;
-
-  // Lógica de ciclo de fator de vencimento FEBRABAN
-  // Após 21/02/2025 (fator 9999), o fator retornou para 1000 em 22/02/2025.
-  // Para datas atuais (2025-2030+), se o fator estiver entre 1000 e 9999, somamos os dias correspondentes do novo ciclo.
-  const todayYear = new Date().getFullYear();
-  if (todayYear >= 2025 && fator >= 1000 && fator <= 9999) {
-    // Se o fator for menor que ~3000 mas estamos no ano 2025-2030, tratar ciclo novo se necessário
-    // Mas somar fator direto à baseDate com ciclo ajustado
-    if (fator < 1000) {
-      totalDays = fator;
-    }
+  // Se o fator for menor que 1000, não é um fator de vencimento válido
+  if (fator < 1000) {
+    return '';
   }
 
-  const dueDate = new Date(baseDate.getTime() + totalDays * 24 * 60 * 60 * 1000);
+  // FEBRABAN: Fator 1000 a 9999
+  // Para ano corrente >= 2025 e fatores típicos de 2025+ (1000 a ~3000), o fator está no 2º ciclo (iniciado em 22/02/2025 = Fator 1000).
+  // Data base do 2º ciclo: 29/05/2022 (UTC)
+  let baseDate: Date;
+  const currentYear = new Date().getFullYear();
+
+  if (currentYear >= 2025 && fator <= 3500) {
+    // 2º ciclo FEBRABAN: Base 29 de Maio de 2022
+    baseDate = new Date(Date.UTC(2022, 4, 29)); // Mês 4 é Maio em JS
+  } else {
+    // 1º ciclo FEBRABAN: Base 07 de Outubro de 1997
+    baseDate = new Date(Date.UTC(1997, 9, 7)); // Mês 9 é Outubro em JS
+  }
+
+  const dueDate = new Date(baseDate.getTime() + fator * 24 * 60 * 60 * 1000);
 
   // Format as YYYY-MM-DD
-  const year = dueDate.getFullYear();
-  const month = String(dueDate.getMonth() + 1).padStart(2, '0');
-  const day = String(dueDate.getDate()).padStart(2, '0');
+  const year = dueDate.getUTCFullYear();
+  const month = String(dueDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(dueDate.getUTCDate()).padStart(2, '0');
 
   return `${year}-${month}-${day}`;
 }
