@@ -1224,68 +1224,7 @@ export function getActiveCompanySettings(
   };
 }
 
-export const INITIAL_SAMPLE_BOLETOS: BoletoItem[] = [
-  {
-    id: 'bol-sample-1',
-    linhaDigitavel: '00190000090123456700400001234567885000000012345',
-    codigoBarras: '00198850000000123450000001234567004000012345',
-    bancoCodigo: '001',
-    bancoNome: 'Banco do Brasil',
-    favorecidoNome: 'FORNECEDOR DE SOFTWARE S.A.',
-    favorecidoCnpjCpf: '98765432000188',
-    valor: 123.45,
-    dataVencimento: '2026-08-15',
-    dataPagamento: '2026-08-15',
-    seuNumero: 'NF-8942',
-    desconto: 0,
-    jurosMulta: 0,
-    categoria: 'Licença de Software',
-    observacoes: 'Mensalidade do sistema ERP',
-    isValid: true,
-    selected: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'bol-sample-2',
-    linhaDigitavel: '23790000020111122220300003333444585000000085000',
-    codigoBarras: '23795850000000850000000001111222200003333444',
-    bancoCodigo: '237',
-    bancoNome: 'Bradesco',
-    favorecidoNome: 'DISTRIBUIDORA ELETRICA LTDA',
-    favorecidoCnpjCpf: '45678912000133',
-    valor: 850.00,
-    dataVencimento: '2026-08-10',
-    dataPagamento: '2026-08-10',
-    seuNumero: 'FAT-4012',
-    desconto: 20.00,
-    jurosMulta: 0,
-    categoria: 'Energia / Insumos',
-    observacoes: 'Conta de energia do galpão',
-    isValid: true,
-    selected: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'bol-sample-3',
-    linhaDigitavel: '34191234560000012345612345678901285000000150000',
-    codigoBarras: '34192850000001500001234500000123456123456789',
-    bancoCodigo: '341',
-    bancoNome: 'Itaú',
-    favorecidoNome: 'CONSULTORIA CONTABIL SILVA',
-    favorecidoCnpjCpf: '11223344000155',
-    valor: 1500.00,
-    dataVencimento: '2026-08-20',
-    dataPagamento: '2026-08-20',
-    seuNumero: 'HON-082026',
-    desconto: 0,
-    jurosMulta: 0,
-    categoria: 'Serviços Profissionais',
-    observacoes: 'Honorários contábeis do mês',
-    isValid: true,
-    selected: true,
-    createdAt: new Date().toISOString(),
-  }
-];
+export const INITIAL_SAMPLE_BOLETOS: BoletoItem[] = [];
 
 export function loadCompanySettings(): CompanySettings {
   const profiles = loadCompanyProfiles();
@@ -1339,16 +1278,20 @@ export function saveCompanySettings(company: CompanySettings): void {
 export function loadBoletos(): BoletoItem[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.BOLETOS);
-    if (data) {
+    if (data !== null) {
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter((b) => !b?.id?.startsWith('bol-sample-'));
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(STORAGE_KEYS.BOLETOS, JSON.stringify(cleaned));
+        }
+        return cleaned;
       }
     }
   } catch (e) {
     console.error('Failed to load boletos:', e);
   }
-  return INITIAL_SAMPLE_BOLETOS;
+  return [];
 }
 
 export function saveBoletos(boletos: BoletoItem[]): void {

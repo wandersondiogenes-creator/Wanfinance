@@ -51,7 +51,8 @@ export default function App() {
       }
       const bData = await fetchBoletosFromSupabase();
       if (bData && bData.length > 0) {
-        setBoletos(bData);
+        const cleaned = bData.filter((b) => !b?.id?.startsWith('bol-sample-'));
+        setBoletos(cleaned);
       }
       const hData = await fetchHistoryFromSupabase();
       if (hData && hData.length > 0) {
@@ -286,7 +287,8 @@ export default function App() {
     totalValor: number,
     filename: string,
     nsa: number,
-    analista?: string
+    analista?: string,
+    removeExported: boolean = true
   ) => {
     const exportedBoletos = boletos.filter((b) => b.selected && b.isValid);
     const exportedIds = new Set(exportedBoletos.map((b) => b.id));
@@ -307,8 +309,10 @@ export default function App() {
 
     setHistory((prev) => [newBatch, ...prev]);
 
-    // Automatically remove exported boletos from 'boletos a pagar'
-    setBoletos((prev) => prev.filter((b) => !exportedIds.has(b.id)));
+    if (removeExported) {
+      // Automatically remove exported boletos from 'boletos a pagar'
+      setBoletos((prev) => prev.filter((b) => !exportedIds.has(b.id)));
+    }
 
     // Automatically increment NSA for active bank account
     setCompanies((prev) =>
@@ -328,7 +332,11 @@ export default function App() {
       })
     );
 
-    showToast(`Arquivo ${filename} gerado! ${exportedBoletos.length} boleto(s) processado(s) e removido(s) de Boletos a Pagar.`);
+    showToast(
+      `Arquivo ${filename} gerado! ${exportedBoletos.length} boleto(s) processado(s)${
+        removeExported ? ' e removido(s) de Boletos a Pagar' : ''
+      }.`
+    );
   };
 
   const selectedBoletos = boletos.filter((b) => b.selected && b.isValid);
@@ -503,7 +511,18 @@ export default function App() {
         isOpen={isPreviewModalOpen}
         onClose={() => setIsPreviewModalOpen(false)}
         company={activeCompanySettings}
+        companies={companies}
+        activeCompanyId={activeSelection.companyId}
+        activeBankId={activeSelection.bankId}
+        onSelectCompany={handleSelectCompany}
+        onSelectBank={handleSelectBank}
         boletos={boletos}
+        onToggleSelectBoleto={handleToggleSelect}
+        onSelectAllBoletos={handleSelectAll}
+        onOpenNewBoletoModal={() => {
+          setEditingBoleto(null);
+          setIsFormModalOpen(true);
+        }}
         onSaveToHistory={handleSaveToHistory}
       />
 
