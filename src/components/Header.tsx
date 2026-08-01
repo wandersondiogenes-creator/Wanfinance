@@ -1,7 +1,7 @@
 import React from 'react';
 import { CompanySettings, CompanyProfile, AuthUser } from '../types';
 import { getBankInfo } from '../utils/banks';
-import { FileText, Building2, PlusCircle, History, ShieldCheck, Download, Sparkles, Settings2, LogOut, Database, FileSpreadsheet } from 'lucide-react';
+import { FileText, Building2, PlusCircle, History, ShieldCheck, Download, Sparkles, Settings2, LogOut, Database, FileSpreadsheet, Zap } from 'lucide-react';
 
 interface HeaderProps {
   company: CompanySettings;
@@ -10,8 +10,8 @@ interface HeaderProps {
   activeBankId: string;
   onSelectCompany: (companyId: string) => void;
   onSelectBank: (bankId: string) => void;
-  activeTab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets';
-  setActiveTab: (tab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets') => void;
+  activeTab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos';
+  setActiveTab: (tab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos') => void;
   selectedBoletosCount: number;
   totalSelectedValor: number;
   onQuickGenerateCNAB: () => void;
@@ -275,6 +275,22 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
             <span>Google Sheets</span>
+          </button>
+
+          {/* API de Pagamentos (Direct Bank) Tab */}
+          <button
+            onClick={() => setActiveTab('api_pagamentos')}
+            className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'api_pagamentos'
+                ? 'bg-amber-950/80 text-amber-300 border-b-2 border-amber-500 shadow-xs'
+                : 'text-slate-400 hover:text-amber-400 hover:bg-[#131a27]'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-400" />
+            <span>API de Pagamentos</span>
+            <span className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0.5 rounded-md font-extrabold uppercase border border-amber-500/30">
+              Direto Banco
+            </span>
           </button>
         </div>
       </div>

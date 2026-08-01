@@ -32,6 +32,7 @@ import { SupabaseModal } from './components/SupabaseModal';
 import { HistoryPanel } from './components/HistoryPanel';
 import { CNABValidator } from './components/CNABValidator';
 import { GoogleSheetsPanel } from './components/GoogleSheetsPanel';
+import { BankPaymentApiPanel } from './components/BankPaymentApiPanel';
 import { getBoletosDuplicateMap } from './utils/duplicateDetector';
 import { CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -81,7 +82,7 @@ export default function App() {
   };
 
   const [activeTab, setActiveTab] = useState<
-    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets'
+    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos'
   >('boletos');
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -619,6 +620,13 @@ export default function App() {
             history={history}
             onImportBoletos={handleImportBatchBoletos}
             showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'api_pagamentos' && (
+          <BankPaymentApiPanel
+            company={activeCompanySettings}
+            boletos={boletos}
           />
         )}
       </main>
