@@ -1,105 +1,128 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_CONFIG_KEY = 'wanfinance_supabase_credentials';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
 
-export interface SupabaseCredentials {
-  url: string;
-  anonKey: string;
-}
+let supabaseClient: SupabaseClient | null = null;
 
-export function getStoredSupabaseCredentials(): SupabaseCredentials | null {
-  try {
-    const metaEnv = (import.meta as any).env || {};
-    const envUrl = metaEnv.VITE_SUPABASE_URL;
-    const envKey = metaEnv.VITE_SUPABASE_ANON_KEY;
-
-    if (envUrl && envKey) {
-      return { url: envUrl, anonKey: envKey };
+/**
+ * Returns a singleton Supabase client. Throws if required env vars are missing.
+ * Use this in your app instead of creating multiple clients.
+ */
+export function getSupabaseClient(): SupabaseClient {
+  if (!supabaseClient) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.error('[supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
+      throw new Error('Supabase environment variables are not set. See README-SUPABASE-SETUP.md');
     }
-
-    const localData = localStorage.getItem(SUPABASE_CONFIG_KEY);
-    if (localData) {
-      const parsed = JSON.parse(localData);
-      if (parsed.url && parsed.anonKey) {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.error('Failed to get Supabase credentials:', e);
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      // increase visibility for debugging in Cloud Run logs
+      // do not enable any sensitive logging in production
+    });
+    console.info('[supabase] Client created');
   }
-  return null;
+  return supabaseClient;
 }
 
-export function saveSupabaseCredentials(creds: SupabaseCredentials | null): void {
-  try {
-    if (creds) {
-      localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(creds));
-    } else {
-      localStorage.removeItem(SUPABASE_CONFIG_KEY);
-    }
-  } catch (e) {
-    console.error('Failed to save Supabase credentials:', e);
-  }
-}
+export type SubscriptionStop = () => Promise<void> | void;
 
-let supabaseInstance: SupabaseClient | null = null;
+/**
+ * Try to subscribe to real-time Postgres changes for a table. If realtime fails (no WS support,
+ * blocked by host, auth or CORS), fall back to polling.
+ *
+ * Returns a stop() function to unsubscribe/stop polling.
+ */
+export async function subscribeWithFallback<T = any>(
+  table: string,
+  onChange: (payload: any) => void,
+  opts?: { event?: string; schema?: string; pollIntervalMs?: number }
+): Promise<SubscriptionStop> {
+  const sb = getSupabaseClient();
+  const schema = opts?.schema ?? 'public';
+  const event = opts?.event ?? '*';
+  const pollIntervalMs = opts?.pollIntervalMs ?? 15000;
 
-export function getSupabaseClient(): SupabaseClient | null {
-  if (supabaseInstance) return supabaseInstance;
+  let channel: any | null = null;
+  let pollingId: number | null = null;
+  let lastSnapshot: string | null = null;
 
-  const creds = getStoredSupabaseCredentials();
-  if (creds && creds.url && creds.anonKey) {
+  // helper to fetch full table snapshot and call onChange with data
+  async function doPollOnce() {
     try {
-      supabaseInstance = createClient(creds.url, creds.anonKey);
-      return supabaseInstance;
-    } catch (e) {
-      console.error('Failed to initialize Supabase client:', e);
+      const { data, error } = await sb.from(table).select('*');
+      if (error) {
+        console.warn('[supabase][poll] read error', table, error.message || error);
+        return;
+      }
+      // rudimentary snapshot check to reduce duplicate callbacks
+      const snapshot = JSON.stringify(data);
+      if (snapshot !== lastSnapshot) {
+        lastSnapshot = snapshot;
+        onChange({ type: 'poll', table, data });
+      }
+    } catch (err) {
+      console.error('[supabase][poll] unexpected error', err);
     }
   }
-  return null;
-}
 
-export function reinitSupabaseClient(): SupabaseClient | null {
-  supabaseInstance = null;
-  return getSupabaseClient();
-}
-
-export async function testSupabaseConnection(creds?: SupabaseCredentials): Promise<{ success: boolean; message: string }> {
+  // attempt realtime subscription
   try {
-    const clientToTest = creds
-      ? createClient(creds.url, creds.anonKey)
-      : getSupabaseClient();
+    channel = sb
+      .channel(`table-changes:${schema}.${table}`)
+      .on('postgres_changes', { event: event, schema, table }, (payload: any) => {
+        try {
+          onChange({ type: 'realtime', table, payload });
+        } catch (err) {
+          console.error('[supabase][realtime] handler error', err);
+        }
+      });
 
-    if (!clientToTest) {
-      return {
-        success: false,
-        message: 'Nenhum parâmetro do Supabase configurado. Informe a URL e Anon Key.',
-      };
-    }
+    await channel.subscribe();
 
-    const { error } = await clientToTest.from('companies').select('id').limit(1);
+    // check subscription status
+    const subState = channel?.state;
+    console.info('[supabase][realtime] subscribed', table, 'state=', subState);
 
-    if (error) {
-      if (error.code === '42P01') {
-        return {
-          success: true,
-          message: 'Conectado com sucesso ao Supabase! (Nota: Execute a migration SQL para criar as tabelas).',
-        };
+    // return stop function
+    return async () => {
+      try {
+        if (channel) {
+          await channel.unsubscribe();
+          console.info('[supabase][realtime] unsubscribed', table);
+        }
+      } catch (err) {
+        console.warn('[supabase][realtime] unsubscribe error', err);
       }
-      return {
-        success: false,
-        message: `Erro na conexão com Supabase: ${error.message}`,
-      };
-    }
+    };
+  } catch (err) {
+    console.warn('[supabase][realtime] realtime subscription failed, falling back to polling', err);
+    // start polling
+    await doPollOnce(); // initial fetch
+    pollingId = window.setInterval(doPollOnce, pollIntervalMs);
 
-    return {
-      success: true,
-      message: 'Conexão com o banco Supabase estabelecida e testada com sucesso!',
+    return async () => {
+      if (pollingId) {
+        clearInterval(pollingId);
+        pollingId = null;
+      }
     };
-  } catch (e: any) {
-    return {
-      success: false,
-      message: `Falha ao conectar no Supabase: ${e.message || String(e)}`,
-    };
+  }
+}
+
+/**
+ * Utility: fetch a table once (simple wrapper with error logs)
+ */
+export async function fetchTableOnce<T = any>(table: string) {
+  const sb = getSupabaseClient();
+  try {
+    const { data, error } = await sb.from<T>(table).select('*');
+    if (error) {
+      console.error('[supabase] fetchTableOnce error', table, error.message || error);
+      throw error;
+    }
+    return data;
+  } catch (err) {
+    console.error('[supabase] fetchTableOnce unexpected error', err);
+    throw err;
   }
 }
