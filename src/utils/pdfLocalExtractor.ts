@@ -98,8 +98,8 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
     // 4. Scan combined text for Brazilian Boleto, GNRE, DARF and Concessionaire patterns
     const patterns = [
-      /\d{5}[\.\s]?\d{5}[\.\s]?\d{5}[\.\s]?\d{6}[\.\s]?\d{5}[\.\s]?\d{6}[\.\s]?\d[\.\s]?\d{14}/g,
-      /\d{11,12}[\.\s-]?\d{11,12}[\.\s-]?\d{11,12}[\.\s-]?\d{11,12}/g,
+      /\d{5}[\.\s]*\d{5}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d[\.\s]*\d{14}/g,
+      /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
       /\b\d{47,48}\b/g,
       /\b\d{44}\b/g,
     ];

@@ -70,8 +70,8 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
   // 3. Raw 47 or 48 contiguous digits
   // 4. Raw 44-digit barcodes
   const patterns = [
-    /\d{5}[\.\s]?\d{5}[\.\s]?\d{5}[\.\s]?\d{6}[\.\s]?\d{5}[\.\s]?\d{6}[\.\s]?\d[\.\s]?\d{14}/g,
-    /\d{11,12}[\.\s-]?\d{11,12}[\.\s-]?\d{11,12}[\.\s-]?\d{11,12}/g,
+    /\d{5}[\.\s]*\d{5}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d[\.\s]*\d{14}/g,
+    /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
     /\b\d{47,48}\b/g,
     /\b\d{44}\b/g,
   ];
@@ -208,39 +208,34 @@ async function startServer() {
           },
         });
 
-        const prompt = `Você é um leitor óptico (OCR) e especialista financeiro em boletos bancários brasileiros, faturas, tributos, guias de arrecadação e GNRE.
-Analise com atenção TODO O CONTEÚDO do documento PDF/Imagem enviado (${fileName}). O arquivo pode conter 1 único boleto ou MÚLTIPLOS boletos (ex: guias GNRE, DARF, IPTU, faturas de água/luz, boletos bancários).
+        const prompt = `Você é um especialista em OCR e análise financeira avançada para boletos bancários brasileiros, carnês de pagamento, parcelamentos, faturas, guias de arrecadação, tributos e GNRE.
 
-ATENÇÃO ESPECIAL PARA GUIAS GNRE E TRIBUTOS ESTADUAIS/FEDERAIS:
-- Guias GNRE possuem linha digitável de 48 DÍGITOS (código de barras de 44 dígitos iniciando com '8', ex: 858... ou 856...).
-- No caso de GNRE ou Tributos, o campo "valor" DEVE refletir o "VALOR TOTAL A RECOLHER", "TOTAL A RECOLHER", "VALOR TOTAL", "VALOR PRINCIPAL", "TOTAL A PAGAR" ou "VALOR DO TRIBUTO".
-- Se a linha digitável trouxer o valor (dígitos 5 a 15 do código de barras), utilize o valor correspondente. Se houver divergência ou acréscimos (juros/multa), considere o "Valor Total a Recolher" final do documento.
-- Mapeie o "favorecidoNome" com a Secretaria da Fazenda / Estado favorecido ou o órgão emissor (ex: "Secretaria da Fazenda do Estado de SP", "SEFAZ-PE", "SEFAZ-MG", "Governo do Estado").
-- No campo "bancoCodigo", se for GNRE/Tributo Estadual utilize '858', se for Tributo Federal utilize '856', se for Concessionária/Tributo Geral utilize '800'.
+Analise com MÁXIMA ATENÇÃO TODO O CONTEÚDO de TODAS AS PÁGINAS do arquivo enviado (${fileName}).
 
-REGRA CRÍTICA DE DUPLICATAS / VIAS DO MESMO BOLETO:
-Um único documento PDF ou imagem pode conter MÚLTIPLAS VIAS do mesmo boleto ou guia de arrecadação GNRE/DARF/IPTU (por exemplo: 1ª via do Banco, 2ª via do Pagador, 3ª via do Estabelecimento).
-Se a linha digitável ou o código de barras for o mesmo em mais de uma via, você DEVE retornar esse boleto APENAS UMA VEZ no array "boletos".
-NUNCA repita o mesmo boleto ou a mesma guia no resultado JSON.
+REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS, FINANCIAMENTOS, SUHAI):
+1. O arquivo pode ser um CARNÊ com várias parcelas (ex: 12 parcelas de seguro Suhai / financiamento), onde cada página contém 2, 3 ou mais cupons/parcelas (por exemplo: Parcela 01/012 a Parcela 12/012).
+2. CADA PARCELA É UM BOLETO INDIVIDUAL com sua própria data de vencimento (ex: 04/05/2026, 25/05/2026, 25/06/2026...), valor próprio (ex: R$ 49,32 ou R$ 49,35), nosso número e linha digitável.
+3. Você DEVE PERCORRER TODAS AS PÁGINAS do PDF e extrair CADA UMA DAS PARCELAS como um boleto separado no array "boletos".
+4. SE O CARNÊ TIVER 12 PARCELAS (01/012 até 12/012), VOCÊ DEVE RETORNAR EXATAMENTE 12 BOLETOS NO ARRAY! NUNCA pare na 1ª parcela e NUNCA retorne apenas 1 boleto se houver vários.
+5. Para cada parcela:
+   - "linhaDigitavel": Linha digitável completa de 47 dígitos (ex: 23793.39209 50005.692137 75020.156008 1 15200000004935). Se o texto da linha digitável de 47 dígitos estiver visível no topo ou lateral da parcela, extraia com precisão. Se para alguma parcela a linha digitável não estiver em texto corrido mas você tiver Banco (237 - Bradesco), Agência (3392), Conta (0201560-9), Carteira (05), Nosso Número (ex: 5/00056921372-8), Vencimento e Valor, forneça/monte a linha digitável de 47 dígitos correspondente.
+   - "favorecidoNome": Nome do Beneficiário / Cedente (ex: "SUHAI SEGURADORA S/A").
+   - "favorecidoCnpjCpf": CNPJ do Beneficiário se visível (ex: "16.825.255/0001-23").
+   - "valor": Valor numérico exato do documento para ESTA PARCELA (ex: 49.32 ou 49.35). NUNCA retorne 0 se o valor estiver impresso na parcela.
+   - "dataVencimento": Data de Vencimento de ESTA PARCELA no formato YYYY-MM-DD (ex: 2026-05-04, 2026-05-25, 2026-06-25, 2026-07-27, 2026-08-25, 2026-09-25, 2026-10-26, 2026-11-25, 2026-12-28, 2027-01-25, 2027-02-25, 2027-03-25).
+   - "seuNumero": Identificação do documento ou parcela (ex: "1003111990090/00000000/01" ou "Parcela 01/012").
+   - "nossoNumero": Nosso número do boleto (ex: "5/00056921372-8").
+   - "bancoCodigo": Código de 3 dígitos do banco (ex: '237' para Bradesco, '001' para BB, '341' para Itaú, '104' para Caixa, '033' para Santander, '756' para Sicoob, '748' para Sicredi, '858' para GNRE, '856' para DARF).
+   - "bancoNome": Nome do banco emissor (ex: "Bradesco").
+   - "observacoes": Ex: "Parcela 01/012 de Suhai Seguradora".
 
-REGRA OBRIGATÓRIA DE SCHEMA JSON:
-NUNCA retorne valor 'null' ou 'undefined' para NENHUM campo!
-Se um campo numérico (como valor, desconto, jurosMulta, confidence) não for encontrado, retorne 0.
-Se um campo de texto não for encontrado, retorne a string vazia ''.
+DIFERENÇA CRÍTICA ENTRE DUPLICATAS DE MESMA VIA E PARCELAS DISTINTAS:
+- Vias idênticas (1ª via e 2ª via da MESMA Parcela 01): ignore a duplicata e mantenha apenas uma.
+- Parcelas diferentes (Parcela 01, Parcela 02, Parcela 03...): possuem Nosso Número e Vencimento DIFERENTES. Elas DEVEM SER EXTRAÍDAS TODAS!
 
-Para CADA boleto ou guias identificadas:
-1. "linhaDigitavel": Linha digitável de 47 dígitos (boleto bancário) ou 48 dígitos (concessionária/água/luz/IPTU/DARF/GNRE).
-2. "codigoBarras": Código de barras numérico de 44 dígitos se visível.
-3. "favorecidoNome": Nome do Beneficiário / Cedente / Favorecido / SEFAZ / Órgão público.
-4. "favorecidoCnpjCpf": CNPJ ou CPF do Beneficiário se disponível.
-5. "valor": Valor Total a Recolher / valor nominal do boleto em formato numérico (ex: 250.75).
-6. "dataVencimento": Data de vencimento no formato YYYY-MM-DD.
-7. "seuNumero": Número do documento, Nota Fiscal ou referência de controle.
-8. "nossoNumero": Código Nosso Número.
-9. "bancoCodigo": Código numérico de 3 dígitos do banco emissor (ex: '001', '237', '341', '104', '033', '756', '748', '077', '260', ou '858' para GNRE, '856' para DARF, '800' para Concessionárias).
-10. "bancoNome": Nome do banco emissor ou empresa concessionária / GNRE.
-11. "observacoes": Identificação complementar.
-12. "confidence": Nota de 0.0 a 1.0 sobre o nível de certeza.`;
+REGRA DE SCHEMA JSON:
+NUNCA retorne null ou undefined para nenhum campo!
+Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
 
         const callGeminiWithRetryAndFallback = async () => {
           const modelsToTry = ["gemini-3.6-flash", "gemini-3.1-flash-lite"];
