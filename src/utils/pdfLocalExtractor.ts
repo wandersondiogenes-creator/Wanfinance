@@ -171,7 +171,6 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   observacoes: 'Extraído via varredura de texto local',
                   confidence: 0.85,
                 });
-                break;
               }
             }
           }

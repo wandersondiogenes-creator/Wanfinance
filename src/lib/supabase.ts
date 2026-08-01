@@ -211,7 +211,7 @@ export async function syncCompanyProfilesToSupabase(
   if (!supabase) return { success: false, error: 'Supabase client não configurado', count: 0 };
   try {
     const fullRecords = companies.map((c) => ({
-      id: c.id,
+      id: toValidUuid(c.id),
       razao_social: c.razaoSocial,
       nome_fantasia: c.nomeFantasia,
       cnpj_cpf: c.cnpjCpf,
@@ -233,7 +233,7 @@ export async function syncCompanyProfilesToSupabase(
     if (error && (error.message?.includes('schema cache') || error.message?.includes('column') || error.message?.includes('JWT'))) {
       console.warn('[Supabase] Retrying companies upsert with core columns due to schema error:', error.message);
       const coreRecords = companies.map((c) => ({
-        id: c.id,
+        id: toValidUuid(c.id),
         razao_social: c.razaoSocial,
         nome_fantasia: c.nomeFantasia,
         cnpj_cpf: c.cnpjCpf,
@@ -267,7 +267,7 @@ export async function syncBoletosToSupabase(
   if (!supabase) return { success: false, error: 'Supabase client não configurado', count: 0 };
   try {
     const fullRecords = boletos.map((b) => ({
-      id: b.id,
+      id: toValidUuid(b.id),
       codigo_barras: b.codigoBarras,
       linha_digitavel: b.linhaDigitavel,
       favorecido_nome: b.favorecidoNome,
@@ -292,7 +292,7 @@ export async function syncBoletosToSupabase(
     if (error && (error.message?.includes('schema cache') || error.message?.includes('column') || error.message?.includes('JWT'))) {
       console.warn('[Supabase] Retrying boletos upsert with core columns due to schema error:', error.message);
       const coreRecords = boletos.map((b) => ({
-        id: b.id,
+        id: toValidUuid(b.id),
         codigo_barras: b.codigoBarras,
         linha_digitavel: b.linhaDigitavel,
         favorecido_nome: b.favorecidoNome,
@@ -320,6 +320,28 @@ export async function syncBoletosToSupabase(
   }
 }
 
+export function toValidUuid(str: string): string {
+  if (!str) return '00000000-0000-4000-8000-000000000000';
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(str)) {
+    return str.toLowerCase();
+  }
+  let hash1 = 5381;
+  let hash2 = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash1 = (hash1 * 33) ^ char;
+    hash2 = (hash2 * 31) + char;
+  }
+  const hex1 = Math.abs(hash1).toString(16).padStart(8, '0');
+  const hex2 = Math.abs(hash2).toString(16).padStart(8, '0');
+  const hex3 = Math.abs(hash1 ^ hash2).toString(16).padStart(8, '0');
+  const hex4 = Math.abs(hash1 + hash2).toString(16).padStart(8, '0');
+  const fullHex = (hex1 + hex2 + hex3 + hex4).padEnd(32, '0').substring(0, 32);
+
+  return `${fullHex.substring(0, 8)}-${fullHex.substring(8, 12)}-4${fullHex.substring(13, 16)}-a${fullHex.substring(17, 20)}-${fullHex.substring(20, 32)}`;
+}
+
 export async function syncHistoryToSupabase(
   history: CNABBatchHistory[]
 ): Promise<{ success: boolean; error?: string; count: number }> {
@@ -327,7 +349,7 @@ export async function syncHistoryToSupabase(
   if (!supabase) return { success: false, error: 'Supabase client não configurado', count: 0 };
   try {
     const records = history.map((h) => ({
-      id: h.id,
+      id: toValidUuid(h.id),
       nsa: h.nsa,
       data_geracao: h.createdDate || new Date().toISOString(),
       empresa_nome: 'Wanfinance',

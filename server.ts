@@ -136,7 +136,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
       const chunk = digitsOnly.substring(i, i + 47);
       if (!seenLines.has(chunk)) {
         const parsed = parseLinhaDigitavel(chunk);
-        if (parsed.isValid && parsed.valor > 0) {
+        if (parsed.isValid && parsed.valor > 0 && parsed.bancoCodigo !== '000') {
           seenLines.add(chunk);
           boletosFound.push({
             linhaDigitavel: chunk,
@@ -152,7 +152,6 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             observacoes: "Extraído via varredura contínua do PDF",
             confidence: 0.85,
           });
-          break;
         }
       }
     }
@@ -246,19 +245,17 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
               console.log(`[Gemini API] Tentando extração com ${modelName}...`);
               const response = await ai.models.generateContent({
                 model: modelName,
-                contents: {
-                  parts: [
-                    {
-                      inlineData: {
-                        mimeType: effectiveMimeType,
-                        data: cleanBase64,
-                      },
+                contents: [
+                  {
+                    inlineData: {
+                      mimeType: effectiveMimeType,
+                      data: cleanBase64,
                     },
-                    {
-                      text: prompt,
-                    },
-                  ],
-                },
+                  },
+                  {
+                    text: prompt,
+                  },
+                ],
                 config: {
                   responseMimeType: "application/json",
                   responseSchema: {
