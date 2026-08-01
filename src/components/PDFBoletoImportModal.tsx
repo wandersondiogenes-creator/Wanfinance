@@ -23,6 +23,7 @@ import { BoletoItem, CNABBatchHistory } from '../types';
 import { parseLinhaDigitavel, formatCurrencyBRL, formatDateBR, onlyNumbers } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate } from '../utils/duplicateDetector';
+import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
 
 interface PDFExtractedItem {
   id: string;
@@ -112,23 +113,43 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         reader.readAsDataURL(file);
       });
 
-      const response = await fetch('/api/extract-boleto-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileBase64,
-          mimeType: file.type || 'application/pdf',
-          fileName: file.name,
-        }),
-      });
+      let rawBoletos: any[] = [];
+      let serverSuccess = false;
 
-      const result = await response.json();
+      // 1. Attempt Server API Extraction
+      try {
+        const response = await fetch('/api/extract-boleto-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileBase64,
+            mimeType: file.type || 'application/pdf',
+            fileName: file.name,
+          }),
+        });
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || result.details || 'Falha ao processar arquivo.');
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && contentType.includes('application/json')) {
+          const result = await response.json();
+          if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
+            rawBoletos = result.boletos;
+            serverSuccess = true;
+          }
+        } else {
+          console.warn('[PDF Import] Server endpoint returned non-JSON/error status:', response.status, contentType);
+        }
+      } catch (fetchErr) {
+        console.warn('[PDF Import] Server fetch failed, falling back to browser extractor:', fetchErr);
       }
 
-      const rawBoletos: any[] = result.boletos || (result.data ? [result.data] : []);
+      // 2. Client-Side Fallback Extractor if Server API failed or returned 0 boletos
+      if (!serverSuccess || rawBoletos.length === 0) {
+        console.log('[PDF Import] Executando leitor de PDF local no navegador...');
+        const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
+        if (localExtracted.length > 0) {
+          rawBoletos = localExtracted;
+        }
+      }
 
       if (rawBoletos.length === 0) {
         return [
@@ -136,7 +157,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             id: `pdf-item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             fileName: file.name,
             status: 'error',
-            errorMessage: 'Nenhum boleto válido foi identificado neste arquivo.',
+            errorMessage: 'Nenhum boleto válido com linha digitável/código de barras foi identificado neste arquivo. Cole a linha digitável abaixo para cadastrar.',
           },
         ];
       }

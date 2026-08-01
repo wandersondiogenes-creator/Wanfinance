@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { BoletoItem, CompanyProfile, BankAccountProfile, CompanySettings, CNABBatchHistory, AuthUser } from './types';
 import { testFirestoreConnection } from './lib/firebase';
 import {
+  fetchCompanyProfilesFromSupabase,
+  fetchBoletosFromSupabase,
+  fetchHistoryFromSupabase,
+} from './lib/supabase';
+import {
   loadCompanyProfiles,
   saveCompanyProfiles,
   loadActiveSelection,
@@ -37,7 +42,40 @@ export default function App() {
 
   useEffect(() => {
     testFirestoreConnection();
+
+    // Check and load remote data from Supabase if configured
+    async function initSupabaseData() {
+      const cData = await fetchCompanyProfilesFromSupabase();
+      if (cData && cData.length > 0) {
+        setCompanies(cData);
+      }
+      const bData = await fetchBoletosFromSupabase();
+      if (bData && bData.length > 0) {
+        setBoletos(bData);
+      }
+      const hData = await fetchHistoryFromSupabase();
+      if (hData && hData.length > 0) {
+        setHistory(hData);
+      }
+    }
+    initSupabaseData();
   }, []);
+
+  const handleReloadFromSupabase = (data: {
+    companies?: CompanyProfile[];
+    boletos?: BoletoItem[];
+    history?: CNABBatchHistory[];
+  }) => {
+    if (data.companies && data.companies.length > 0) {
+      setCompanies(data.companies);
+    }
+    if (data.boletos && data.boletos.length > 0) {
+      setBoletos(data.boletos);
+    }
+    if (data.history && data.history.length > 0) {
+      setHistory(data.history);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<
     'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets'
@@ -476,6 +514,7 @@ export default function App() {
         boletos={boletos}
         history={history}
         onToast={(msg) => showToast(msg, 'success')}
+        onReloadFromSupabase={handleReloadFromSupabase}
       />
     </div>
   );
