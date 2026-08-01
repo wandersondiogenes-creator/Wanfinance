@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CompanySettings, CompanyProfile, BoletoItem, CNABLineHighlight } from '../types';
+import { CompanySettings, CompanyProfile, BoletoItem, CNABLineHighlight, AuthUser } from '../types';
 import { generateCNAB240 } from '../utils/cnabGenerator240';
 import { generateCNAB400 } from '../utils/cnabGenerator400';
 import {
@@ -30,6 +30,7 @@ interface CNABPreviewModalProps {
   companies: CompanyProfile[];
   activeCompanyId: string;
   activeBankId: string;
+  currentUser?: AuthUser | null;
   onSelectCompany: (companyId: string) => void;
   onSelectBank: (bankId: string) => void;
   boletos: BoletoItem[];
@@ -54,6 +55,7 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
   companies,
   activeCompanyId,
   activeBankId,
+  currentUser,
   onSelectCompany,
   onSelectBank,
   boletos,
@@ -64,7 +66,7 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
 }) => {
   const [selectedLineIndex, setSelectedLineIndex] = useState<number | null>(0);
   const [copied, setCopied] = useState(false);
-  const [analista, setAnalista] = useState(() => localStorage.getItem('last_analyst_name') || '');
+  const [analista, setAnalista] = useState(() => localStorage.getItem('last_analyst_name') || currentUser?.email || '');
   const [showBoletosManager, setShowBoletosManager] = useState(false);
   const [downloadSuccessMessage, setDownloadSuccessMessage] = useState<string | null>(null);
 
@@ -87,7 +89,7 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
   const companyBanks = currentCompanyProfile ? currentCompanyProfile.bancos : [];
 
   const handleDownload = (removeProcessed: boolean = false) => {
-    const formattedAnalyst = analista.trim() || 'Analista Financeiro';
+    const formattedAnalyst = analista.trim() || currentUser?.email || 'financeiro@wanfinance.com.br';
     localStorage.setItem('last_analyst_name', formattedAnalyst);
 
     const blob = new Blob([result.fileContent], { type: 'text/plain;charset=utf-8' });

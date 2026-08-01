@@ -304,7 +304,7 @@ export default function App() {
       bancoCodigo: activeCompanySettings.bancoCodigo,
       content: fileContent,
       boletos: exportedBoletos,
-      analista: analista?.trim() || 'Analista Financeiro',
+      analista: analista?.trim() || currentUser?.email || 'financeiro@wanfinance.com.br',
     };
 
     setHistory((prev) => [newBatch, ...prev]);
@@ -433,6 +433,7 @@ export default function App() {
         {activeTab === 'historico' && (
           <HistoryPanel
             history={history}
+            currentUser={currentUser}
             onClearHistory={() => {
               setHistory([]);
               showToast('Histórico limpo.');
@@ -456,6 +457,7 @@ export default function App() {
           <CNABValidator
             boletos={boletos}
             activeCompany={activeCompanySettings}
+            currentUser={currentUser}
             onSaveToHistory={handleSaveToHistory}
             showToast={showToast}
           />
@@ -514,6 +516,7 @@ export default function App() {
         companies={companies}
         activeCompanyId={activeSelection.companyId}
         activeBankId={activeSelection.bankId}
+        currentUser={currentUser}
         onSelectCompany={handleSelectCompany}
         onSelectBank={handleSelectBank}
         boletos={boletos}
