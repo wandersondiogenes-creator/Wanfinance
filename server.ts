@@ -238,7 +238,7 @@ NUNCA retorne null ou undefined para nenhum campo!
 Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
 
         const callGeminiWithRetryAndFallback = async () => {
-          const modelsToTry = ["gemini-3.6-flash", "gemini-3.1-flash-lite"];
+          const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
@@ -351,6 +351,15 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
           const cleanedVal = String(b.valor).replace(/[^\d.,]/g, "").replace(/\./g, "").replace(",", ".");
           const parsedNum = parseFloat(cleanedVal);
           if (!isNaN(parsedNum)) b.valor = parsedNum;
+        }
+
+        // Sanitize and convert date formats like DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD
+        if (b.dataVencimento && typeof b.dataVencimento === 'string') {
+          const ddmmyyyy = b.dataVencimento.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+          if (ddmmyyyy) {
+            const [, day, month, year] = ddmmyyyy;
+            b.dataVencimento = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          }
         }
 
         if (cleanLinha.length >= 44) {
