@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "Company": {
+      "title": "Company Profile",
+      "description": "Registered paying company profile with bank accounts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique company ID" },
+        "razaoSocial": { "type": "string", "description": "Company corporate name" },
+        "nomeFantasia": { "type": "string", "description": "Company trade name" },
+        "cnpjCpf": { "type": "string", "description": "Tax ID CNPJ or CPF" },
+        "logradouro": { "type": "string", "description": "Street address" },
+        "numero": { "type": "string", "description": "Address number" },
+        "bairro": { "type": "string", "description": "District" },
+        "cidade": { "type": "string", "description": "City" },
+        "uf": { "type": "string", "description": "State UF" },
+        "cep": { "type": "string", "description": "ZIP code CEP" },
+        "bancos": { "type": "array", "description": "Associated bank accounts" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["id", "razaoSocial", "cnpjCpf"]
+    },
+    "Boleto": {
+      "title": "Boleto Payment Item",
+      "description": "Payment boleto or invoice item for CNAB batch processing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Boleto ID" },
+        "companyId": { "type": "string", "description": "Associated company ID" },
+        "bankAccountId": { "type": "string", "description": "Associated bank account ID" },
+        "codigoBarras": { "type": "string", "description": "44-digit barcode" },
+        "linhaDigitavel": { "type": "string", "description": "47 or 48-digit printable line" },
+        "favorecidoNome": { "type": "string", "description": "Payee name" },
+        "favorecidoCnpjCpf": { "type": "string", "description": "Payee CPF or CNPJ" },
+        "valor": { "type": "number", "description": "Boleto value in BRL" },
+        "dataVencimento": { "type": "string", "description": "Due date" },
+        "dataPagamento": { "type": "string", "description": "Payment execution date" },
+        "seuNumero": { "type": "string", "description": "Your document number" },
+        "nossoNumero": { "type": "string", "description": "Our number assigned by bank" },
+        "bancoCodigo": { "type": "string", "description": "Bank code (3 digits)" },
+        "selected": { "type": "boolean", "description": "Selected state in batch" },
+        "status": { "type": "string", "description": "Payment status" },
+        "createdAt": { "type": "string", "description": "Creation date" }
+      },
+      "required": ["id", "linhaDigitavel", "valor"]
+    },
+    "CNABHistory": {
+      "title": "CNAB Batch History",
+      "description": "Generated CNAB batch remessa history record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "History batch ID" },
+        "nsa": { "type": "number", "description": "Sequential file sequence NSA" },
+        "dataGeracao": { "type": "string", "description": "Generation date and time" },
+        "empresaNome": { "type": "string", "description": "Company name" },
+        "bancoNome": { "type": "string", "description": "Bank name" },
+        "bancoCodigo": { "type": "string", "description": "Bank 3-digit code" },
+        "layout": { "type": "string", "description": "CNAB Layout 240 or 400" },
+        "totalBoletos": { "type": "number", "description": "Total boletos count" },
+        "totalValor": { "type": "number", "description": "Total batch BRL amount" },
+        "nomeArquivo": { "type": "string", "description": "Generated filename" },
+        "conteudoCnab": { "type": "string", "description": "Raw text content of CNAB file" },
+        "boletos": { "type": "array", "description": "Boletos included in this batch" }
+      },
+      "required": ["id", "nsa", "dataGeracao", "nomeArquivo"]
+    },
+    "UserSession": {
+      "title": "User Session",
+      "description": "Authenticated user profile and access metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "User ID" },
+        "name": { "type": "string", "description": "User full name" },
+        "email": { "type": "string", "description": "User email address" },
+        "role": { "type": "string", "description": "User role or title" },
+        "loginTime": { "type": "string", "description": "Last login time" }
+      },
+      "required": ["id", "name", "email"]
+    }
+  },
+  "firestore": {
+    "/companies/{companyId}": {
+      "schema": { "$ref": "#/entities/Company" },
+      "description": "Collection of company profiles"
+    },
+    "/boletos/{boletoId}": {
+      "schema": { "$ref": "#/entities/Boleto" },
+      "description": "Collection of pending and processed boletos"
+    },
+    "/cnab_history/{historyId}": {
+      "schema": { "$ref": "#/entities/CNABHistory" },
+      "description": "Collection of generated CNAB batch remessas"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserSession" },
+      "description": "Collection of user sessions"
+    }
+  }
+}

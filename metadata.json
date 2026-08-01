@@ -1,0 +1,8 @@
+{
+  "name": "Wanfinance - Gestão Financeira & Gerador CNAB",
+  "description": "Plataforma Wanfinance para gestão de empresas, boletos, extração por IA e geração de remessas CNAB 240/400 de pagamentos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
