@@ -237,7 +237,7 @@ NUNCA retorne null ou undefined para nenhum campo!
 Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
 
         const callGeminiWithRetryAndFallback = async () => {
-          const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+          const modelsToTry = ["gemini-2.0-flash", "gemini-1.5-flash"];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
@@ -247,13 +247,17 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
                 model: modelName,
                 contents: [
                   {
-                    inlineData: {
-                      mimeType: effectiveMimeType,
-                      data: cleanBase64,
-                    },
-                  },
-                  {
-                    text: prompt,
+                    parts: [
+                      {
+                        inlineData: {
+                          mimeType: effectiveMimeType,
+                          data: cleanBase64,
+                        },
+                      },
+                      {
+                        text: prompt,
+                      },
+                    ],
                   },
                 ],
                 config: {
