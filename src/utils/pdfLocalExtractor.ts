@@ -1,4 +1,4 @@
-import { parseLinhaDigitavel, onlyNumbers } from './boletoParser';
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText } from './boletoParser';
 
 /**
  * Client-Side Browser Fallback for PDF & Image Boleto Data Extraction.
@@ -124,10 +124,12 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   }
                 }
 
+                const blockFavorecido = extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome);
+
                 boletosFound.push({
                   linhaDigitavel: clean,
                   codigoBarras: parsed.codigoBarras || clean,
-                  favorecidoNome: docFavorecido !== 'Beneficiário Emissor' ? docFavorecido : `Beneficiário (${parsed.bancoNome})`,
+                  favorecidoNome: blockFavorecido,
                   favorecidoCnpjCpf: '',
                   valor: extractedValue,
                   dataVencimento: parsed.dataVencimento || new Date().toISOString().split('T')[0],
@@ -160,7 +162,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                 boletosFound.push({
                   linhaDigitavel: chunk,
                   codigoBarras: parsed.codigoBarras || chunk,
-                  favorecidoNome: docFavorecido !== 'Beneficiário Emissor' ? docFavorecido : `Beneficiário (${parsed.bancoNome})`,
+                  favorecidoNome: extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome),
                   favorecidoCnpjCpf: '',
                   valor: parsed.valor,
                   dataVencimento: parsed.dataVencimento || new Date().toISOString().split('T')[0],

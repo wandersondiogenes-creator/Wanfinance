@@ -64,6 +64,57 @@ export function linhaDigitavelToCodigoBarras(linhaDigitavel: string): { codigoBa
 }
 
 /**
+ * Smartly extracts beneficiary / charging company name from raw document text.
+ * Filters out bank names (e.g. Bradesco, Itaú) to ensure the actual charging company is returned.
+ */
+export function extractFavorecidoFromText(text: string, bancoNome: string = ''): string {
+  if (!text) return 'Beneficiário / Cedente';
+
+  // 1. Direct high-frequency matches
+  const suhaiMatch = text.match(/(SUHAI\s+SEGURADORA\s*(?:S\/?A)?)/i);
+  if (suhaiMatch) return 'SUHAI SEGURADORA S/A';
+
+  const sefazMatch = text.match(/(SECRETARIA\s+DA\s+FAZENDA[^\r\n]*|SEFAZ[-/ ][A-Z]{2}|GOVERNO\s+DO\s+ESTADO[^\r\n]*|RECEITA\s+FEDERAL)/i);
+  if (sefazMatch) return sefazMatch[1].trim();
+
+  // Bank names regex to filter them out
+  const bankNamesRegex = /^(?:BANCO\s+|SAD\s+|BCO\s+)?(?:BRADESCO|ITAU|ITAÚ|SANTANDER|BANCO DO BRASIL|CAIXA|INTER|NUBANK|SAFRA|BTG|SICOOB|SICREDI|CITIBANK|DAYCOVAL|ABC|MODAL|NEON|C6|PAGSEGURO|STONE|EFINANCE)(?:\s+S\/?A|\s+S\.A\.)?$/i;
+
+  // 2. Look for explicit labels: "Beneficiário", "Cedente", "Razão Social", "Nome do Beneficiário"
+  const beneficiaryRegex = /(?:BENEFICIÁRIO\s*\/|\bBENEFICIARIO\s*\/|\bBENEFICIÁRIO:?|\bBENEFICIARIO:?|\bCEDENTE:?|\bRAZÃO\s+SOCIAL:?|\bRAZAO\s+SOCIAL:?|\bNOME\s+DO\s+BENEFICIÁRIO:?|\bNOME\s+DO\s+BENEFICIARIO:?)\s*([A-Z0-9\.\&\s\-\/]{3,60}?)(?=\s*(?:CNPJ|CPF|ENDEREÇO|ENDERECO|AGÊNCIA|AGENCIA|CÓDIGO|CODIGO|DATA|VENCIMENTO|VALOR|NOSSO|SACADO|PAGADOR|R\$|\n|\r|$))/i;
+
+  const match = text.match(beneficiaryRegex);
+  if (match && match[1]) {
+    let candidate = match[1].trim().replace(/^[-/:\s]+/, '').replace(/[-/:\s]+$/, '');
+    candidate = candidate.split(/\s{2,}|\n|\r/)[0].trim();
+    if (
+      candidate.length >= 3 &&
+      !bankNamesRegex.test(candidate) &&
+      !candidate.toLowerCase().startsWith('banco') &&
+      (!bancoNome || !candidate.toLowerCase().includes(bancoNome.toLowerCase()))
+    ) {
+      return candidate;
+    }
+  }
+
+  // 3. Look for company indicators (S/A, S.A., LTDA, EIRELI, ME, EPP, SEGURADORA, TELECOM, ENERGIA)
+  const companyRegex = /\b([A-Z0-9\.\&\s\-]{3,50}\s+(?:S\/?A|S\.A\.|LTDA|EIRELI|M\.E\.|EPP|SEGURADORA|SERVICOS|COMERCIO|TECNOLOGIA|TELECOM|ENERGIA))\b/i;
+  const companyMatch = text.match(companyRegex);
+  if (companyMatch && companyMatch[1]) {
+    const candidate = companyMatch[1].trim();
+    if (
+      !bankNamesRegex.test(candidate) &&
+      !candidate.toLowerCase().startsWith('banco') &&
+      (!bancoNome || !candidate.toLowerCase().includes(bancoNome.toLowerCase()))
+    ) {
+      return candidate;
+    }
+  }
+
+  return 'Beneficiário / Cedente';
+}
+
+/**
  * Calculates due date from Fator de Vencimento (4 digits)
  * Handles FEBRABAN 1st cycle (Base 07/10/1997) and 2nd cycle (Fator 1000 on 22/02/2025 => Base 29/05/2022)
  */

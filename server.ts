@@ -3,7 +3,7 @@ import path from "path";
 import zlib from "zlib";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
-import { parseLinhaDigitavel, onlyNumbers } from "./src/utils/boletoParser";
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText } from "./src/utils/boletoParser";
 
 /**
  * Local helper to extract text from PDF buffer, including zlib FlateDecode compressed streams
@@ -99,11 +99,8 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               }
             }
 
-            let favorecidoNome = `Beneficiário (${parsed.bancoNome})`;
-            const sefazMatch = rawText.match(/(SECRETARIA\s+DA\s+FAZENDA[^\r\n]*|SEFAZ[-/ ][A-Z]{2}|GOVERNO\s+DO\s+ESTADO[^\r\n]*|RECEITA\s+FEDERAL)/i);
-            if (sefazMatch) {
-              favorecidoNome = sefazMatch[1].trim();
-            } else if (parsed.bancoCodigo === '858') {
+            let favorecidoNome = extractFavorecidoFromText(rawText, parsed.bancoNome);
+            if (parsed.bancoCodigo === '858') {
               favorecidoNome = 'SEFAZ - Guia GNRE';
             } else if (parsed.bancoCodigo === '856') {
               favorecidoNome = 'Receita Federal - DARF';
@@ -141,7 +138,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
           boletosFound.push({
             linhaDigitavel: chunk,
             codigoBarras: parsed.codigoBarras || chunk,
-            favorecidoNome: `Beneficiário (${parsed.bancoNome})`,
+            favorecidoNome: extractFavorecidoFromText(rawText, parsed.bancoNome),
             favorecidoCnpjCpf: "",
             valor: parsed.valor,
             dataVencimento: parsed.dataVencimento || new Date().toISOString().split("T")[0],
@@ -218,7 +215,7 @@ REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS, FINANCIAMEN
 4. SE O CARNÊ TIVER 12 PARCELAS (01/012 até 12/012), VOCÊ DEVE RETORNAR EXATAMENTE 12 BOLETOS NO ARRAY! NUNCA pare na 1ª parcela e NUNCA retorne apenas 1 boleto se houver vários.
 5. Para cada parcela:
    - "linhaDigitavel": Linha digitável completa de 47 dígitos (ex: 23793.39209 50005.692137 75020.156008 1 15200000004935). Se o texto da linha digitável de 47 dígitos estiver visível no topo ou lateral da parcela, extraia com precisão. Se para alguma parcela a linha digitável não estiver em texto corrido mas você tiver Banco (237 - Bradesco), Agência (3392), Conta (0201560-9), Carteira (05), Nosso Número (ex: 5/00056921372-8), Vencimento e Valor, forneça/monte a linha digitável de 47 dígitos correspondente.
-   - "favorecidoNome": Nome do Beneficiário / Cedente (ex: "SUHAI SEGURADORA S/A").
+   - "favorecidoNome": NOME DA EMPRESA COBRADORA OU BENEFICIÁRIO/CEDENTE QUE ESTÁ EMITINDO A FATURA OU RECEBENDO O PAGAMENTO (ex: "SUHAI SEGURADORA S/A", "CLARO S.A.", "LOCALIZA"). REGRA VITAL: NUNCA COLOQUE O NOME DO BANCO EMISSOR (como "Bradesco", "Banco Itaú", "Banco do Brasil", "Caixa") NO CAMPO favorecidoNome! O banco é apenas a instituição financeira e vai SOMENTE no campo "bancoNome". Procure pela empresa indicada nos campos "Beneficiário", "Cedente", "Razão Social" ou no cabeçalho/logotipo do boleto.
    - "favorecidoCnpjCpf": CNPJ do Beneficiário se visível (ex: "16.825.255/0001-23").
    - "valor": Valor numérico exato do documento para ESTA PARCELA (ex: 49.32 ou 49.35). NUNCA retorne 0 se o valor estiver impresso na parcela.
    - "dataVencimento": Data de Vencimento de ESTA PARCELA no formato YYYY-MM-DD (ex: 2026-05-04, 2026-05-25, 2026-06-25, 2026-07-27, 2026-08-25, 2026-09-25, 2026-10-26, 2026-11-25, 2026-12-28, 2027-01-25, 2027-02-25, 2027-03-25).
@@ -237,7 +234,7 @@ NUNCA retorne null ou undefined para nenhum campo!
 Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
 
         const callGeminiWithRetryAndFallback = async () => {
-          const modelsToTry = ["gemini-2.0-flash", "gemini-1.5-flash"];
+          const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
@@ -343,10 +340,39 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
         }
       }
 
-      // Post-process & sanitize all extracted boletos (especially GNRE / Tributos)
+      // Post-process & sanitize all extracted boletos (especially GNRE / Tributos and Favorecido)
       boletosExtracted = boletosExtracted.map((b) => {
         const rawDigits = b.linhaDigitavel || b.codigoBarras || "";
         const cleanLinha = onlyNumbers(rawDigits);
+
+        // Ensure favorecidoNome is the charging company and not the issuing bank
+        let fav = (b.favorecidoNome || "").trim();
+        const bName = (b.bancoNome || "").trim();
+        const isBankName = !fav ||
+          fav.toLowerCase().startsWith("banco") ||
+          fav.toLowerCase().includes("bradesco") ||
+          fav.toLowerCase().includes("itau") ||
+          fav.toLowerCase().includes("itaú") ||
+          fav.toLowerCase().includes("santander") ||
+          fav.toLowerCase().includes("caixa econ") ||
+          fav.toLowerCase().includes("sicoob") ||
+          fav.toLowerCase().includes("sicredi") ||
+          (bName && fav.toLowerCase() === bName.toLowerCase());
+
+        if (isBankName) {
+          let extractedCompany = '';
+          try {
+            const buffer = Buffer.from(cleanBase64, "base64");
+            const rawPdfText = extractTextFromPdfBuffer(buffer);
+            extractedCompany = extractFavorecidoFromText(rawPdfText, bName);
+          } catch (err) {}
+
+          if (extractedCompany && extractedCompany !== 'Beneficiário / Cedente') {
+            b.favorecidoNome = extractedCompany;
+          } else {
+            b.favorecidoNome = 'Empresa Cobradora / Beneficiário';
+          }
+        }
 
         if (typeof b.valor === "string") {
           const cleanedVal = String(b.valor).replace(/[^\d.,]/g, "").replace(/\./g, "").replace(",", ".");

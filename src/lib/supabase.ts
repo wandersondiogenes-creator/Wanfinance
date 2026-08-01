@@ -365,7 +365,11 @@ export async function syncHistoryToSupabase(
 
     const { error } = await supabase.from('cnab_history').upsert(records);
     if (error) {
-      console.error('[Supabase] Sync history failed:', error.message);
+      if (error.message?.includes('row-level security policy') || error.message?.includes('RLS')) {
+        console.warn('[Supabase] Sync history aviso de RLS:', error.message);
+      } else {
+        console.error('[Supabase] Sync history failed:', error.message);
+      }
       return { success: false, error: error.message, count: 0 };
     }
     return { success: true, count: records.length };

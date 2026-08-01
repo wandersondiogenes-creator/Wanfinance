@@ -220,24 +220,24 @@ CREATE TABLE IF NOT EXISTS public.user_sessions (
     login_time VARCHAR(50)
 );
 
--- Habilitar RLS (Row Level Security)
-ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.boletos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.cnab_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
+-- Habilitar/Ajustar RLS (Row Level Security)
+ALTER TABLE public.companies DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.boletos DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cnab_history DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_sessions DISABLE ROW LEVEL SECURITY;
 
 -- Políticas de Acesso Público
 DROP POLICY IF EXISTS "Allow public all on companies" ON public.companies;
-CREATE POLICY "Allow public all on companies" ON public.companies FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on companies" ON public.companies FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow public all on boletos" ON public.boletos;
-CREATE POLICY "Allow public all on boletos" ON public.boletos FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on boletos" ON public.boletos FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow public all on cnab_history" ON public.cnab_history;
-CREATE POLICY "Allow public all on cnab_history" ON public.cnab_history FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on cnab_history" ON public.cnab_history FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow public all on user_sessions" ON public.user_sessions;
-CREATE POLICY "Allow public all on user_sessions" ON public.user_sessions FOR ALL USING (true) WITH CHECK (true);`;
+CREATE POLICY "Allow public all on user_sessions" ON public.user_sessions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlMigrationCode);
