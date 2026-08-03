@@ -13,13 +13,21 @@ import {
   Sparkles,
   Server,
   Layers,
-  ArrowUpRight
+  ArrowUpRight,
+  UploadCloud,
+  DownloadCloud,
 } from 'lucide-react';
 import {
   getStoredSupabaseCredentials,
   saveSupabaseCredentials,
   testSupabaseConnection,
-  reinitSupabaseClient
+  reinitSupabaseClient,
+  syncCompanyProfilesToSupabase,
+  syncBoletosToSupabase,
+  syncHistoryToSupabase,
+  fetchCompanyProfilesFromSupabase,
+  fetchBoletosFromSupabase,
+  fetchHistoryFromSupabase,
 } from '../lib/supabase';
 import { CompanyProfile, BoletoItem, CNABBatchHistory } from '../types';
 import { saveCompanyProfiles, saveBoletos, saveHistory } from '../utils/storage';
@@ -31,6 +39,11 @@ interface SupabaseModalProps {
   boletos: BoletoItem[];
   history: CNABBatchHistory[];
   onToast: (msg: string) => void;
+  onReloadFromSupabase?: (data: {
+    companies?: CompanyProfile[];
+    boletos?: BoletoItem[];
+    history?: CNABBatchHistory[];
+  }) => void;
 }
 
 export const SupabaseModal: React.FC<SupabaseModalProps> = ({
@@ -40,6 +53,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
   boletos,
   history,
   onToast,
+  onReloadFromSupabase,
 }) => {
   const [url, setUrl] = useState('');
   const [anonKey, setAnonKey] = useState('');
@@ -47,6 +61,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
   const [activeTab, setActiveTab] = useState<'config' | 'migration' | 'tables'>('config');
 
   useEffect(() => {
@@ -84,40 +99,70 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
     setTestResult(res);
   };
 
-  const handleManualSync = () => {
+  const handlePushToSupabase = async () => {
     setIsSyncing(true);
-    setTimeout(() => {
-      saveCompanyProfiles(companies);
-      saveBoletos(boletos);
-      saveHistory(history);
-      setIsSyncing(false);
-      onToast('Dados sincronizados com o Supabase com sucesso!');
-    }, 800);
+    const cRes = await syncCompanyProfilesToSupabase(companies);
+    const bRes = await syncBoletosToSupabase(boletos);
+    const hRes = await syncHistoryToSupabase(history);
+    setIsSyncing(false);
+
+    if (cRes.success && bRes.success && hRes.success) {
+      onToast(`Sucesso! ${cRes.count} empresas, ${bRes.count} boletos e ${hRes.count} remessas enviadas ao Supabase.`);
+    } else {
+      const err = cRes.error || bRes.error || hRes.error || 'Erro na sincronização';
+      onToast(`Aviso na sincronização com Supabase: ${err}`);
+    }
+  };
+
+  const handlePullFromSupabase = async () => {
+    if (!onReloadFromSupabase) return;
+    setIsPulling(true);
+    const fetchedCompanies = await fetchCompanyProfilesFromSupabase();
+    const fetchedBoletos = await fetchBoletosFromSupabase();
+    const fetchedHistory = await fetchHistoryFromSupabase();
+    setIsPulling(false);
+
+    if (fetchedCompanies || fetchedBoletos || fetchedHistory) {
+      onReloadFromSupabase({
+        companies: fetchedCompanies || undefined,
+        boletos: fetchedBoletos || undefined,
+        history: fetchedHistory || undefined,
+      });
+      onToast('Dados recarregados com sucesso a partir do Supabase!');
+    } else {
+      onToast('Não foi possível carregar do Supabase. Verifique a conexão e as tabelas.');
+    }
   };
 
   const sqlMigrationCode = `-- WANFINANCE ENTERPRISE - SUPABASE SQL MIGRATION
--- Copie este código e cole no SQL Editor do seu projeto Supabase
+-- Copie e execute no SQL Editor do seu projeto Supabase (https://supabase.com)
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. Empresas
+-- 1. Tabela de Empresas e Contas Bancárias
 CREATE TABLE IF NOT EXISTS public.companies (
     id VARCHAR(100) PRIMARY KEY,
     razao_social VARCHAR(255) NOT NULL,
     nome_fantasia VARCHAR(255),
     cnpj_cpf VARCHAR(20) NOT NULL,
+    tipo_inscricao VARCHAR(10) DEFAULT 'CNPJ',
     logradouro VARCHAR(255),
     numero VARCHAR(50),
+    complemento VARCHAR(255),
     bairro VARCHAR(100),
     cidade VARCHAR(100),
-    uf VARCHAR(2) DEFAULT 'SP',
-    cep VARCHAR(10),
+    uf VARCHAR(10) DEFAULT 'SP',
+    cep VARCHAR(20),
     bancos JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. Boletos e Faturas
+-- Atualização de esquema (garantir colunas novas se a tabela já existia)
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS tipo_inscricao VARCHAR(10) DEFAULT 'CNPJ';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS complemento VARCHAR(255);
+
+-- 2. Tabela de Boletos e Faturas
 CREATE TABLE IF NOT EXISTS public.boletos (
     id VARCHAR(100) PRIMARY KEY,
     company_id VARCHAR(100),
@@ -132,10 +177,22 @@ CREATE TABLE IF NOT EXISTS public.boletos (
     seu_numero VARCHAR(50),
     nosso_numero VARCHAR(50),
     banco_codigo VARCHAR(10) DEFAULT '001',
+    banco_nome VARCHAR(100),
     status VARCHAR(30) DEFAULT 'pendente',
     selected BOOLEAN DEFAULT true,
+    categoria VARCHAR(100),
+    observacoes TEXT,
+    desconto NUMERIC(15,2) DEFAULT 0.00,
+    juros_multa NUMERIC(15,2) DEFAULT 0.00,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Atualização de esquema (garantir colunas se a tabela já existia)
+ALTER TABLE public.boletos ADD COLUMN IF NOT EXISTS banco_nome VARCHAR(100);
+ALTER TABLE public.boletos ADD COLUMN IF NOT EXISTS categoria VARCHAR(100);
+ALTER TABLE public.boletos ADD COLUMN IF NOT EXISTS observacoes TEXT;
+ALTER TABLE public.boletos ADD COLUMN IF NOT EXISTS desconto NUMERIC(15,2) DEFAULT 0.00;
+ALTER TABLE public.boletos ADD COLUMN IF NOT EXISTS juros_multa NUMERIC(15,2) DEFAULT 0.00;
 
 -- 3. Histórico de Remessas CNAB
 CREATE TABLE IF NOT EXISTS public.cnab_history (
@@ -163,16 +220,24 @@ CREATE TABLE IF NOT EXISTS public.user_sessions (
     login_time VARCHAR(50)
 );
 
--- RLS Policies
-ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.boletos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.cnab_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
+-- Habilitar/Ajustar RLS (Row Level Security)
+ALTER TABLE public.companies DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.boletos DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cnab_history DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_sessions DISABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public all on companies" ON public.companies FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public all on boletos" ON public.boletos FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public all on cnab_history" ON public.cnab_history FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public all on user_sessions" ON public.user_sessions FOR ALL USING (true) WITH CHECK (true);`;
+-- Políticas de Acesso Público
+DROP POLICY IF EXISTS "Allow public all on companies" ON public.companies;
+CREATE POLICY "Allow public all on companies" ON public.companies FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all on boletos" ON public.boletos;
+CREATE POLICY "Allow public all on boletos" ON public.boletos FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all on cnab_history" ON public.cnab_history;
+CREATE POLICY "Allow public all on cnab_history" ON public.cnab_history FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all on user_sessions" ON public.user_sessions;
+CREATE POLICY "Allow public all on user_sessions" ON public.user_sessions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlMigrationCode);
@@ -439,22 +504,48 @@ CREATE POLICY "Allow public all on user_sessions" ON public.user_sessions FOR AL
               </div>
             </div>
 
-            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold text-white">Sincronização Manual Forçada</h4>
-                <p className="text-[11px] text-slate-400">
-                  Envia todos os dados locais atuais diretamente para o Supabase
-                </p>
+            <div className="space-y-3">
+              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <UploadCloud className="w-4 h-4 text-emerald-400" />
+                    Enviar Dados Locais para o Supabase (Push)
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Sincroniza todas as {companies.length} empresas, {boletos.length} boletos e {history.length} remessas diretamente no banco PostgreSQL.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handlePushToSupabase}
+                  disabled={isSyncing}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Enviando...' : 'Enviar para Supabase'}</span>
+                </button>
               </div>
 
-              <button
-                onClick={handleManualSync}
-                disabled={isSyncing}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}</span>
-              </button>
+              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <DownloadCloud className="w-4 h-4 text-teal-400" />
+                    Baixar Dados do Supabase (Pull)
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Recarrega as empresas e boletos cadastrados no banco Supabase para esta aplicação.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handlePullFromSupabase}
+                  disabled={isPulling}
+                  className="bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-teal-600/20 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isPulling ? 'animate-spin' : ''}`} />
+                  <span>{isPulling ? 'Baixando...' : 'Carregar do Supabase'}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

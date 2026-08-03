@@ -23,6 +23,7 @@ import { BoletoItem, CNABBatchHistory } from '../types';
 import { parseLinhaDigitavel, formatCurrencyBRL, formatDateBR, onlyNumbers } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate } from '../utils/duplicateDetector';
+import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
 
 interface PDFExtractedItem {
   id: string;
@@ -112,31 +113,57 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         reader.readAsDataURL(file);
       });
 
-      const response = await fetch('/api/extract-boleto-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileBase64,
-          mimeType: file.type || 'application/pdf',
-          fileName: file.name,
-        }),
-      });
+      let rawBoletos: any[] = [];
+      let serverSuccess = false;
+      let serverErrorMsg = '';
 
-      const result = await response.json();
+      // 1. Attempt Server API Extraction
+      try {
+        const response = await fetch('/api/extract-boleto-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileBase64,
+            mimeType: file.type || 'application/pdf',
+            fileName: file.name,
+          }),
+        });
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || result.details || 'Falha ao processar arquivo.');
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && contentType.includes('application/json')) {
+          const result = await response.json();
+          if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
+            rawBoletos = result.boletos;
+            serverSuccess = true;
+          } else if (result && result.geminiApiError) {
+            serverErrorMsg = `Erro na API Gemini: ${result.geminiApiError}`;
+          }
+        } else {
+          serverErrorMsg = `Servidor respondeu com status ${response.status}`;
+          console.warn('[PDF Import] Server endpoint returned non-JSON/error status:', response.status, contentType);
+        }
+      } catch (fetchErr: any) {
+        serverErrorMsg = `Falha na requisição ao servidor: ${fetchErr?.message || fetchErr}`;
+        console.warn('[PDF Import] Server fetch failed, falling back to browser extractor:', fetchErr);
       }
 
-      const rawBoletos: any[] = result.boletos || (result.data ? [result.data] : []);
+      // 2. Client-Side Fallback Extractor if Server API failed or returned 0 boletos
+      if (!serverSuccess || rawBoletos.length === 0) {
+        console.log('[PDF Import] Executando leitor de PDF local no navegador...');
+        const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
+        if (localExtracted.length > 0) {
+          rawBoletos = localExtracted;
+        }
+      }
 
       if (rawBoletos.length === 0) {
+        const detailMsg = serverErrorMsg ? ` (${serverErrorMsg})` : '';
         return [
           {
             id: `pdf-item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             fileName: file.name,
             status: 'error',
-            errorMessage: 'Nenhum boleto válido foi identificado neste arquivo.',
+            errorMessage: `Nenhum boleto válido com linha digitável/código de barras foi identificado neste arquivo${detailMsg}. Se o arquivo for uma imagem digitalizada sem texto, cole a linha digitável abaixo.`,
           },
         ];
       }
@@ -151,6 +178,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         const bankInfo = getBankInfo(finalBancoCodigo);
         const finalValor = parseExtractedValor(extracted.valor, parsedCheck.valor);
 
+        const finalFavorecido = extracted.favorecidoNome || extracted.beneficiario || extracted.cedente || 'Favorecido Não Identificado';
+        const finalCnpj = extracted.favorecidoCnpjCpf || extracted.CNPJ || '';
+        const finalSeuNumero = extracted.numeroDocumento || extracted.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`;
+        const finalBancoNome = bankInfo.shortName || extracted.bancoNome || extracted.banco || 'Banco Não Identificado';
+
         return {
           id: itemId,
           fileName: file.name,
@@ -160,15 +192,15 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           data: {
             linhaDigitavel: cleanLinha || extracted.linhaDigitavel || '',
             codigoBarras: extracted.codigoBarras || parsedCheck.codigoBarras || '',
-            favorecidoNome: extracted.favorecidoNome || 'Favorecido Não Identificado',
-            favorecidoCnpjCpf: extracted.favorecidoCnpjCpf || '',
+            favorecidoNome: finalFavorecido,
+            favorecidoCnpjCpf: finalCnpj,
             valor: finalValor,
             dataVencimento: extracted.dataVencimento || parsedCheck.dataVencimento || new Date().toISOString().split('T')[0],
             dataPagamento: batchPaymentDate || extracted.dataVencimento || parsedCheck.dataVencimento || new Date().toISOString().split('T')[0],
-            seuNumero: extracted.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`,
+            seuNumero: finalSeuNumero,
             nossoNumero: extracted.nossoNumero || '',
             bancoCodigo: finalBancoCodigo,
-            bancoNome: bankInfo.shortName || extracted.bancoNome || 'Banco Não Identificado',
+            bancoNome: finalBancoNome,
             observacoes: extracted.observacoes || (rawBoletos.length > 1 ? `Boleto ${idx + 1}/${rawBoletos.length} de ${file.name}` : `Extraído de ${file.name}`),
             confidence: extracted.confidence || 0.9,
           },

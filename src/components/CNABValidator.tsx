@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { BoletoItem, CompanySettings } from '../types';
+import { BoletoItem, CompanySettings, AuthUser } from '../types';
 import { getBankInfo } from '../utils/banks';
 import { generateCNAB240 } from '../utils/cnabGenerator240';
 import { generateCNAB400 } from '../utils/cnabGenerator400';
@@ -25,6 +25,7 @@ import {
 interface CNABValidatorProps {
   boletos?: BoletoItem[];
   activeCompany?: CompanySettings;
+  currentUser?: AuthUser | null;
   onSaveToHistory?: (
     fileContent: string,
     totalBoletos: number,
@@ -39,13 +40,14 @@ interface CNABValidatorProps {
 export const CNABValidator: React.FC<CNABValidatorProps> = ({
   boletos = [],
   activeCompany,
+  currentUser,
   onSaveToHistory,
   showToast,
 }) => {
   const [fileContent, setFileContent] = useState('');
   const [useModelCompanyData, setUseModelCompanyData] = useState(true);
   const [boletoSelectionMode, setBoletoSelectionMode] = useState<'ALL_VALID' | 'SELECTED_ONLY'>('ALL_VALID');
-  const [analista, setAnalista] = useState(() => localStorage.getItem('last_analyst_name') || '');
+  const [analista, setAnalista] = useState(() => localStorage.getItem('last_analyst_name') || currentUser?.email || '');
 
   const [generatedResult, setGeneratedResult] = useState<{
     fileContent: string;
@@ -351,7 +353,7 @@ export const CNABValidator: React.FC<CNABValidatorProps> = ({
   // Download Generated CNAB
   const handleDownloadGenerated = () => {
     if (!generatedResult) return;
-    const formattedAnalyst = analista.trim() || 'Analista Financeiro';
+    const formattedAnalyst = analista.trim() || currentUser?.email || 'financeiro@wanfinance.com.br';
     localStorage.setItem('last_analyst_name', formattedAnalyst);
 
     const blob = new Blob([generatedResult.fileContent], { type: 'text/plain;charset=utf-8' });

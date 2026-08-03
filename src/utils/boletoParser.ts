@@ -64,7 +64,59 @@ export function linhaDigitavelToCodigoBarras(linhaDigitavel: string): { codigoBa
 }
 
 /**
+ * Smartly extracts beneficiary / charging company name from raw document text.
+ * Filters out bank names (e.g. Bradesco, Itaú) to ensure the actual charging company is returned.
+ */
+export function extractFavorecidoFromText(text: string, bancoNome: string = ''): string {
+  if (!text) return 'Beneficiário / Cedente';
+
+  // 1. Direct high-frequency matches
+  const suhaiMatch = text.match(/(SUHAI\s+SEGURADORA\s*(?:S\/?A)?)/i);
+  if (suhaiMatch) return 'SUHAI SEGURADORA S/A';
+
+  const sefazMatch = text.match(/(SECRETARIA\s+DA\s+FAZENDA[^\r\n]*|SEFAZ[-/ ][A-Z]{2}|GOVERNO\s+DO\s+ESTADO[^\r\n]*|RECEITA\s+FEDERAL)/i);
+  if (sefazMatch) return sefazMatch[1].trim();
+
+  // Bank names regex to filter them out
+  const bankNamesRegex = /^(?:BANCO\s+|SAD\s+|BCO\s+)?(?:BRADESCO|ITAU|ITAÚ|SANTANDER|BANCO DO BRASIL|CAIXA|INTER|NUBANK|SAFRA|BTG|SICOOB|SICREDI|CITIBANK|DAYCOVAL|ABC|MODAL|NEON|C6|PAGSEGURO|STONE|EFINANCE)(?:\s+S\/?A|\s+S\.A\.)?$/i;
+
+  // 2. Look for explicit labels: "Beneficiário", "Cedente", "Razão Social", "Nome do Beneficiário"
+  const beneficiaryRegex = /(?:BENEFICIÁRIO\s*\/|\bBENEFICIARIO\s*\/|\bBENEFICIÁRIO:?|\bBENEFICIARIO:?|\bCEDENTE:?|\bRAZÃO\s+SOCIAL:?|\bRAZAO\s+SOCIAL:?|\bNOME\s+DO\s+BENEFICIÁRIO:?|\bNOME\s+DO\s+BENEFICIARIO:?)\s*([A-Z0-9\.\&\s\-\/]{3,60}?)(?=\s*(?:CNPJ|CPF|ENDEREÇO|ENDERECO|AGÊNCIA|AGENCIA|CÓDIGO|CODIGO|DATA|VENCIMENTO|VALOR|NOSSO|SACADO|PAGADOR|R\$|\n|\r|$))/i;
+
+  const match = text.match(beneficiaryRegex);
+  if (match && match[1]) {
+    let candidate = match[1].trim().replace(/^[-/:\s]+/, '').replace(/[-/:\s]+$/, '');
+    candidate = candidate.split(/\s{2,}|\n|\r/)[0].trim();
+    if (
+      candidate.length >= 3 &&
+      !bankNamesRegex.test(candidate) &&
+      !candidate.toLowerCase().startsWith('banco') &&
+      (!bancoNome || !candidate.toLowerCase().includes(bancoNome.toLowerCase()))
+    ) {
+      return candidate;
+    }
+  }
+
+  // 3. Look for company indicators (S/A, S.A., LTDA, EIRELI, ME, EPP, SEGURADORA, TELECOM, ENERGIA)
+  const companyRegex = /\b([A-Z0-9\.\&\s\-]{3,50}\s+(?:S\/?A|S\.A\.|LTDA|EIRELI|M\.E\.|EPP|SEGURADORA|SERVICOS|COMERCIO|TECNOLOGIA|TELECOM|ENERGIA))\b/i;
+  const companyMatch = text.match(companyRegex);
+  if (companyMatch && companyMatch[1]) {
+    const candidate = companyMatch[1].trim();
+    if (
+      !bankNamesRegex.test(candidate) &&
+      !candidate.toLowerCase().startsWith('banco') &&
+      (!bancoNome || !candidate.toLowerCase().includes(bancoNome.toLowerCase()))
+    ) {
+      return candidate;
+    }
+  }
+
+  return 'Beneficiário / Cedente';
+}
+
+/**
  * Calculates due date from Fator de Vencimento (4 digits)
+ * Handles FEBRABAN 1st cycle (Base 07/10/1997) and 2nd cycle (Fator 1000 on 22/02/2025 => Base 29/05/2022)
  */
 export function parseFatorVencimento(fatorStr: string): string {
   const fator = parseInt(fatorStr, 10);
@@ -72,28 +124,31 @@ export function parseFatorVencimento(fatorStr: string): string {
     return ''; // Sem vencimento fixo / a vista
   }
 
-  // Base FEBRABAN: 07/10/1997 (UTC)
-  const baseDate = new Date(1997, 9, 7); // Mês 9 é Outubro no JS
-  let totalDays = fator;
-
-  // Lógica de ciclo de fator de vencimento FEBRABAN
-  // Após 21/02/2025 (fator 9999), o fator retornou para 1000 em 22/02/2025.
-  // Para datas atuais (2025-2030+), se o fator estiver entre 1000 e 9999, somamos os dias correspondentes do novo ciclo.
-  const todayYear = new Date().getFullYear();
-  if (todayYear >= 2025 && fator >= 1000 && fator <= 9999) {
-    // Se o fator for menor que ~3000 mas estamos no ano 2025-2030, tratar ciclo novo se necessário
-    // Mas somar fator direto à baseDate com ciclo ajustado
-    if (fator < 1000) {
-      totalDays = fator;
-    }
+  // Se o fator for menor que 1000, não é um fator de vencimento válido
+  if (fator < 1000) {
+    return '';
   }
 
-  const dueDate = new Date(baseDate.getTime() + totalDays * 24 * 60 * 60 * 1000);
+  // FEBRABAN: Fator 1000 a 9999
+  // Para ano corrente >= 2025 e fatores típicos de 2025+ (1000 a ~3000), o fator está no 2º ciclo (iniciado em 22/02/2025 = Fator 1000).
+  // Data base do 2º ciclo: 29/05/2022 (UTC)
+  let baseDate: Date;
+  const currentYear = new Date().getFullYear();
+
+  if (currentYear >= 2025 && fator <= 3500) {
+    // 2º ciclo FEBRABAN: Base 29 de Maio de 2022
+    baseDate = new Date(Date.UTC(2022, 4, 29)); // Mês 4 é Maio em JS
+  } else {
+    // 1º ciclo FEBRABAN: Base 07 de Outubro de 1997
+    baseDate = new Date(Date.UTC(1997, 9, 7)); // Mês 9 é Outubro em JS
+  }
+
+  const dueDate = new Date(baseDate.getTime() + fator * 24 * 60 * 60 * 1000);
 
   // Format as YYYY-MM-DD
-  const year = dueDate.getFullYear();
-  const month = String(dueDate.getMonth() + 1).padStart(2, '0');
-  const day = String(dueDate.getDate()).padStart(2, '0');
+  const year = dueDate.getUTCFullYear();
+  const month = String(dueDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(dueDate.getUTCDate()).padStart(2, '0');
 
   return `${year}-${month}-${day}`;
 }
@@ -105,6 +160,43 @@ export function parseValor(valorStr: string): number {
   const num = parseInt(valorStr, 10);
   if (isNaN(num)) return 0;
   return num / 100;
+}
+
+/**
+ * Modulo 10 check for Brazilian boleto fields (Campo 1, Campo 2, Campo 3)
+ */
+export function modulo10(digits: string): number {
+  let sum = 0;
+  let weight = 2;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let mul = parseInt(digits[i], 10) * weight;
+    if (mul > 9) mul = Math.floor(mul / 10) + (mul % 10);
+    sum += mul;
+    weight = weight === 2 ? 1 : 2;
+  }
+  const remainder = sum % 10;
+  return remainder === 0 ? 0 : 10 - remainder;
+}
+
+/**
+ * Validates Modulo 10 for a 47-digit Linha Digitável
+ */
+export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
+  if (limpa47.length !== 47) return false;
+  
+  const campo1Data = limpa47.substring(0, 9);
+  const campo1DV = parseInt(limpa47.substring(9, 10), 10);
+  if (modulo10(campo1Data) !== campo1DV) return false;
+
+  const campo2Data = limpa47.substring(10, 20);
+  const campo2DV = parseInt(limpa47.substring(20, 21), 10);
+  if (modulo10(campo2Data) !== campo2DV) return false;
+
+  const campo3Data = limpa47.substring(21, 31);
+  const campo3DV = parseInt(limpa47.substring(31, 32), 10);
+  if (modulo10(campo3Data) !== campo3DV) return false;
+
+  return true;
 }
 
 /**
@@ -151,6 +243,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
 
     const dataVencimento = parseFatorVencimento(fatorVencimento);
     const valor = parseValor(valorRaw);
+    const isMod10Valid = validateModulo10LinhaDigitavel(limpa);
 
     return {
       linhaDigitavelLimpa: limpa,
@@ -159,7 +252,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       bancoNome: bankInfo.shortName,
       valor,
       dataVencimento: dataVencimento || new Date().toISOString().split('T')[0],
-      isValid: true,
+      isValid: isMod10Valid,
       tipo,
     };
   }

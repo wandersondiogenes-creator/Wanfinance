@@ -1,19 +1,23 @@
 import React, { useState, useMemo } from 'react';
-import { CNABBatchHistory } from '../types';
+import { CNABBatchHistory, AuthUser } from '../types';
 import { formatCurrencyBRL } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
 import { History, Download, Trash2, FileText, UserCheck, Search, Building2 } from 'lucide-react';
 
 interface HistoryPanelProps {
   history: CNABBatchHistory[];
+  currentUser?: AuthUser | null;
   onClearHistory: () => void;
   onDownloadBatch: (batch: CNABBatchHistory) => void;
+  onDeleteHistoryItem?: (id: string) => void;
 }
 
 export const HistoryPanel: React.FC<HistoryPanelProps> = ({
   history,
+  currentUser,
   onClearHistory,
   onDownloadBatch,
+  onDeleteHistoryItem,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -120,7 +124,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
                       {/* Analyst Badge */}
                       <span className="bg-purple-950/80 text-purple-300 border border-purple-500/30 text-[11px] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1">
                         <UserCheck className="w-3 h-3 text-purple-400" />
-                        <span>Gerado por: <strong className="text-white">{batch.analista || 'Analista Financeiro'}</strong></span>
+                        <span>Gerado por: <strong className="text-white">{(!batch.analista || batch.analista === 'Analista Financeiro') ? (currentUser?.email || 'financeiro@wanfinance.com.br') : batch.analista}</strong></span>
                       </span>
 
                       <span>•</span>

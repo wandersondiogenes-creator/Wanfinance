@@ -1,3 +1,4 @@
+import { resetToDefaultCompanies } from '../utils/storage';
 import React, { useState } from 'react';
 import { CompanyProfile, BankAccountProfile } from '../types';
 import { BRAZILIAN_BANKS, getBankInfo } from '../utils/banks';
@@ -202,29 +203,48 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
             </h3>
           </div>
 
-          <button
-            onClick={() => {
-              setCompanyForm({
-                id: '',
-                nomeFantasia: '',
-                razaoSocial: '',
-                cnpjCpf: '',
-                tipoInscricao: 'CNPJ',
-                logradouro: '',
-                numero: '',
-                complemento: '',
-                cidade: '',
-                uf: 'SP',
-                cep: '',
-                bancos: [],
-              });
-              setIsAddingCompany(true);
-            }}
-            className="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-3.5 py-2 rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center space-x-1.5 self-start sm:self-auto"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Nova Empresa Pagadora</span>
-          </button>
+          <div className="flex items-center space-x-2 self-start sm:self-auto">
+            <button
+              onClick={() => {
+                if (confirm('Deseja restaurar e atualizar todas as 16 empresas e contas bancárias com a tabela padrão do sistema?')) {
+                  const updated = resetToDefaultCompanies();
+                  onSaveCompanyProfiles(updated, updated[0].id, updated[0].bancos[0].id);
+                  setSelectedCompanyId(updated[0].id);
+                  setSavedSuccess(true);
+                  setTimeout(() => setSavedSuccess(false), 3000);
+                }
+              }}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-3.5 py-2 rounded-xl transition-all border border-slate-700 flex items-center space-x-1.5"
+              title="Restaurar lista de 16 empresas e contas atualizadas"
+            >
+              <RefreshCw className="w-4 h-4 text-amber-400" />
+              <span>Restaurar 16 Empresas Padrão</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setCompanyForm({
+                  id: '',
+                  nomeFantasia: '',
+                  razaoSocial: '',
+                  cnpjCpf: '',
+                  tipoInscricao: 'CNPJ',
+                  logradouro: '',
+                  numero: '',
+                  complemento: '',
+                  cidade: '',
+                  uf: 'SP',
+                  cep: '',
+                  bancos: [],
+                });
+                setIsAddingCompany(true);
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-3.5 py-2 rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center space-x-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Nova Empresa Pagadora</span>
+            </button>
+          </div>
         </div>
 
         {/* Company Pills */}

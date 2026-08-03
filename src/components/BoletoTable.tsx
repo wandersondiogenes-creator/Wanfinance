@@ -11,6 +11,8 @@ export type SortOrder = 'asc' | 'desc';
 interface BoletoTableProps {
   boletos: BoletoItem[];
   history?: CNABBatchHistory[];
+  filterType?: 'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE';
+  setFilterType?: (type: 'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE') => void;
   onToggleSelect: (id: string) => void;
   onSelectAll: (select: boolean) => void;
   onDeleteBoleto: (id: string) => void;
@@ -27,6 +29,8 @@ interface BoletoTableProps {
 export const BoletoTable: React.FC<BoletoTableProps> = ({
   boletos,
   history = [],
+  filterType: propFilterType,
+  setFilterType: propSetFilterType,
   onToggleSelect,
   onSelectAll,
   onDeleteBoleto,
@@ -41,7 +45,10 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [bankFilter, setBankFilter] = useState('ALL');
-  const [filterType, setFilterType] = useState<'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE'>('ALL');
+  const [internalFilterType, setInternalFilterType] = useState<'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE'>('ALL');
+
+  const filterType = propFilterType !== undefined ? propFilterType : internalFilterType;
+  const setFilterType = propSetFilterType || setInternalFilterType;
   const [batchPayDateInput, setBatchPayDateInput] = useState<string>('');
   const [showInsertMenu, setShowInsertMenu] = useState(false);
 

@@ -18,6 +18,7 @@ export const BRAZILIAN_BANKS: Record<string, BankInfo> = {
   '260': { code: '260', name: 'Nu Pagamentos S.A.', shortName: 'Nubank', color: '#820AD1', bgColor: '#F3E8FF' },
   '336': { code: '336', name: 'Banco C6 S.A.', shortName: 'C6 Bank', color: '#242424', bgColor: '#F3F4F6' },
   '422': { code: '422', name: 'Banco Safra S.A.', shortName: 'Safra', color: '#B39130', bgColor: '#FEF3C7' },
+  '318': { code: '318', name: 'Banco Trianon / BMG', shortName: 'Banco Trianon', color: '#EA580C', bgColor: '#FFEDD5' },
   '212': { code: '212', name: 'Banco Original S.A.', shortName: 'Original', color: '#00A859', bgColor: '#DCFCE7' },
   '655': { code: '655', name: 'Banco Votorantim S.A. / BV', shortName: 'BV', color: '#003399', bgColor: '#DBEAFE' },
   '041': { code: '041', name: 'Banco do Estado do Rio Grande do Sul (Banrisul)', shortName: 'Banrisul', color: '#00529C', bgColor: '#DBEAFE' },

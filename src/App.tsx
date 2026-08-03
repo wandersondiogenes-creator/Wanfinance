@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BoletoItem, CompanyProfile, BankAccountProfile, CompanySettings, CNABBatchHistory, AuthUser } from './types';
 import { testFirestoreConnection } from './lib/firebase';
+import {
+  fetchCompanyProfilesFromSupabase,
+  fetchBoletosFromSupabase,
+  fetchHistoryFromSupabase,
+} from './lib/supabase';
 import {
   loadCompanyProfiles,
   saveCompanyProfiles,
@@ -17,6 +22,7 @@ import {
 import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
 import { BoletoTable } from './components/BoletoTable';
+import { ExecutionSidebar } from './components/ExecutionSidebar';
 import { BoletoFormModal } from './components/BoletoFormModal';
 import { BatchPasteModal } from './components/BatchPasteModal';
 import { PDFBoletoImportModal } from './components/PDFBoletoImportModal';
@@ -26,6 +32,8 @@ import { SupabaseModal } from './components/SupabaseModal';
 import { HistoryPanel } from './components/HistoryPanel';
 import { CNABValidator } from './components/CNABValidator';
 import { GoogleSheetsPanel } from './components/GoogleSheetsPanel';
+import { BankPaymentApiPanel } from './components/BankPaymentApiPanel';
+import { getBoletosDuplicateMap } from './utils/duplicateDetector';
 import { CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
 export default function App() {
@@ -37,10 +45,44 @@ export default function App() {
 
   useEffect(() => {
     testFirestoreConnection();
+
+    // Check and load remote data from Supabase if configured
+    async function initSupabaseData() {
+      const cData = await fetchCompanyProfilesFromSupabase();
+      if (cData && cData.length > 0) {
+        setCompanies(cData);
+      }
+      const bData = await fetchBoletosFromSupabase();
+      if (bData && bData.length > 0) {
+        const cleaned = bData.filter((b) => !b?.id?.startsWith('bol-sample-'));
+        setBoletos(cleaned);
+      }
+      const hData = await fetchHistoryFromSupabase();
+      if (hData && hData.length > 0) {
+        setHistory(hData);
+      }
+    }
+    initSupabaseData();
   }, []);
 
+  const handleReloadFromSupabase = (data: {
+    companies?: CompanyProfile[];
+    boletos?: BoletoItem[];
+    history?: CNABBatchHistory[];
+  }) => {
+    if (data.companies && data.companies.length > 0) {
+      setCompanies(data.companies);
+    }
+    if (data.boletos && data.boletos.length > 0) {
+      setBoletos(data.boletos);
+    }
+    if (data.history && data.history.length > 0) {
+      setHistory(data.history);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<
-    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets'
+    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos'
   >('boletos');
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -63,6 +105,23 @@ export default function App() {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  const [sidebarFilterType, setSidebarFilterType] = useState<
+    'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE'
+  >('ALL');
+
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const duplicatesMap = useMemo(() => getBoletosDuplicateMap(boletos, [], history), [boletos, history]);
+  const duplicateCount = useMemo(() => {
+    let count = 0;
+    duplicatesMap.forEach((dup) => {
+      if (dup.isDuplicate) count++;
+    });
+    return count;
+  }, [duplicatesMap]);
+  const overdueCount = useMemo(() => boletos.filter((b) => b.dataVencimento < todayStr).length, [boletos, todayStr]);
+  const discountCount = useMemo(() => boletos.filter((b) => (b.desconto || 0) > 0).length, [boletos]);
+  const interestCount = useMemo(() => boletos.filter((b) => (b.jurosMulta || 0) > 0).length, [boletos]);
 
   const handleLoginSuccess = (user: AuthUser) => {
     setCurrentUser(user);
@@ -248,7 +307,8 @@ export default function App() {
     totalValor: number,
     filename: string,
     nsa: number,
-    analista?: string
+    analista?: string,
+    removeExported: boolean = true
   ) => {
     const exportedBoletos = boletos.filter((b) => b.selected && b.isValid);
     const exportedIds = new Set(exportedBoletos.map((b) => b.id));
@@ -264,13 +324,15 @@ export default function App() {
       bancoCodigo: activeCompanySettings.bancoCodigo,
       content: fileContent,
       boletos: exportedBoletos,
-      analista: analista?.trim() || 'Analista Financeiro',
+      analista: analista?.trim() || currentUser?.email || 'financeiro@wanfinance.com.br',
     };
 
     setHistory((prev) => [newBatch, ...prev]);
 
-    // Automatically remove exported boletos from 'boletos a pagar'
-    setBoletos((prev) => prev.filter((b) => !exportedIds.has(b.id)));
+    if (removeExported) {
+      // Automatically remove exported boletos from 'boletos a pagar'
+      setBoletos((prev) => prev.filter((b) => !exportedIds.has(b.id)));
+    }
 
     // Automatically increment NSA for active bank account
     setCompanies((prev) =>
@@ -290,7 +352,11 @@ export default function App() {
       })
     );
 
-    showToast(`Arquivo ${filename} gerado! ${exportedBoletos.length} boleto(s) processado(s) e removido(s) de Boletos a Pagar.`);
+    showToast(
+      `Arquivo ${filename} gerado! ${exportedBoletos.length} boleto(s) processado(s)${
+        removeExported ? ' e removido(s) de Boletos a Pagar' : ''
+      }.`
+    );
   };
 
   const selectedBoletos = boletos.filter((b) => b.selected && b.isValid);
@@ -351,26 +417,157 @@ export default function App() {
       />
 
       {/* Main Body Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'boletos' && (
-          <BoletoTable
-            boletos={boletos}
-            history={history}
-            onToggleSelect={handleToggleSelect}
-            onSelectAll={handleSelectAll}
-            onDeleteBoleto={handleDeleteBoleto}
-            onDeleteSelected={handleDeleteSelected}
-            onEditBoleto={handleEditBoleto}
-            onDuplicateBoleto={handleDuplicateBoleto}
-            onOpenNewModal={() => {
-              setEditingBoleto(null);
-              setIsFormModalOpen(true);
-            }}
-            onOpenBatchModal={() => setIsBatchModalOpen(true)}
-            onOpenPDFModal={() => setIsPDFModalOpen(true)}
-            onGenerateCNAB={() => setIsPreviewModalOpen(true)}
-            onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
-          />
+      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {(activeTab === 'boletos' || activeTab === 'novo_boleto') && (
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
+            {/* Lateral Execution Panel */}
+            <ExecutionSidebar
+              company={activeCompanySettings}
+              boletos={boletos}
+              history={history}
+              onGenerateCNAB={() => setIsPreviewModalOpen(true)}
+              onOpenPDFModal={() => setIsPDFModalOpen(true)}
+              onOpenBatchModal={() => setIsBatchModalOpen(true)}
+              onOpenNewModal={() => {
+                setEditingBoleto(null);
+                setIsFormModalOpen(true);
+              }}
+              onSelectAll={handleSelectAll}
+              onDeleteSelected={handleDeleteSelected}
+              onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
+              filterType={sidebarFilterType}
+              setFilterType={setSidebarFilterType}
+              duplicateCount={duplicateCount}
+              overdueCount={overdueCount}
+              discountCount={discountCount}
+              interestCount={interestCount}
+            />
+
+            {/* Main Area on the Right: Boletos Table or Insert Boletos Panel */}
+            <div className="flex-1 w-full min-w-0">
+              {activeTab === 'novo_boleto' ? (
+                <div className="space-y-6">
+                  <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs">
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                      <div>
+                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                          Inserir e Colar Boletos a Pagar
+                        </h2>
+                        <p className="text-xs text-slate-500 font-medium">
+                          Escolha o método mais rápido para importar boletos para o lote atual
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab('boletos')}
+                        className="text-xs font-bold text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                      >
+                        ← Voltar para Boletos
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                      {/* Option 1: PDF Extraction via IA */}
+                      <div
+                        onClick={() => setIsPDFModalOpen(true)}
+                        className="bg-gradient-to-b from-blue-50 to-white border-2 border-blue-200 hover:border-blue-500 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
+                          <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
+                        </div>
+                        <h3 className="text-sm font-black text-slate-900">1. Extrair PDF por IA</h3>
+                        <p className="text-xs text-slate-600">
+                          Envie um ou múltiplos arquivos PDF ou fotos de boletos. A Inteligência Artificial extrai favorecido, valor, vencimento e linha digitável.
+                        </p>
+                        <button className="text-xs font-bold text-blue-700 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-xl transition-colors">
+                          Abrir Extrator PDF →
+                        </button>
+                      </div>
+
+                      {/* Option 2: Colar em Lote */}
+                      <div
+                        onClick={() => setIsBatchModalOpen(true)}
+                        className="bg-gradient-to-b from-emerald-50 to-white border-2 border-emerald-200 hover:border-emerald-500 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-sm font-black text-slate-900">2. Colar Múltiplos Boletos</h3>
+                        <p className="text-xs text-slate-600">
+                          Cole várias linhas digitáveis de uma só vez (uma por linha). O sistema calcula vencimento, banco e valida os dígitos verificadores.
+                        </p>
+                        <button className="text-xs font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-xl transition-colors">
+                          Colar em Lote →
+                        </button>
+                      </div>
+
+                      {/* Option 3: Preencher Manual */}
+                      <div
+                        onClick={() => {
+                          setEditingBoleto(null);
+                          setIsFormModalOpen(true);
+                        }}
+                        className="bg-gradient-to-b from-amber-50 to-white border-2 border-amber-200 hover:border-amber-500 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold">
+                          <AlertCircle className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-sm font-black text-slate-900">3. Inserção Manual</h3>
+                        <p className="text-xs text-slate-600">
+                          Preencha individualmente o formulário completo com favorecido, código de barras/linha, valor, descontos, juros e ref.
+                        </p>
+                        <button className="text-xs font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 px-3 py-1.5 rounded-xl transition-colors">
+                          Preencher Formulário →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Show Table Below for Convenience */}
+                  <BoletoTable
+                    boletos={boletos}
+                    history={history}
+                    filterType={sidebarFilterType}
+                    setFilterType={setSidebarFilterType}
+                    onToggleSelect={handleToggleSelect}
+                    onSelectAll={handleSelectAll}
+                    onDeleteBoleto={handleDeleteBoleto}
+                    onDeleteSelected={handleDeleteSelected}
+                    onEditBoleto={handleEditBoleto}
+                    onDuplicateBoleto={handleDuplicateBoleto}
+                    onOpenNewModal={() => {
+                      setEditingBoleto(null);
+                      setIsFormModalOpen(true);
+                    }}
+                    onOpenBatchModal={() => setIsBatchModalOpen(true)}
+                    onOpenPDFModal={() => setIsPDFModalOpen(true)}
+                    onGenerateCNAB={() => setIsPreviewModalOpen(true)}
+                    onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
+                  />
+                </div>
+              ) : (
+                <BoletoTable
+                  boletos={boletos}
+                  history={history}
+                  filterType={sidebarFilterType}
+                  setFilterType={setSidebarFilterType}
+                  onToggleSelect={handleToggleSelect}
+                  onSelectAll={handleSelectAll}
+                  onDeleteBoleto={handleDeleteBoleto}
+                  onDeleteSelected={handleDeleteSelected}
+                  onEditBoleto={handleEditBoleto}
+                  onDuplicateBoleto={handleDuplicateBoleto}
+                  onOpenNewModal={() => {
+                    setEditingBoleto(null);
+                    setIsFormModalOpen(true);
+                  }}
+                  onOpenBatchModal={() => setIsBatchModalOpen(true)}
+                  onOpenPDFModal={() => setIsPDFModalOpen(true)}
+                  onGenerateCNAB={() => setIsPreviewModalOpen(true)}
+                  onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
+                />
+              )}
+            </div>
+          </div>
         )}
 
         {activeTab === 'empresa' && (
@@ -387,6 +584,7 @@ export default function App() {
         {activeTab === 'historico' && (
           <HistoryPanel
             history={history}
+            currentUser={currentUser}
             onClearHistory={() => {
               setHistory([]);
               showToast('Histórico limpo.');
@@ -410,6 +608,7 @@ export default function App() {
           <CNABValidator
             boletos={boletos}
             activeCompany={activeCompanySettings}
+            currentUser={currentUser}
             onSaveToHistory={handleSaveToHistory}
             showToast={showToast}
           />
@@ -421,6 +620,13 @@ export default function App() {
             history={history}
             onImportBoletos={handleImportBatchBoletos}
             showToast={showToast}
+          />
+        )}
+
+        {activeTab === 'api_pagamentos' && (
+          <BankPaymentApiPanel
+            company={activeCompanySettings}
+            boletos={boletos}
           />
         )}
       </main>
@@ -465,7 +671,19 @@ export default function App() {
         isOpen={isPreviewModalOpen}
         onClose={() => setIsPreviewModalOpen(false)}
         company={activeCompanySettings}
+        companies={companies}
+        activeCompanyId={activeSelection.companyId}
+        activeBankId={activeSelection.bankId}
+        currentUser={currentUser}
+        onSelectCompany={handleSelectCompany}
+        onSelectBank={handleSelectBank}
         boletos={boletos}
+        onToggleSelectBoleto={handleToggleSelect}
+        onSelectAllBoletos={handleSelectAll}
+        onOpenNewBoletoModal={() => {
+          setEditingBoleto(null);
+          setIsFormModalOpen(true);
+        }}
         onSaveToHistory={handleSaveToHistory}
       />
 
@@ -476,6 +694,7 @@ export default function App() {
         boletos={boletos}
         history={history}
         onToast={(msg) => showToast(msg, 'success')}
+        onReloadFromSupabase={handleReloadFromSupabase}
       />
     </div>
   );
