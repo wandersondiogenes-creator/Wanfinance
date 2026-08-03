@@ -45,35 +45,56 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       console.warn('[PDFJS Extractor] Avisos no PDF.js:', pdfJsErr);
     }
 
-    // If pdfjs failed to get text, try decompressed streams safely
+    // If pdfjs failed to get text, try decompressed streams safely without regex
     if (pageTexts.length === 0 && typeof DecompressionStream !== 'undefined') {
       try {
-        const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-        let match: RegExpExecArray | null;
+        let pos = 0;
+        let streamCount = 0;
+        const streamMarker = "stream";
+        const endMarker = "endstream";
 
-        while ((match = streamRegex.exec(binaryStr)) !== null) {
-          const streamStart = match.index + match[0].indexOf(match[1]);
-          const streamEnd = streamStart + match[1].length;
-          const streamBuffer = bytes.subarray(streamStart, streamEnd);
+        while (pos < binaryStr.length && streamCount < 100) {
+          const startIdx = binaryStr.indexOf(streamMarker, pos);
+          if (startIdx === -1) break;
 
-          try {
-            let rawDeflateData = streamBuffer;
-            if (streamBuffer.length > 2 && streamBuffer[0] === 0x78) {
-              rawDeflateData = streamBuffer.subarray(2);
-            }
+          const endIdx = binaryStr.indexOf(endMarker, startIdx + 6);
+          if (endIdx === -1) break;
 
-            const ds = new DecompressionStream('deflate-raw');
-            const writer = ds.writable.getWriter();
-            writer.write(rawDeflateData);
-            writer.close();
-
-            const response = new Response(ds.readable);
-            const decompressedArray = await response.arrayBuffer();
-            const text = new TextDecoder('utf-8').decode(decompressedArray);
-            if (text && text.length > 10) pageTexts.push(text);
-          } catch {
-            // Stream skipped
+          let contentStart = startIdx + 6;
+          if (binaryStr.charCodeAt(contentStart) === 13 && binaryStr.charCodeAt(contentStart + 1) === 10) {
+            contentStart += 2;
+          } else if (binaryStr.charCodeAt(contentStart) === 10 || binaryStr.charCodeAt(contentStart) === 13) {
+            contentStart += 1;
           }
+
+          let contentEnd = endIdx;
+          if (contentEnd > contentStart && binaryStr.charCodeAt(contentEnd - 1) === 10) contentEnd--;
+          if (contentEnd > contentStart && binaryStr.charCodeAt(contentEnd - 1) === 13) contentEnd--;
+
+          if (contentEnd > contentStart) {
+            const streamBuffer = bytes.subarray(contentStart, contentEnd);
+            try {
+              let rawDeflateData = streamBuffer;
+              if (streamBuffer.length > 2 && streamBuffer[0] === 0x78) {
+                rawDeflateData = streamBuffer.subarray(2);
+              }
+
+              const ds = new DecompressionStream('deflate-raw');
+              const writer = ds.writable.getWriter();
+              writer.write(rawDeflateData);
+              writer.close();
+
+              const response = new Response(ds.readable);
+              const decompressedArray = await response.arrayBuffer();
+              const text = new TextDecoder('utf-8').decode(decompressedArray);
+              if (text && text.length > 10) pageTexts.push(text);
+            } catch {
+              // Stream skipped
+            }
+          }
+
+          pos = endIdx + 8;
+          streamCount++;
         }
       } catch (err) {
         console.warn('[Browser PDF Extractor] Decompression error:', err);

@@ -14,39 +14,59 @@ function extractTextFromPdfBuffer(buffer: Buffer): string {
   let combinedText = "";
 
   try {
-    combinedText += buffer.toString("utf-8") + " " + buffer.toString("latin1") + " ";
+    combinedText += buffer.toString("latin1") + " ";
   } catch (e) {
     // Ignore
   }
 
   try {
-    const pdfStr = buffer.toString("latin1");
-    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-    let match: RegExpExecArray | null;
+    const streamMarker = Buffer.from("stream");
+    const endStreamMarker = Buffer.from("endstream");
 
-    while ((match = streamRegex.exec(pdfStr)) !== null) {
-      const streamStart = match.index + match[0].indexOf(match[1]);
-      const streamEnd = streamStart + match[1].length;
-      const streamBuffer = buffer.subarray(streamStart, streamEnd);
+    let pos = 0;
+    let streamCount = 0;
+    while (pos < buffer.length && streamCount < 150) {
+      const startIdx = buffer.indexOf(streamMarker, pos);
+      if (startIdx === -1) break;
 
-      let decompressed = "";
-      try {
-        decompressed = zlib.inflateSync(streamBuffer).toString("utf-8");
-      } catch {
+      const endIdx = buffer.indexOf(endStreamMarker, startIdx + 6);
+      if (endIdx === -1) break;
+
+      let contentStart = startIdx + 6;
+      if (buffer[contentStart] === 0x0d && buffer[contentStart + 1] === 0x0a) {
+        contentStart += 2;
+      } else if (buffer[contentStart] === 0x0a || buffer[contentStart] === 0x0d) {
+        contentStart += 1;
+      }
+
+      let contentEnd = endIdx;
+      if (contentEnd > contentStart && buffer[contentEnd - 1] === 0x0a) contentEnd--;
+      if (contentEnd > contentStart && buffer[contentEnd - 1] === 0x0d) contentEnd--;
+
+      if (contentEnd > contentStart) {
+        const streamBuffer = buffer.subarray(contentStart, contentEnd);
+        let decompressed = "";
         try {
-          decompressed = zlib.inflateRawSync(streamBuffer).toString("utf-8");
+          decompressed = zlib.inflateSync(streamBuffer).toString("utf-8");
         } catch {
           try {
-            decompressed = zlib.unzipSync(streamBuffer).toString("utf-8");
+            decompressed = zlib.inflateRawSync(streamBuffer).toString("utf-8");
           } catch {
-            // Stream uncompressed
+            try {
+              decompressed = zlib.unzipSync(streamBuffer).toString("utf-8");
+            } catch {
+              // Ignore uncompressed stream
+            }
           }
+        }
+
+        if (decompressed) {
+          combinedText += " " + decompressed;
         }
       }
 
-      if (decompressed) {
-        combinedText += " " + decompressed;
-      }
+      pos = endIdx + 8;
+      streamCount++;
     }
   } catch (streamErr) {
     console.warn("[Local PDF Parser] Aviso ao descomprimir streams:", streamErr);
