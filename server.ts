@@ -163,6 +163,7 @@ async function startServer() {
 
   // Allow larger payload for PDF files uploaded as base64 (e.g. multi-page PDFs)
   app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // API Route for PDF / Image Boleto extraction using Gemini with Local Fallback
   app.post("/api/extract-boleto-pdf", async (req, res) => {
@@ -173,7 +174,7 @@ async function startServer() {
         return res.status(400).json({ error: "Conteúdo do arquivo em base64 não fornecido." });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
       // Clean base64 and extract mimeType
       let cleanBase64 = fileBase64;
@@ -181,17 +182,27 @@ async function startServer() {
 
       const dataUriMatch = fileBase64.match(/^data:([^;]+);base64,(.*)$/s);
       if (dataUriMatch) {
-        effectiveMimeType = dataUriMatch[1];
-        cleanBase64 = dataUriMatch[2];
+        effectiveMimeType = dataUriMatch[1].trim();
+        cleanBase64 = dataUriMatch[2].trim();
       } else {
-        cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "");
+        cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "").trim();
       }
+
+      // Strip whitespace and linebreaks from base64
+      cleanBase64 = cleanBase64.replace(/\s+/g, "");
 
       if (effectiveMimeType.includes("pdf")) {
         effectiveMimeType = "application/pdf";
+      } else if (effectiveMimeType.includes("png")) {
+        effectiveMimeType = "image/png";
+      } else if (effectiveMimeType.includes("jpg") || effectiveMimeType.includes("jpeg")) {
+        effectiveMimeType = "image/jpeg";
+      } else if (effectiveMimeType.includes("webp")) {
+        effectiveMimeType = "image/webp";
       }
 
       let boletosExtracted: any[] = [];
+      let geminiApiError: string | null = null;
 
       // Tier 1: Gemini AI Optical Character Recognition & Parsing
       if (apiKey) {
@@ -389,13 +400,23 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
           }
         }
 
+        b.favorecidoNome = b.favorecidoNome || b.beneficiario || b.cedente || "Beneficiário Não Identificado";
+        b.cedente = b.cedente || b.favorecidoNome;
+        b.beneficiario = b.beneficiario || b.favorecidoNome;
+        b.favorecidoCnpjCpf = b.favorecidoCnpjCpf || b.CNPJ || "";
+        b.CNPJ = b.CNPJ || b.favorecidoCnpjCpf || "";
+        b.seuNumero = b.seuNumero || b.numeroDocumento || "";
+        b.numeroDocumento = b.numeroDocumento || b.seuNumero || "";
+        b.banco = b.banco || b.bancoNome || "";
+
         if (cleanLinha.length >= 44) {
           const parsedCheck = parseLinhaDigitavel(cleanLinha);
           if (parsedCheck.isValid) {
             b.linhaDigitavel = cleanLinha;
             b.codigoBarras = b.codigoBarras || parsedCheck.codigoBarras;
             b.bancoCodigo = parsedCheck.bancoCodigo || b.bancoCodigo || "000";
-            b.bancoNome = parsedCheck.bancoNome || b.bancoNome;
+            b.bancoNome = parsedCheck.bancoNome || b.bancoNome || b.banco;
+            b.banco = b.bancoNome;
 
             // If extracted valor is 0, use parsed value from linha digitável
             if (!b.valor || Number(b.valor) === 0) {
@@ -435,6 +456,7 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
         success: true,
         fileName,
         totalEncontrados: boletosExtracted.length,
+        geminiApiError,
         boletos: boletosExtracted,
       });
     } catch (error: any) {

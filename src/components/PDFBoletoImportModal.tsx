@@ -115,6 +115,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
       let rawBoletos: any[] = [];
       let serverSuccess = false;
+      let serverErrorMsg = '';
 
       // 1. Attempt Server API Extraction
       try {
@@ -134,11 +135,15 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
             rawBoletos = result.boletos;
             serverSuccess = true;
+          } else if (result && result.geminiApiError) {
+            serverErrorMsg = `Erro na API Gemini: ${result.geminiApiError}`;
           }
         } else {
+          serverErrorMsg = `Servidor respondeu com status ${response.status}`;
           console.warn('[PDF Import] Server endpoint returned non-JSON/error status:', response.status, contentType);
         }
-      } catch (fetchErr) {
+      } catch (fetchErr: any) {
+        serverErrorMsg = `Falha na requisição ao servidor: ${fetchErr?.message || fetchErr}`;
         console.warn('[PDF Import] Server fetch failed, falling back to browser extractor:', fetchErr);
       }
 
@@ -152,12 +157,13 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       }
 
       if (rawBoletos.length === 0) {
+        const detailMsg = serverErrorMsg ? ` (${serverErrorMsg})` : '';
         return [
           {
             id: `pdf-item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             fileName: file.name,
             status: 'error',
-            errorMessage: 'Nenhum boleto válido com linha digitável/código de barras foi identificado neste arquivo. Cole a linha digitável abaixo para cadastrar.',
+            errorMessage: `Nenhum boleto válido com linha digitável/código de barras foi identificado neste arquivo${detailMsg}. Se o arquivo for uma imagem digitalizada sem texto, cole a linha digitável abaixo.`,
           },
         ];
       }
@@ -172,6 +178,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         const bankInfo = getBankInfo(finalBancoCodigo);
         const finalValor = parseExtractedValor(extracted.valor, parsedCheck.valor);
 
+        const finalFavorecido = extracted.favorecidoNome || extracted.beneficiario || extracted.cedente || 'Favorecido Não Identificado';
+        const finalCnpj = extracted.favorecidoCnpjCpf || extracted.CNPJ || '';
+        const finalSeuNumero = extracted.seuNumero || extracted.numeroDocumento || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`;
+        const finalBancoNome = bankInfo.shortName || extracted.bancoNome || extracted.banco || 'Banco Não Identificado';
+
         return {
           id: itemId,
           fileName: file.name,
@@ -181,15 +192,15 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           data: {
             linhaDigitavel: cleanLinha || extracted.linhaDigitavel || '',
             codigoBarras: extracted.codigoBarras || parsedCheck.codigoBarras || '',
-            favorecidoNome: extracted.favorecidoNome || 'Favorecido Não Identificado',
-            favorecidoCnpjCpf: extracted.favorecidoCnpjCpf || '',
+            favorecidoNome: finalFavorecido,
+            favorecidoCnpjCpf: finalCnpj,
             valor: finalValor,
             dataVencimento: extracted.dataVencimento || parsedCheck.dataVencimento || new Date().toISOString().split('T')[0],
             dataPagamento: batchPaymentDate || extracted.dataVencimento || parsedCheck.dataVencimento || new Date().toISOString().split('T')[0],
-            seuNumero: extracted.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`,
+            seuNumero: finalSeuNumero,
             nossoNumero: extracted.nossoNumero || '',
             bancoCodigo: finalBancoCodigo,
-            bancoNome: bankInfo.shortName || extracted.bancoNome || 'Banco Não Identificado',
+            bancoNome: finalBancoNome,
             observacoes: extracted.observacoes || (rawBoletos.length > 1 ? `Boleto ${idx + 1}/${rawBoletos.length} de ${file.name}` : `Extraído de ${file.name}`),
             confidence: extracted.confidence || 0.9,
           },
