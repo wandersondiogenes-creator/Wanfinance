@@ -100,16 +100,71 @@ export interface AuthUser {
   loginTime: string;
 }
 
-export interface CNABBatchHistory {
+export interface BankApiTestResult {
+  httpStatus: number;
+  responseTimeMs: number;
+  tokenObtido?: string;
+  apiMessage: string;
+  rawJson: string;
+  timestamp: string;
+  success: boolean;
+  errorReason?: string;
+}
+
+export interface BankPaymentApiConfig {
   id: string;
-  nsa: number;
-  filename: string;
-  createdDate: string;
-  totalBoletos: number;
-  totalValor: number;
-  padraoCNAB: '240' | '400';
   bancoCodigo: string;
-  content: string;
-  boletos: BoletoItem[];
-  analista?: string;
+  bancoNome: string;
+  ambiente: 'SANDBOX' | 'PRODUCTION';
+  apiUrl: string;
+  authUrl: string;
+  clientId: string;
+  clientSecret: string;
+  certificadoPem: string;
+  certificadoName: string;
+  senhaCertificado: string;
+  oauthFlow: 'CLIENT_CREDENTIALS' | 'MUTUAL_TLS_OAUTH';
+  scope: string;
+  convenio: string;
+  conta: string;
+  agencia: string;
+  empresaId: string; // CNPJ ou ID da empresa no banco
+  isConnectionValidated: boolean;
+  lastTestResult?: BankApiTestResult;
+  updatedAt?: string;
+}
+
+export interface PaymentApiTransaction {
+  id: string;
+  protocolo: string;
+  boletoId?: string;
+  bancoCodigo: string;
+  bancoNome: string;
+  favorecidoNome: string;
+  favorecidoCnpjCpf?: string;
+  valor: number;
+  linhaDigitavel: string;
+  dataVencimento: string;
+  dataPagamento: string;
+  seuNumero: string;
+  nossoNumero?: string;
+  status: 'ENVIADO' | 'PROCESSANDO' | 'EFETIVADO' | 'REJEITADO' | 'CANCELADO';
+  mensagemRetorno?: string;
+  codigoRetorno?: string;
+  dataEnvio: string;
+  canCancel: boolean;
+  rawResponse?: string;
+}
+
+export interface BankApiLog {
+  id: string;
+  timestamp: string;
+  bancoNome: string;
+  endpoint: string;
+  method: 'GET' | 'POST' | 'DELETE' | 'PUT';
+  httpStatus: number;
+  responseTimeMs: number;
+  requestPayload: string;
+  responsePayload: string;
+  statusText: string;
 }
