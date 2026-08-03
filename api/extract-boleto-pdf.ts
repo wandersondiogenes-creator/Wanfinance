@@ -247,7 +247,7 @@ REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS SUHAI, FINAN
 REGRA DE SCHEMA JSON:
 NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
 
-      const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+      const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"];
       for (const modelName of modelsToTry) {
         try {
           const response = await ai.models.generateContent({
@@ -319,8 +319,15 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
             break;
           }
         } catch (err: any) {
-          geminiApiError = String(err?.message || err);
-          console.warn(`[Vercel API] Model ${modelName} failed:`, geminiApiError);
+          const errRaw = String(err?.message || err);
+          if (errRaw.includes("429") || errRaw.includes("RESOURCE_EXHAUSTED") || errRaw.includes("Quota exceeded")) {
+            geminiApiError = "A cota gratuita da API Gemini foi temporariamente excedida (Limite 429). Aguarde alguns segundos e clique em 'Tentar Novamente'.";
+            console.warn(`[Vercel API] Model ${modelName} hit rate limit, waiting 2s...`);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } else {
+            geminiApiError = errRaw;
+            console.warn(`[Vercel API] Model ${modelName} failed:`, geminiApiError);
+          }
         }
       }
     } else {

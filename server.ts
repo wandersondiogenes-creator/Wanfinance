@@ -270,7 +270,7 @@ REGRA DE SCHEMA JSON:
 NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
 
         const callGeminiWithRetryAndFallback = async () => {
-          const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+          const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
@@ -332,7 +332,12 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
               return response;
             } catch (err: any) {
               lastError = err;
-              console.warn(`[Gemini API] Erro ao tentar modelo ${modelName}:`, String(err?.message || err));
+              const errMsg = String(err?.message || err);
+              console.warn(`[Gemini API] Erro ao tentar modelo ${modelName}:`, errMsg);
+              if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota exceeded")) {
+                console.log("[Gemini API] Cota atingida, aguardando 2s antes do próximo modelo...");
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+              }
             }
           }
           throw lastError;
@@ -361,7 +366,12 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
             boletosExtracted = [parsedData];
           }
         } catch (geminiError: any) {
-          geminiApiError = String(geminiError?.message || geminiError);
+          const errRaw = String(geminiError?.message || geminiError);
+          if (errRaw.includes("429") || errRaw.includes("RESOURCE_EXHAUSTED") || errRaw.includes("Quota exceeded")) {
+            geminiApiError = "A cota gratuita da API Gemini foi temporariamente excedida (Limite 429). Aguarde alguns segundos e clique em 'Tentar Novamente'.";
+          } else {
+            geminiApiError = errRaw;
+          }
           console.warn("[Gemini API] Falha na chamada Gemini, ativando fallback local por regex...", geminiApiError);
         }
       } else {

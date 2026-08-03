@@ -89,6 +89,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileMapRef = useRef<Map<string, File>>(new Map());
 
   const handleApplyBatchPaymentDate = (date: string) => {
     setBatchPaymentDate(date);
@@ -136,7 +137,19 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             rawBoletos = result.boletos;
             serverSuccess = true;
           } else if (result && result.geminiApiError) {
-            serverErrorMsg = `Erro na API Gemini: ${result.geminiApiError}`;
+            const errRaw = String(result.geminiApiError);
+            if (errRaw.includes('429') || errRaw.includes('Quota exceeded') || errRaw.includes('RESOURCE_EXHAUSTED')) {
+              serverErrorMsg = 'A cota gratuita da API Gemini foi temporariamente excedida (Limite 429). Aguarde alguns segundos e tente novamente.';
+            } else if (errRaw.startsWith('{') && errRaw.includes('"message"')) {
+              try {
+                const parsed = JSON.parse(errRaw);
+                serverErrorMsg = parsed?.error?.message || errRaw;
+              } catch {
+                serverErrorMsg = errRaw;
+              }
+            } else {
+              serverErrorMsg = errRaw;
+            }
           }
         } else {
           serverErrorMsg = `Servidor respondeu com status ${response.status}`;
@@ -262,12 +275,32 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     );
   };
 
+  const handleRetryFile = async (fileName: string, itemId: string) => {
+    const file = fileMapRef.current.get(fileName);
+    if (!file) {
+      alert("Arquivo original não encontrado. Por favor, envie o arquivo novamente.");
+      return;
+    }
+
+    setItems((prev) =>
+      prev.map((it) => (it.id === itemId ? { ...it, status: 'loading', errorMessage: undefined } : it))
+    );
+
+    const processedItems = await processFile(file);
+    setItems((prev) => {
+      const filtered = prev.filter((it) => it.id !== itemId);
+      return [...filtered, ...processedItems];
+    });
+  };
+
   const handleFilesAdded = async (filesList: FileList | File[]) => {
     const files = Array.from(filesList).filter(
       (f) => f.type.includes('pdf') || f.type.includes('image') || f.name.toLowerCase().endsWith('.pdf')
     );
 
     if (files.length === 0) return;
+
+    files.forEach((f) => fileMapRef.current.set(f.name, f));
 
     setIsProcessingAll(true);
 
@@ -698,11 +731,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                             Seu arquivo PDF pode ser uma imagem digitalizada sem camada de texto. Cole ou digite a linha digitável (47 ou 48 dígitos) abaixo para cadastrar este boleto:
                           </p>
                         </div>
-                        <div className="flex items-center gap-2 pt-0.5">
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
                           <input
                             type="text"
                             placeholder="Cole a linha digitável (ex: 23793.38128 60000.123456...)"
-                            className="flex-1 bg-white border border-slate-300 text-slate-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-semibold"
+                            className="flex-1 min-w-[200px] bg-white border border-slate-300 text-slate-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-semibold"
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 const val = (e.target as HTMLInputElement).value;
@@ -717,10 +750,21 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                               const val = inputEl ? inputEl.value : '';
                               if (val) handleManualConvert(item.id, item.fileName, val);
                             }}
-                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
                           >
-                            Converter e Incluir
+                            Converter
                           </button>
+                          {fileMapRef.current.has(item.fileName) && (
+                            <button
+                              type="button"
+                              onClick={() => handleRetryFile(item.fileName, item.id)}
+                              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs shrink-0 flex items-center gap-1.5 cursor-pointer"
+                              title="Tentar extração com IA novamente"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              <span>Tentar Novamente</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
