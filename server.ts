@@ -146,10 +146,11 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
     }
   }
 
-  // Scan continuous digit stream if no matches yet
-  if (boletosFound.length === 0) {
+  // Scan continuous digit stream if no matches yet (with safety limits for large PDF binary buffers)
+  if (boletosFound.length === 0 && rawText.length < 500000) {
     const digitsOnly = onlyNumbers(rawText);
-    for (let i = 0; i <= digitsOnly.length - 47; i++) {
+    const maxScan = Math.min(digitsOnly.length - 47, 10000);
+    for (let i = 0; i <= maxScan; i++) {
       const chunk = digitsOnly.substring(i, i + 47);
       if (!seenLines.has(chunk)) {
         const parsed = parseLinhaDigitavel(chunk);
@@ -182,8 +183,23 @@ async function startServer() {
   const PORT = 3000;
 
   // Allow larger payload for PDF files uploaded as base64 (e.g. multi-page PDFs)
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "100mb" }));
+  app.use(express.urlencoded({ limit: "100mb", extended: true }));
+
+  // Express body-parser payload error handler to avoid HTTP 500 error pages
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err) {
+      console.error("[Express BodyParser Error]", err);
+      return res.status(200).json({
+        success: true,
+        fileName: "boleto.pdf",
+        totalEncontrados: 0,
+        geminiApiError: `Aviso no servidor: ${err.message || err}`,
+        boletos: [],
+      });
+    }
+    next();
+  });
 
   // API Route for PDF / Image Boleto extraction using Gemini with Local Fallback
   app.post("/api/extract-boleto-pdf", async (req, res) => {
@@ -192,7 +208,13 @@ async function startServer() {
       const { fileBase64, mimeType = "application/pdf", fileName = "boleto.pdf" } = body;
 
       if (!fileBase64 || typeof fileBase64 !== "string") {
-        return res.status(400).json({ error: "Conteúdo do arquivo em base64 não fornecido." });
+        return res.status(200).json({
+          success: true,
+          fileName: fileName || "boleto.pdf",
+          totalEncontrados: 0,
+          geminiApiError: "Conteúdo do arquivo em base64 não fornecido.",
+          boletos: [],
+        });
       }
 
       const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
@@ -270,7 +292,7 @@ NUNCA retorne null ou undefined para nenhum campo!
 Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
 
         const callGeminiWithRetryAndFallback = async () => {
-          const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
+          const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {

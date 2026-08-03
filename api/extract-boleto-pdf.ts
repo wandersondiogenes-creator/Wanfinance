@@ -142,9 +142,10 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
     }
   }
 
-  if (boletosFound.length === 0) {
+  if (boletosFound.length === 0 && rawText.length < 500000) {
     const digitsOnly = onlyNumbers(rawText);
-    for (let i = 0; i <= digitsOnly.length - 47; i++) {
+    const maxScan = Math.min(digitsOnly.length - 47, 10000);
+    for (let i = 0; i <= maxScan; i++) {
       const chunk = digitsOnly.substring(i, i + 47);
       if (!seenLines.has(chunk)) {
         const parsed = parseLinhaDigitavel(chunk);
@@ -269,7 +270,7 @@ Retorne para cada boleto os campos:
 16. "observacoes": Detalhes sobre a parcela ou documento.
 17. "confidence": Grau de confiança da extração (0.0 a 1.0).`;
 
-      const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
+      const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
       for (const modelName of modelsToTry) {
         try {
           const response = await ai.models.generateContent({
