@@ -163,6 +163,43 @@ export function parseValor(valorStr: string): number {
 }
 
 /**
+ * Modulo 10 check for Brazilian boleto fields (Campo 1, Campo 2, Campo 3)
+ */
+export function modulo10(digits: string): number {
+  let sum = 0;
+  let weight = 2;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let mul = parseInt(digits[i], 10) * weight;
+    if (mul > 9) mul = Math.floor(mul / 10) + (mul % 10);
+    sum += mul;
+    weight = weight === 2 ? 1 : 2;
+  }
+  const remainder = sum % 10;
+  return remainder === 0 ? 0 : 10 - remainder;
+}
+
+/**
+ * Validates Modulo 10 for a 47-digit Linha Digitável
+ */
+export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
+  if (limpa47.length !== 47) return false;
+  
+  const campo1Data = limpa47.substring(0, 9);
+  const campo1DV = parseInt(limpa47.substring(9, 10), 10);
+  if (modulo10(campo1Data) !== campo1DV) return false;
+
+  const campo2Data = limpa47.substring(10, 20);
+  const campo2DV = parseInt(limpa47.substring(20, 21), 10);
+  if (modulo10(campo2Data) !== campo2DV) return false;
+
+  const campo3Data = limpa47.substring(21, 31);
+  const campo3DV = parseInt(limpa47.substring(31, 32), 10);
+  if (modulo10(campo3Data) !== campo3DV) return false;
+
+  return true;
+}
+
+/**
  * Full parsing function for any user input Linha Digitável or Barcode
  */
 export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
@@ -206,6 +243,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
 
     const dataVencimento = parseFatorVencimento(fatorVencimento);
     const valor = parseValor(valorRaw);
+    const isMod10Valid = validateModulo10LinhaDigitavel(limpa);
 
     return {
       linhaDigitavelLimpa: limpa,
@@ -214,7 +252,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       bancoNome: bankInfo.shortName,
       valor,
       dataVencimento: dataVencimento || new Date().toISOString().split('T')[0],
-      isValid: true,
+      isValid: isMod10Valid,
       tipo,
     };
   }

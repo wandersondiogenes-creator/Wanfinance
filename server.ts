@@ -9,6 +9,13 @@ import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText } from "./s
  * Local helper to extract text from PDF buffer, including zlib FlateDecode compressed streams
  */
 function extractTextFromPdfBuffer(buffer: Buffer): string {
+  // Validate if buffer is actually a PDF file
+  if (!buffer || buffer.length < 4) return "";
+  const header = buffer.subarray(0, 10).toString("ascii");
+  if (!header.includes("%PDF")) {
+    return ""; // Not a PDF file (e.g. image/jpeg, png, webp, etc.)
+  }
+
   let combinedText = "";
 
   // 1. Direct string view
@@ -79,10 +86,13 @@ function extractTextFromPdfBuffer(buffer: Buffer): string {
  * Local regex extractor for Brazilian boletos, invoices, utility bills, and tax slips
  */
 function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
+  const rawText = extractTextFromPdfBuffer(buffer);
+  if (!rawText || rawText.trim().length === 0) {
+    return [];
+  }
+
   const boletosFound: any[] = [];
   const seenLines = new Set<string>();
-
-  const rawText = extractTextFromPdfBuffer(buffer);
 
   // Patterns for Brazilian boletos:
   // 1. Formatted 47-digit Linha Digitável: 00190.00009 01234.567004 00001.234567 8 85000000012345
@@ -102,9 +112,9 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
       for (const matchStr of matches) {
         const clean = onlyNumbers(matchStr);
         if ((clean.length === 47 || clean.length === 48 || clean.length === 44) && !seenLines.has(clean)) {
-          seenLines.add(clean);
           const parsed = parseLinhaDigitavel(clean);
           if (parsed.isValid) {
+            seenLines.add(clean);
             let extractedValue = parsed.valor || 0;
 
             // Try to extract "VALOR TOTAL A RECOLHER" / "TOTAL A RECOLHER" directly from text
@@ -141,35 +151,6 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               confidence: 0.9,
             });
           }
-        }
-      }
-    }
-  }
-
-  // Scan continuous digit stream if no matches yet (with safety limits for large PDF binary buffers)
-  if (boletosFound.length === 0 && rawText.length < 500000) {
-    const digitsOnly = onlyNumbers(rawText);
-    const maxScan = Math.min(digitsOnly.length - 47, 10000);
-    for (let i = 0; i <= maxScan; i++) {
-      const chunk = digitsOnly.substring(i, i + 47);
-      if (!seenLines.has(chunk)) {
-        const parsed = parseLinhaDigitavel(chunk);
-        if (parsed.isValid && parsed.valor > 0 && parsed.bancoCodigo !== '000') {
-          seenLines.add(chunk);
-          boletosFound.push({
-            linhaDigitavel: chunk,
-            codigoBarras: parsed.codigoBarras || chunk,
-            favorecidoNome: extractFavorecidoFromText(rawText, parsed.bancoNome),
-            favorecidoCnpjCpf: "",
-            valor: parsed.valor,
-            dataVencimento: parsed.dataVencimento || new Date().toISOString().split("T")[0],
-            seuNumero: `PDF-TEXT-${boletosFound.length + 1}`,
-            nossoNumero: "",
-            bancoCodigo: parsed.bancoCodigo,
-            bancoNome: parsed.bancoNome,
-            observacoes: "Extraído via varredura contínua do PDF",
-            confidence: 0.85,
-          });
         }
       }
     }
@@ -262,34 +243,31 @@ async function startServer() {
           },
         });
 
-        const prompt = `Você é um especialista em OCR e análise financeira avançada para boletos bancários brasileiros, carnês de pagamento, parcelamentos, faturas, guias de arrecadação, tributos e GNRE.
+        const prompt = `Você é um leitor óptico (OCR) e especialista financeiro de MÁXIMA PRECISÃO em boletos bancários brasileiros, carnês de pagamento, parcelamentos, faturas, tributos, guias de arrecadação e GNRE.
 
-Analise com MÁXIMA ATENÇÃO TODO O CONTEÚDO de TODAS AS PÁGINAS do arquivo enviado (${fileName}).
+Analise com EXTREMA ATENÇÃO TODO O CONTEÚDO DE TODAS AS PÁGINAS do arquivo enviado (${fileName}).
 
-REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS, FINANCIAMENTOS, SUHAI):
+REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS SUHAI, FINANCIAMENTOS, CONSÓRCIOS):
 1. O arquivo pode ser um CARNÊ com várias parcelas (ex: 12 parcelas de seguro Suhai / financiamento), onde cada página contém 2, 3 ou mais cupons/parcelas (por exemplo: Parcela 01/012 a Parcela 12/012).
-2. CADA PARCELA É UM BOLETO INDIVIDUAL com sua própria data de vencimento (ex: 04/05/2026, 25/05/2026, 25/06/2026...), valor próprio (ex: R$ 49,32 ou R$ 49,35), nosso número e linha digitável.
+2. CADA PARCELA É UM BOLETO INDIVIDUAL com sua própria data de vencimento (ex: 04/05/2026, 25/05/2026, 25/06/2026...), valor próprio (ex: R$ 49,32 ou R$ 49,35), "Nº do Documento", "Nosso Número" e linha digitável.
 3. Você DEVE PERCORRER TODAS AS PÁGINAS do PDF e extrair CADA UMA DAS PARCELAS como um boleto separado no array "boletos".
-4. SE O CARNÊ TIVER 12 PARCELAS (01/012 até 12/012), VOCÊ DEVE RETORNAR EXATAMENTE 12 BOLETOS NO ARRAY! NUNCA pare na 1ª parcela e NUNCA retorne apenas 1 boleto se houver vários.
-5. Para cada parcela:
-   - "linhaDigitavel": Linha digitável completa de 47 dígitos (ex: 23793.39209 50005.692137 75020.156008 1 15200000004935). Se o texto da linha digitável de 47 dígitos estiver visível no topo ou lateral da parcela, extraia com precisão. Se para alguma parcela a linha digitável não estiver em texto corrido mas você tiver Banco (237 - Bradesco), Agência (3392), Conta (0201560-9), Carteira (05), Nosso Número (ex: 5/00056921372-8), Vencimento e Valor, forneça/monte a linha digitável de 47 dígitos correspondente.
-   - "favorecidoNome": NOME DA EMPRESA COBRADORA OU BENEFICIÁRIO/CEDENTE QUE ESTÁ EMITINDO A FATURA OU RECEBENDO O PAGAMENTO (ex: "SUHAI SEGURADORA S/A", "CLARO S.A.", "LOCALIZA"). REGRA VITAL: NUNCA COLOQUE O NOME DO BANCO EMISSOR (como "Bradesco", "Banco Itaú", "Banco do Brasil", "Caixa") NO CAMPO favorecidoNome! O banco é apenas a instituição financeira e vai SOMENTE no campo "bancoNome". Procure pela empresa indicada nos campos "Beneficiário", "Cedente", "Razão Social" ou no cabeçalho/logotipo do boleto.
-   - "favorecidoCnpjCpf": CNPJ do Beneficiário se visível (ex: "16.825.255/0001-23").
-   - "valor": Valor numérico exato do documento para ESTA PARCELA (ex: 49.32 ou 49.35). NUNCA retorne 0 se o valor estiver impresso na parcela.
-   - "dataVencimento": Data de Vencimento de ESTA PARCELA no formato YYYY-MM-DD (ex: 2026-05-04, 2026-05-25, 2026-06-25, 2026-07-27, 2026-08-25, 2026-09-25, 2026-10-26, 2026-11-25, 2026-12-28, 2027-01-25, 2027-02-25, 2027-03-25).
-   - "seuNumero": Identificação do documento ou parcela (ex: "1003111990090/00000000/01" ou "Parcela 01/012").
-   - "nossoNumero": Nosso número do boleto (ex: "5/00056921372-8").
-   - "bancoCodigo": Código de 3 dígitos do banco (ex: '237' para Bradesco, '001' para BB, '341' para Itaú, '104' para Caixa, '033' para Santander, '756' para Sicoob, '748' para Sicredi, '858' para GNRE, '856' para DARF).
+4. SE O CARNÊ TIVER 12 PARCELAS (01/012 até 12/012), VOCÊ DEVE RETORNAR EXATAMENTE 12 BOLETOS NO ARRAY! NUNCA pare na 1ª parcela e NUNCA pule nenhuma página.
+5. EXTRAÇÃO DE NÚMEROS E IDENTIFICAÇÃO (MUITO IMPORTANTE):
+   - "numeroDocumento": Número impresso no campo "Nº do Documento" do boleto (ex: "1003111990090/00000000/01" para a parcela 1, "1003111990090/00000000/02" para a parcela 2). Este é a Nota Fiscal/Número do Documento real.
+   - "seuNumero": Coloque o "Nº do Documento" exato impresso na parcela (ex: "1003111990090/00000000/01"). NUNCA substitua por um número genérico se o "Nº do Documento" estiver visível.
+   - "nossoNumero": Código impresso no campo "Nosso Número" ou "Cart. / Nosso Número" (ex: "5/00056921372-8", "5/00056921373-6").
+6. LINHA DIGITÁVEL E DADOS FINANCEIROS:
+   - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos). Se para alguma parcela a linha digitável não estiver em texto corrido impresso no topo, mas você tiver Banco (237 - Bradesco), Agência (3392), Conta (0201560-9), Carteira (05), Nosso Número (ex: 5/00056921372-8), Vencimento e Valor, monte/calcule a linha digitável correspondente de 47 dígitos.
+   - "favorecidoNome": NOME DA EMPRESA COBRADORA OU BENEFICIÁRIO/CEDENTE QUE ESTÁ EMITINDO A FATURA OU RECEBENDO O PAGAMENTO (ex: "SUHAI SEGURADORA S/A", "CLARO S.A."). NUNCA COLOQUE O NOME DO BANCO EMISSOR (como "Bradesco", "Banco Itaú") no favorecidoNome!
+   - "favorecidoCnpjCpf": CNPJ do Beneficiário (ex: "16.825.255/0001-23").
+   - "valor": Valor numérico exato do documento para ESTA PARCELA (ex: 49.32 ou 49.35).
+   - "dataVencimento": Data de Vencimento de ESTA PARCELA no formato YYYY-MM-DD.
+   - "bancoCodigo": Código de 3 dígitos do banco (ex: "237" para Bradesco).
    - "bancoNome": Nome do banco emissor (ex: "Bradesco").
    - "observacoes": Ex: "Parcela 01/012 de Suhai Seguradora".
 
-DIFERENÇA CRÍTICA ENTRE DUPLICATAS DE MESMA VIA E PARCELAS DISTINTAS:
-- Vias idênticas (1ª via e 2ª via da MESMA Parcela 01): ignore a duplicata e mantenha apenas uma.
-- Parcelas diferentes (Parcela 01, Parcela 02, Parcela 03...): possuem Nosso Número e Vencimento DIFERENTES. Elas DEVEM SER EXTRAÍDAS TODAS!
-
 REGRA DE SCHEMA JSON:
-NUNCA retorne null ou undefined para nenhum campo!
-Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
+NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
 
         const callGeminiWithRetryAndFallback = async () => {
           const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
@@ -318,6 +296,7 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
                 ],
                 config: {
                   responseMimeType: "application/json",
+                  maxOutputTokens: 8192,
                   responseSchema: {
                     type: Type.OBJECT,
                     properties: {
@@ -333,6 +312,7 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
                             favorecidoCnpjCpf: { type: Type.STRING },
                             valor: { type: Type.NUMBER },
                             dataVencimento: { type: Type.STRING },
+                            numeroDocumento: { type: Type.STRING },
                             seuNumero: { type: Type.STRING },
                             nossoNumero: { type: Type.STRING },
                             bancoCodigo: { type: Type.STRING },
@@ -488,20 +468,30 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
           return b;
         });
 
-      // Deduplicate boletos by clean linhaDigitavel / codigoBarras (prevents 1st, 2nd, 3rd via duplication)
-      const seenDigits = new Set<string>();
+      // Deduplicate boletos (prevents 1st, 2nd, 3rd via duplication while keeping distinct parcelas)
+      const seenKeys = new Set<string>();
       const uniqueBoletos: typeof boletosExtracted = [];
 
       for (const b of boletosExtracted) {
         const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
         const cleanDigits = onlyNumbers(rawDigits);
+        const nosso = String(b.nossoNumero || "").trim();
+        const venc = String(b.dataVencimento || "").trim();
 
-        if (cleanDigits && cleanDigits.length >= 10) {
-          if (!seenDigits.has(cleanDigits)) {
-            seenDigits.add(cleanDigits);
+        // Unique identifier key: if valid 44+ digit barcode exists, use it; otherwise combine nossoNumero, vencimento & valor
+        let uniqueKey = "";
+        if (cleanDigits && cleanDigits.length >= 44) {
+          uniqueKey = cleanDigits;
+        } else if (nosso || venc) {
+          uniqueKey = `${nosso}_${venc}_${b.valor || 0}`;
+        }
+
+        if (uniqueKey) {
+          if (!seenKeys.has(uniqueKey)) {
+            seenKeys.add(uniqueKey);
             uniqueBoletos.push(b);
           } else {
-            console.log(`[OCR Server] Ignorando via/boleto duplicado com a mesma linha digitável: ${cleanDigits}`);
+            console.log(`[OCR Server] Ignorando via/boleto duplicado: ${uniqueKey}`);
           }
         } else {
           uniqueBoletos.push(b);

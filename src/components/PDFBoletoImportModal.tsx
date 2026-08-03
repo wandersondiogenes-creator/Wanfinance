@@ -180,7 +180,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
         const finalFavorecido = extracted.favorecidoNome || extracted.beneficiario || extracted.cedente || 'Favorecido Não Identificado';
         const finalCnpj = extracted.favorecidoCnpjCpf || extracted.CNPJ || '';
-        const finalSeuNumero = extracted.seuNumero || extracted.numeroDocumento || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`;
+        const finalSeuNumero = extracted.numeroDocumento || extracted.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`;
         const finalBancoNome = bankInfo.shortName || extracted.bancoNome || extracted.banco || 'Banco Não Identificado';
 
         return {

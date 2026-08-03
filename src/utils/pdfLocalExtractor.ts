@@ -147,6 +147,14 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
                 const blockFavorecido = extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome);
 
+                let docNumber = '';
+                let nossoNum = '';
+                const numDocMatch = textBlock.match(/(?:Nº\s+do\s+Documento|Número\s+do\s+Documento|Nº\s+Doc|Seu\s+Número)\s*[:\s]*([\w\/\.-]{5,30})/i);
+                if (numDocMatch) docNumber = numDocMatch[1].trim();
+
+                const nossoNumMatch = textBlock.match(/(?:Nosso\s+Número|Cart\.\s*\/\s*Nosso\s+Número)\s*[:\s]*([\w\/\.-]{5,25})/i);
+                if (nossoNumMatch) nossoNum = nossoNumMatch[1].trim();
+
                 boletosFound.push({
                   linhaDigitavel: clean,
                   codigoBarras: parsed.codigoBarras || clean,
@@ -154,8 +162,9 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   favorecidoCnpjCpf: '',
                   valor: extractedValue,
                   dataVencimento: parsed.dataVencimento || new Date().toISOString().split('T')[0],
-                  seuNumero: `PDF-BROWSER-${boletosFound.length + 1}`,
-                  nossoNumero: '',
+                  numeroDocumento: docNumber,
+                  seuNumero: docNumber || `PDF-BROWSER-${boletosFound.length + 1}`,
+                  nossoNumero: nossoNum,
                   bancoCodigo: parsed.bancoCodigo,
                   bancoNome: parsed.bancoNome,
                   observacoes: 'Extraído via leitor de PDF local',
