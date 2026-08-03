@@ -413,6 +413,38 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     );
   };
 
+  const handleImportSingleItem = (item: PDFExtractedItem) => {
+    if (!item.data) return;
+    const d = item.data;
+    const cleanLinha = onlyNumbers(d.linhaDigitavel);
+    const parsed = parseLinhaDigitavel(cleanLinha);
+
+    const newBoleto: BoletoItem = {
+      id: `bol-pdf-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      linhaDigitavel: cleanLinha,
+      codigoBarras: d.codigoBarras || parsed.codigoBarras,
+      bancoCodigo: d.bancoCodigo || parsed.bancoCodigo,
+      bancoNome: d.bancoNome || parsed.bancoNome,
+      favorecidoNome: d.favorecidoNome || 'Favorecido Não Identificado',
+      favorecidoCnpjCpf: d.favorecidoCnpjCpf,
+      valor: d.valor,
+      dataVencimento: d.dataVencimento,
+      dataPagamento: d.dataPagamento || d.dataVencimento,
+      seuNumero: d.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`,
+      nossoNumero: d.nossoNumero,
+      desconto: d.desconto || 0,
+      jurosMulta: d.jurosMulta || 0,
+      observacoes: d.observacoes,
+      isValid: cleanLinha.length === 47 || cleanLinha.length === 48,
+      selected: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    onImportBoletos([newBoleto]);
+    // Automatically delete from extraction queue
+    setItems((prev) => prev.filter((i) => i.id !== item.id));
+  };
+
   const handleConfirmImport = () => {
     const validItems = items.filter((item) => item.status === 'success' && item.data);
     if (validItems.length === 0) return;
@@ -445,6 +477,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     });
 
     onImportBoletos(newBoletos);
+
+    // Auto-remove imported items from extraction queue
+    const importedIds = new Set(validItems.map((i) => i.id));
+    setItems((prev) => prev.filter((item) => !importedIds.has(item.id)));
+
     onClose();
   };
 
@@ -570,6 +607,15 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                   <span>Boletos Processados ({items.length})</span>
                 </h3>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setItems([])}
+                    className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Esvaziar todos os itens da fila de extração"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Limpar Fila</span>
+                  </button>
                   {duplicateCount > 0 && (
                     <button
                       type="button"
@@ -719,10 +765,21 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                           )}
 
                           {item.status === 'success' && !dupInfo?.isDuplicate && (
-                            <span className="text-xs text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center space-x-1 font-bold">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Extraído com Sucesso</span>
-                            </span>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center space-x-1 font-bold">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Extraído com Sucesso</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleImportSingleItem(item)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                                title="Importar este boleto e excluí-lo da fila de extração"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Importar & Remover</span>
+                              </button>
+                            </div>
                           )}
 
                           {item.status === 'error' && (
