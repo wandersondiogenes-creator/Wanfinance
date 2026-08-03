@@ -1,7 +1,7 @@
 import React from 'react';
 import { CompanySettings, CompanyProfile, AuthUser } from '../types';
 import { getBankInfo } from '../utils/banks';
-import { FileText, Building2, PlusCircle, History, ShieldCheck, Download, Sparkles, Settings2, LogOut, Database, FileSpreadsheet, Zap } from 'lucide-react';
+import { FileText, Building2, PlusCircle, History, ShieldCheck, Download, Sparkles, Settings2, LogOut, Database, FileSpreadsheet, Zap, Brain } from 'lucide-react';
 
 interface HeaderProps {
   company: CompanySettings;
@@ -10,8 +10,8 @@ interface HeaderProps {
   activeBankId: string;
   onSelectCompany: (companyId: string) => void;
   onSelectBank: (bankId: string) => void;
-  activeTab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos';
-  setActiveTab: (tab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos') => void;
+  activeTab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos';
+  setActiveTab: (tab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos') => void;
   selectedBoletosCount: number;
   totalSelectedValor: number;
   onQuickGenerateCNAB: () => void;
@@ -20,6 +20,7 @@ interface HeaderProps {
   user?: AuthUser | null;
   onLogout?: () => void;
 }
+
 
 export const Header: React.FC<HeaderProps> = ({
   company,
@@ -292,8 +293,25 @@ export const Header: React.FC<HeaderProps> = ({
               Direto Banco
             </span>
           </button>
+
+          {/* Modelos Aprendidos (Continuous Learning AI) Tab */}
+          <button
+            onClick={() => setActiveTab('modelos_aprendidos')}
+            className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'modelos_aprendidos'
+                ? 'bg-purple-950/80 text-purple-300 border-b-2 border-purple-500 shadow-xs'
+                : 'text-slate-400 hover:text-purple-300 hover:bg-[#131a27]'
+            }`}
+          >
+            <Brain className="w-4 h-4 text-purple-400" />
+            <span>Modelos Aprendidos</span>
+            <span className="bg-purple-500/20 text-purple-300 text-[9px] px-1.5 py-0.5 rounded-md font-extrabold uppercase border border-purple-500/30">
+              IA Contínua
+            </span>
+          </button>
         </div>
       </div>
     </header>
+
   );
 };

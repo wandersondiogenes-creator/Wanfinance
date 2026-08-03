@@ -33,6 +33,7 @@ import { HistoryPanel } from './components/HistoryPanel';
 import { CNABValidator } from './components/CNABValidator';
 import { GoogleSheetsPanel } from './components/GoogleSheetsPanel';
 import { BankPaymentApiPanel } from './components/BankPaymentApiPanel';
+import { LearnedLayoutsAdminPanel } from './components/LearnedLayoutsAdminPanel';
 import { getBoletosDuplicateMap } from './utils/duplicateDetector';
 import { CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -82,8 +83,9 @@ export default function App() {
   };
 
   const [activeTab, setActiveTab] = useState<
-    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos'
+    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos'
   >('boletos');
+
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
@@ -300,7 +302,7 @@ export default function App() {
     showToast('Boleto duplicado!');
   };
 
-  // Save batch to history when CNAB downloaded
+  // Save batch to history when CNAB downloaded or processed
   const handleSaveToHistory = (
     fileContent: string,
     totalBoletos: number,
@@ -308,23 +310,31 @@ export default function App() {
     filename: string,
     nsa: number,
     analista?: string,
-    removeExported: boolean = true
+    removeExported: boolean = true,
+    status: 'GERADO' | 'PROCESSADO' | 'ERRO' | 'PARCIAL' = 'GERADO',
+    errorLogs: string[] = []
   ) => {
     const exportedBoletos = boletos.filter((b) => b.selected && b.isValid);
     const exportedIds = new Set(exportedBoletos.map((b) => b.id));
+    const now = Date.now();
 
     const newBatch: CNABBatchHistory = {
-      id: `batch-${Date.now()}`,
+      id: `batch-${now}`,
+      userId: currentUser?.id || 'usr-default',
+      userEmail: currentUser?.email || 'financeiro@wanfinance.com.br',
+      analista: analista?.trim() || currentUser?.email || 'financeiro@wanfinance.com.br',
       nsa,
       filename,
       createdDate: new Date().toISOString(),
+      timestamp: now,
       totalBoletos,
       totalValor,
       padraoCNAB: activeCompanySettings.padraoCNAB,
       bancoCodigo: activeCompanySettings.bancoCodigo,
+      status,
+      errorLogs,
       content: fileContent,
       boletos: exportedBoletos,
-      analista: analista?.trim() || currentUser?.email || 'financeiro@wanfinance.com.br',
     };
 
     setHistory((prev) => [newBatch, ...prev]);
@@ -358,6 +368,7 @@ export default function App() {
       }.`
     );
   };
+
 
   const selectedBoletos = boletos.filter((b) => b.selected && b.isValid);
   const totalSelectedValor = selectedBoletos.reduce(
@@ -587,10 +598,16 @@ export default function App() {
             currentUser={currentUser}
             onClearHistory={() => {
               setHistory([]);
-              showToast('Histórico limpo.');
+              saveHistory([]);
+              showToast('Seu histórico foi totalmente limpo.');
+            }}
+            onDeleteHistoryItem={(id) => {
+              setHistory((prev) => prev.filter((item) => item.id !== id));
+              showToast('Registro do histórico excluído.');
             }}
             onDownloadBatch={(batch) => {
-              const blob = new Blob([batch.content], { type: 'text/plain;charset=utf-8' });
+              const contentToDownload = batch.content || '';
+              const blob = new Blob([contentToDownload], { type: 'text/plain;charset=utf-8' });
               const url = URL.createObjectURL(blob);
               const link = document.createElement('a');
               link.href = url;
@@ -599,10 +616,11 @@ export default function App() {
               link.click();
               document.body.removeChild(link);
               URL.revokeObjectURL(url);
-              showToast(`Arquivo ${batch.filename} baixado.`);
+              showToast(`Arquivo ${batch.filename} baixado novamente.`);
             }}
           />
         )}
+
 
         {activeTab === 'validador' && (
           <CNABValidator
@@ -629,7 +647,14 @@ export default function App() {
             boletos={boletos}
           />
         )}
+
+        {activeTab === 'modelos_aprendidos' && (
+          <LearnedLayoutsAdminPanel
+            onShowToast={(msg) => showToast(msg, 'info')}
+          />
+        )}
       </main>
+
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500 shadow-sm mt-auto">

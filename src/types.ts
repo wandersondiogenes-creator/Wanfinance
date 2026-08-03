@@ -168,3 +168,77 @@ export interface BankApiLog {
   responsePayload: string;
   statusText: string;
 }
+
+export interface CNABBatchHistory {
+  id: string;
+  userId?: string;
+  userEmail?: string;
+  analista?: string;
+  filename: string;
+  createdDate: string;
+  timestamp?: number;
+  totalBoletos: number;
+  totalValor: number;
+  padraoCNAB: '240' | '400';
+  bancoCodigo: string;
+  nsa: number;
+  status?: 'GERADO' | 'PROCESSADO' | 'ERRO' | 'PARCIAL';
+  errorLogs?: string[];
+  content?: string;
+  boletos?: BoletoItem[];
+}
+
+export interface LearnedLayoutPattern {
+  id: string;
+  signature: string; // Fingerprint única gerada do layout
+  bankCode: string;
+  bankName: string;
+  issuerName: string; // Beneficiário / Emissor (ex: SUHAI SEGURADORA, CLARO S.A., SEFAZ)
+  layoutName: string; // Ex: "Fatura Carnê Suhai - Bradesco (237)"
+  confidenceScore: number; // 0.00 a 1.00
+  timesUsed: number;
+  successCount: number;
+  avgExtractionTimeMs: number;
+  createdDate: string;
+  lastUsedDate: string;
+  privacySanitised: boolean; // Confirmação de remoção de dados sensíveis/PII
+  
+  // Âncoras do Layout
+  anchors: {
+    barcodePattern?: string;
+    linhaDigitavelAnchor?: string;
+    valorAnchor?: string;
+    vencimentoAnchor?: string;
+    beneficiarioAnchor?: string;
+    pagadorAnchor?: string;
+    pixAnchor?: string;
+    seuNumeroAnchor?: string;
+    nossoNumeroAnchor?: string;
+  };
+
+  // Palavras-chave do modelo de reconhecimento
+  keywords: string[];
+
+  // Extratores por Regex/Âncoras aprendidos
+  fieldExtractors: {
+    linhaRegex?: string;
+    valorRegex?: string;
+    vencimentoRegex?: string;
+    favorecidoRegex?: string;
+    pagadorRegex?: string;
+    seuNumeroRegex?: string;
+  };
+}
+
+export interface LayoutLearningMetrics {
+  totalLearnedModels: number;
+  fastPathCount: number;
+  fullAnalysisCount: number;
+  totalTimeSavedMs: number;
+  overallAccuracyPercentage: number;
+  averageFastPathTimeMs: number;
+  averageFullAnalysisTimeMs: number;
+  geminiQuotaSavedRequests: number;
+}
+
+

@@ -24,6 +24,12 @@ import { parseLinhaDigitavel, formatCurrencyBRL, formatDateBR, onlyNumbers } fro
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate } from '../utils/duplicateDetector';
 import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
+import {
+  matchLayoutPattern,
+  extractViaLearnedLayout,
+  learnNewLayoutPattern,
+  recordFastPathSuccess,
+} from '../utils/layoutLearningEngine';
 
 interface PDFExtractedItem {
   id: string;
@@ -196,8 +202,25 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         const finalSeuNumero = extracted.numeroDocumento || extracted.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`;
         const finalBancoNome = bankInfo.shortName || extracted.bancoNome || extracted.banco || 'Banco Não Identificado';
 
+        // Alimentar Motor de Aprendizado Contínuo com o layout reconhecido
+        try {
+          learnNewLayoutPattern(
+            `${finalFavorecido} ${finalBancoNome} ${cleanLinha} ${file.name}`,
+            {
+              linhaDigitavel: cleanLinha,
+              bancoCodigo: finalBancoCodigo,
+              favorecidoNome: finalFavorecido,
+              valor: finalValor,
+              dataVencimento: extracted.dataVencimento || parsedCheck.dataVencimento,
+            }
+          );
+        } catch (learnErr) {
+          console.warn('[Continuous Learning] Notificação de aprendizado:', learnErr);
+        }
+
         return {
           id: itemId,
+
           fileName: file.name,
           boletoIndex: idx + 1,
           totalInFile: rawBoletos.length,

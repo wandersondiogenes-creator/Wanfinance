@@ -1311,12 +1311,63 @@ export function saveBoletos(boletos: BoletoItem[]): void {
   }
 }
 
-export function loadHistory(): CNABBatchHistory[] {
+const RETENTION_PERIOD_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias em milissegundos
+
+export function purgeExpiredHistory(history: CNABBatchHistory[]): CNABBatchHistory[] {
+  if (!Array.isArray(history)) return [];
+  const now = Date.now();
+  const validItems: CNABBatchHistory[] = [];
+  const expiredIds: string[] = [];
+
+  for (const item of history) {
+    const itemTime = item.timestamp || (item.createdDate ? new Date(item.createdDate).getTime() : now);
+    const age = now - itemTime;
+    if (age <= RETENTION_PERIOD_MS && age >= 0) {
+      validItems.push({
+        ...item,
+        timestamp: itemTime,
+        status: item.status || 'GERADO',
+      });
+    } else {
+      expiredIds.push(item.id);
+    }
+  }
+
+  // Excluir registros expirados do Firestore
+  expiredIds.forEach((id) => {
+    deleteDoc(doc(db, 'cnab_history', id)).catch((err) =>
+      console.warn('[Firestore] Error deleting expired history record:', err)
+    );
+  });
+
+  return validItems;
+}
+
+export function loadHistory(userFilter?: { id?: string; email?: string } | string): CNABBatchHistory[] {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.HISTORY);
     if (data) {
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        const cleaned = purgeExpiredHistory(parsed);
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(cleaned));
+        }
+
+        if (userFilter) {
+          const userId = typeof userFilter === 'string' ? userFilter : userFilter.id;
+          const userEmail = typeof userFilter === 'string' ? userFilter : userFilter.email;
+
+          return cleaned.filter((h) => {
+            if (!h.userId && !h.userEmail && !h.analista) return true; // legacy item
+            const matchesId = userId && h.userId === userId;
+            const matchesEmail = userEmail && (h.userEmail === userEmail || h.analista === userEmail);
+            return matchesId || matchesEmail;
+          });
+        }
+
+        return cleaned;
+      }
     }
   } catch (e) {
     console.error('Failed to load history:', e);
@@ -1326,20 +1377,22 @@ export function loadHistory(): CNABBatchHistory[] {
 
 export function saveHistory(history: CNABBatchHistory[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
-    history.forEach((h) => {
+    const cleanHistory = purgeExpiredHistory(history);
+    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(cleanHistory));
+    cleanHistory.forEach((h) => {
       setDoc(doc(db, 'cnab_history', h.id), h, { merge: true }).catch((err) =>
         console.warn('[Firestore] Sync history warning:', err)
       );
     });
 
-    syncHistoryToSupabase(history).catch((err) =>
+    syncHistoryToSupabase(cleanHistory).catch((err) =>
       console.warn('[Supabase] Sync history warning:', err)
     );
   } catch (e) {
     console.error('Failed to save history:', e);
   }
 }
+
 
 export function loadUserSession(): AuthUser | null {
   try {
