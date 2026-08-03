@@ -183,20 +183,24 @@ export default async function handler(req: any, res: any) {
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
-    // Clean Base64 and standardize MIME type
+    // Clean Base64 and standardize MIME type without running regex on large base64 strings
     let cleanBase64 = fileBase64;
-    let effectiveMimeType = mimeType || "application/pdf";
+    let effectiveMimeType = typeof mimeType === "string" ? mimeType : "application/pdf";
 
-    const dataUriMatch = fileBase64.match(/^data:([^;]+);base64,(.*)$/s);
-    if (dataUriMatch) {
-      effectiveMimeType = dataUriMatch[1].trim();
-      cleanBase64 = dataUriMatch[2].trim();
-    } else {
-      cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "").trim();
+    if (cleanBase64.startsWith("data:")) {
+      const commaIndex = cleanBase64.indexOf(",");
+      if (commaIndex !== -1) {
+        const header = cleanBase64.substring(0, commaIndex);
+        cleanBase64 = cleanBase64.substring(commaIndex + 1);
+        const mimeMatch = header.match(/data:([^;]+)/);
+        if (mimeMatch) {
+          effectiveMimeType = mimeMatch[1].trim();
+        }
+      }
     }
 
     // Strip whitespaces or linebreaks from Base64 content
-    cleanBase64 = cleanBase64.replace(/\s+/g, "");
+    cleanBase64 = cleanBase64.replace(/[\r\n\s]+/g, "");
 
     if (effectiveMimeType.includes("pdf")) {
       effectiveMimeType = "application/pdf";
@@ -250,17 +254,20 @@ Retorne para cada boleto os campos:
         try {
           const response = await ai.models.generateContent({
             model: modelName,
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: effectiveMimeType,
-                    data: cleanBase64,
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: effectiveMimeType,
+                      data: cleanBase64,
+                    },
                   },
-                },
-                { text: prompt },
-              ],
-            },
+                  { text: prompt },
+                ],
+              },
+            ],
             config: {
               responseMimeType: "application/json",
               responseSchema: {
@@ -299,7 +306,7 @@ Retorne para cada boleto os campos:
             },
           });
 
-          const rawText = response.text || "{}";
+          const rawText = response?.text || "{}";
           let jsonText = rawText.trim();
           if (jsonText.startsWith("```json")) {
             jsonText = jsonText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
@@ -330,35 +337,41 @@ Retorne para cada boleto os campos:
       }
     }
 
-    boletosExtracted = boletosExtracted.map((b) => {
-      const rawDigits = b.linhaDigitavel || b.codigoBarras || "";
-      const cleanLinha = onlyNumbers(rawDigits);
+    if (!Array.isArray(boletosExtracted)) {
+      boletosExtracted = [];
+    }
 
-      b.favorecidoNome = b.favorecidoNome || b.beneficiario || b.cedente || "Beneficiário Não Identificado";
-      b.cedente = b.cedente || b.favorecidoNome;
-      b.beneficiario = b.beneficiario || b.favorecidoNome;
-      b.favorecidoCnpjCpf = b.favorecidoCnpjCpf || b.CNPJ || "";
-      b.CNPJ = b.CNPJ || b.favorecidoCnpjCpf || "";
-      b.seuNumero = b.seuNumero || b.numeroDocumento || "";
-      b.numeroDocumento = b.numeroDocumento || b.seuNumero || "";
-      b.banco = b.banco || b.bancoNome || "";
+    boletosExtracted = boletosExtracted
+      .filter((b) => b && typeof b === "object")
+      .map((b) => {
+        const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
+        const cleanLinha = onlyNumbers(rawDigits);
 
-      if (cleanLinha.length >= 44) {
-        const parsedCheck = parseLinhaDigitavel(cleanLinha);
-        if (parsedCheck.isValid) {
-          b.linhaDigitavel = cleanLinha;
-          b.codigoBarras = b.codigoBarras || parsedCheck.codigoBarras;
-          b.bancoCodigo = parsedCheck.bancoCodigo || b.bancoCodigo || "000";
-          b.bancoNome = parsedCheck.bancoNome || b.bancoNome || b.banco;
-          b.banco = b.bancoNome;
-          if (!b.valor || Number(b.valor) === 0) b.valor = parsedCheck.valor;
-          if (parsedCheck.dataVencimento && (!b.dataVencimento || b.dataVencimento === '')) {
-            b.dataVencimento = parsedCheck.dataVencimento;
+        b.favorecidoNome = b.favorecidoNome || b.beneficiario || b.cedente || "Beneficiário Não Identificado";
+        b.cedente = b.cedente || b.favorecidoNome;
+        b.beneficiario = b.beneficiario || b.favorecidoNome;
+        b.favorecidoCnpjCpf = b.favorecidoCnpjCpf || b.CNPJ || "";
+        b.CNPJ = b.CNPJ || b.favorecidoCnpjCpf || "";
+        b.seuNumero = b.seuNumero || b.numeroDocumento || "";
+        b.numeroDocumento = b.numeroDocumento || b.seuNumero || "";
+        b.banco = b.banco || b.bancoNome || "";
+
+        if (cleanLinha.length >= 44) {
+          const parsedCheck = parseLinhaDigitavel(cleanLinha);
+          if (parsedCheck.isValid) {
+            b.linhaDigitavel = cleanLinha;
+            b.codigoBarras = b.codigoBarras || parsedCheck.codigoBarras;
+            b.bancoCodigo = parsedCheck.bancoCodigo || b.bancoCodigo || "000";
+            b.bancoNome = parsedCheck.bancoNome || b.bancoNome || b.banco;
+            b.banco = b.bancoNome;
+            if (!b.valor || Number(b.valor) === 0) b.valor = parsedCheck.valor;
+            if (parsedCheck.dataVencimento && (!b.dataVencimento || b.dataVencimento === '')) {
+              b.dataVencimento = parsedCheck.dataVencimento;
+            }
           }
         }
-      }
-      return b;
-    });
+        return b;
+      });
 
     return res.status(200).json({
       success: true,
@@ -368,9 +381,27 @@ Retorne para cada boleto os campos:
       boletos: boletosExtracted,
     });
   } catch (error: any) {
-    return res.status(500).json({
-      error: "Não foi possível extrair os dados do boleto PDF.",
-      details: String(error?.message || error),
+    const errStr = String(error?.message || error);
+    let fallbackBoletos: any[] = [];
+    try {
+      const rawBody = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+      let rawB64 = rawBody?.fileBase64;
+      if (typeof rawB64 === "string" && rawB64.length > 0) {
+        if (rawB64.includes(",")) rawB64 = rawB64.split(",")[1];
+        rawB64 = rawB64.replace(/[\r\n\s]+/g, "");
+        const buffer = Buffer.from(rawB64, "base64");
+        fallbackBoletos = extractBoletosLocallyFromBuffer(buffer);
+      }
+    } catch (fbErr) {
+      console.error("Erro emergência local handler:", fbErr);
+    }
+
+    return res.status(200).json({
+      success: true,
+      fileName: req.body?.fileName || "boleto.pdf",
+      totalEncontrados: fallbackBoletos.length,
+      geminiApiError: `Aviso no servidor: ${errStr}`,
+      boletos: fallbackBoletos,
     });
   }
 }

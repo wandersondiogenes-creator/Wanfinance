@@ -168,28 +168,33 @@ async function startServer() {
   // API Route for PDF / Image Boleto extraction using Gemini with Local Fallback
   app.post("/api/extract-boleto-pdf", async (req, res) => {
     try {
-      const { fileBase64, mimeType = "application/pdf", fileName = "boleto.pdf" } = req.body;
+      const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+      const { fileBase64, mimeType = "application/pdf", fileName = "boleto.pdf" } = body;
 
-      if (!fileBase64) {
+      if (!fileBase64 || typeof fileBase64 !== "string") {
         return res.status(400).json({ error: "Conteúdo do arquivo em base64 não fornecido." });
       }
 
       const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
-      // Clean base64 and extract mimeType
+      // Clean base64 and extract mimeType without running regex capture groups on megabytes of base64 data
       let cleanBase64 = fileBase64;
-      let effectiveMimeType = mimeType || "application/pdf";
+      let effectiveMimeType = typeof mimeType === "string" ? mimeType : "application/pdf";
 
-      const dataUriMatch = fileBase64.match(/^data:([^;]+);base64,(.*)$/s);
-      if (dataUriMatch) {
-        effectiveMimeType = dataUriMatch[1].trim();
-        cleanBase64 = dataUriMatch[2].trim();
-      } else {
-        cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "").trim();
+      if (cleanBase64.startsWith("data:")) {
+        const commaIndex = cleanBase64.indexOf(",");
+        if (commaIndex !== -1) {
+          const header = cleanBase64.substring(0, commaIndex);
+          cleanBase64 = cleanBase64.substring(commaIndex + 1);
+          const mimeMatch = header.match(/data:([^;]+)/);
+          if (mimeMatch) {
+            effectiveMimeType = mimeMatch[1].trim();
+          }
+        }
       }
 
-      // Strip whitespace and linebreaks from base64
-      cleanBase64 = cleanBase64.replace(/\s+/g, "");
+      // Strip whitespace and linebreaks from base64 string
+      cleanBase64 = cleanBase64.replace(/[\r\n\s]+/g, "");
 
       if (effectiveMimeType.includes("pdf")) {
         effectiveMimeType = "application/pdf";
@@ -255,6 +260,7 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
                 model: modelName,
                 contents: [
                   {
+                    role: "user",
                     parts: [
                       {
                         inlineData: {
@@ -312,7 +318,7 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
 
         try {
           const response = await callGeminiWithRetryAndFallback();
-          const rawText = response.text || "{}";
+          const rawText = response?.text || "{}";
           let jsonText = rawText.trim();
           if (jsonText.startsWith("```json")) {
             jsonText = jsonText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
@@ -329,12 +335,15 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
 
           if (Array.isArray(parsedData.boletos)) {
             boletosExtracted = parsedData.boletos;
-          } else if (parsedData.linhaDigitavel || parsedData.favorecidoNome) {
+          } else if (parsedData && (parsedData.linhaDigitavel || parsedData.favorecidoNome)) {
             boletosExtracted = [parsedData];
           }
         } catch (geminiError: any) {
-          console.warn("[Gemini API] Falha na chamada Gemini, ativando fallback local por regex...", String(geminiError?.message || geminiError));
+          geminiApiError = String(geminiError?.message || geminiError);
+          console.warn("[Gemini API] Falha na chamada Gemini, ativando fallback local por regex...", geminiApiError);
         }
+      } else {
+        geminiApiError = "GEMINI_API_KEY não configurada no servidor.";
       }
 
       // Tier 2: Local Stream & Decompressed Text Parser Fallback
@@ -351,91 +360,98 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
         }
       }
 
-      // Post-process & sanitize all extracted boletos (especially GNRE / Tributos and Favorecido)
-      boletosExtracted = boletosExtracted.map((b) => {
-        const rawDigits = b.linhaDigitavel || b.codigoBarras || "";
-        const cleanLinha = onlyNumbers(rawDigits);
+      // Post-process & sanitize all extracted boletos safely
+      if (!Array.isArray(boletosExtracted)) {
+        boletosExtracted = [];
+      }
 
-        // Ensure favorecidoNome is the charging company and not the issuing bank
-        let fav = (b.favorecidoNome || "").trim();
-        const bName = (b.bancoNome || "").trim();
-        const isBankName = !fav ||
-          fav.toLowerCase().startsWith("banco") ||
-          fav.toLowerCase().includes("bradesco") ||
-          fav.toLowerCase().includes("itau") ||
-          fav.toLowerCase().includes("itaú") ||
-          fav.toLowerCase().includes("santander") ||
-          fav.toLowerCase().includes("caixa econ") ||
-          fav.toLowerCase().includes("sicoob") ||
-          fav.toLowerCase().includes("sicredi") ||
-          (bName && fav.toLowerCase() === bName.toLowerCase());
+      boletosExtracted = boletosExtracted
+        .filter((b) => b && typeof b === "object")
+        .map((b) => {
+          const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
+          const cleanLinha = onlyNumbers(rawDigits);
 
-        if (isBankName) {
-          let extractedCompany = '';
-          try {
-            const buffer = Buffer.from(cleanBase64, "base64");
-            const rawPdfText = extractTextFromPdfBuffer(buffer);
-            extractedCompany = extractFavorecidoFromText(rawPdfText, bName);
-          } catch (err) {}
+          // Ensure favorecidoNome is the charging company and not the issuing bank
+          let fav = String(b.favorecidoNome || "").trim();
+          const bName = String(b.bancoNome || "").trim();
+          const isBankName =
+            !fav ||
+            fav.toLowerCase().startsWith("banco") ||
+            fav.toLowerCase().includes("bradesco") ||
+            fav.toLowerCase().includes("itau") ||
+            fav.toLowerCase().includes("itaú") ||
+            fav.toLowerCase().includes("santander") ||
+            fav.toLowerCase().includes("caixa econ") ||
+            fav.toLowerCase().includes("sicoob") ||
+            fav.toLowerCase().includes("sicredi") ||
+            (bName && fav.toLowerCase() === bName.toLowerCase());
 
-          if (extractedCompany && extractedCompany !== 'Beneficiário / Cedente') {
-            b.favorecidoNome = extractedCompany;
-          } else {
-            b.favorecidoNome = 'Empresa Cobradora / Beneficiário';
-          }
-        }
+          if (isBankName) {
+            let extractedCompany = "";
+            try {
+              const buffer = Buffer.from(cleanBase64, "base64");
+              const rawPdfText = extractTextFromPdfBuffer(buffer);
+              extractedCompany = extractFavorecidoFromText(rawPdfText, bName);
+            } catch (err) {}
 
-        if (typeof b.valor === "string") {
-          const cleanedVal = String(b.valor).replace(/[^\d.,]/g, "").replace(/\./g, "").replace(",", ".");
-          const parsedNum = parseFloat(cleanedVal);
-          if (!isNaN(parsedNum)) b.valor = parsedNum;
-        }
-
-        // Sanitize and convert date formats like DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD
-        if (b.dataVencimento && typeof b.dataVencimento === 'string') {
-          const ddmmyyyy = b.dataVencimento.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-          if (ddmmyyyy) {
-            const [, day, month, year] = ddmmyyyy;
-            b.dataVencimento = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-          }
-        }
-
-        b.favorecidoNome = b.favorecidoNome || b.beneficiario || b.cedente || "Beneficiário Não Identificado";
-        b.cedente = b.cedente || b.favorecidoNome;
-        b.beneficiario = b.beneficiario || b.favorecidoNome;
-        b.favorecidoCnpjCpf = b.favorecidoCnpjCpf || b.CNPJ || "";
-        b.CNPJ = b.CNPJ || b.favorecidoCnpjCpf || "";
-        b.seuNumero = b.seuNumero || b.numeroDocumento || "";
-        b.numeroDocumento = b.numeroDocumento || b.seuNumero || "";
-        b.banco = b.banco || b.bancoNome || "";
-
-        if (cleanLinha.length >= 44) {
-          const parsedCheck = parseLinhaDigitavel(cleanLinha);
-          if (parsedCheck.isValid) {
-            b.linhaDigitavel = cleanLinha;
-            b.codigoBarras = b.codigoBarras || parsedCheck.codigoBarras;
-            b.bancoCodigo = parsedCheck.bancoCodigo || b.bancoCodigo || "000";
-            b.bancoNome = parsedCheck.bancoNome || b.bancoNome || b.banco;
-            b.banco = b.bancoNome;
-
-            // If extracted valor is 0, use parsed value from linha digitável
-            if (!b.valor || Number(b.valor) === 0) {
-              b.valor = parsedCheck.valor;
-            }
-            if (parsedCheck.dataVencimento && (!b.dataVencimento || b.dataVencimento === '')) {
-              b.dataVencimento = parsedCheck.dataVencimento;
+            if (extractedCompany && extractedCompany !== "Beneficiário / Cedente") {
+              b.favorecidoNome = extractedCompany;
+            } else {
+              b.favorecidoNome = "Empresa Cobradora / Beneficiário";
             }
           }
-        }
-        return b;
-      });
+
+          if (typeof b.valor === "string") {
+            const cleanedVal = String(b.valor).replace(/[^\d.,]/g, "").replace(/\./g, "").replace(",", ".");
+            const parsedNum = parseFloat(cleanedVal);
+            if (!isNaN(parsedNum)) b.valor = parsedNum;
+          }
+
+          // Sanitize and convert date formats like DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD
+          if (b.dataVencimento && typeof b.dataVencimento === "string") {
+            const ddmmyyyy = b.dataVencimento.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+            if (ddmmyyyy) {
+              const [, day, month, year] = ddmmyyyy;
+              b.dataVencimento = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+            }
+          }
+
+          b.favorecidoNome = b.favorecidoNome || b.beneficiario || b.cedente || "Beneficiário Não Identificado";
+          b.cedente = b.cedente || b.favorecidoNome;
+          b.beneficiario = b.beneficiario || b.favorecidoNome;
+          b.favorecidoCnpjCpf = b.favorecidoCnpjCpf || b.CNPJ || "";
+          b.CNPJ = b.CNPJ || b.favorecidoCnpjCpf || "";
+          b.seuNumero = b.seuNumero || b.numeroDocumento || "";
+          b.numeroDocumento = b.numeroDocumento || b.seuNumero || "";
+          b.banco = b.banco || b.bancoNome || "";
+
+          if (cleanLinha.length >= 44) {
+            const parsedCheck = parseLinhaDigitavel(cleanLinha);
+            if (parsedCheck.isValid) {
+              b.linhaDigitavel = cleanLinha;
+              b.codigoBarras = b.codigoBarras || parsedCheck.codigoBarras;
+              b.bancoCodigo = parsedCheck.bancoCodigo || b.bancoCodigo || "000";
+              b.bancoNome = parsedCheck.bancoNome || b.bancoNome || b.banco;
+              b.banco = b.bancoNome;
+
+              // If extracted valor is 0, use parsed value from linha digitável
+              if (!b.valor || Number(b.valor) === 0) {
+                b.valor = parsedCheck.valor;
+              }
+              if (parsedCheck.dataVencimento && (!b.dataVencimento || b.dataVencimento === "")) {
+                b.dataVencimento = parsedCheck.dataVencimento;
+              }
+            }
+          }
+          return b;
+        });
 
       // Deduplicate boletos by clean linhaDigitavel / codigoBarras (prevents 1st, 2nd, 3rd via duplication)
       const seenDigits = new Set<string>();
       const uniqueBoletos: typeof boletosExtracted = [];
 
       for (const b of boletosExtracted) {
-        const rawDigits = b.linhaDigitavel || b.codigoBarras || "";
+        const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
         const cleanDigits = onlyNumbers(rawDigits);
 
         if (cleanDigits && cleanDigits.length >= 10) {
@@ -462,9 +478,28 @@ Use 0 para numéricos não encontrados e '' para strings não encontradas.`;
     } catch (error: any) {
       console.error("Erro geral na extração do boleto PDF:", error);
       const errStr = String(error?.message || error);
-      return res.status(500).json({
-        error: "Não foi possível extrair os dados do boleto PDF automaticamente.",
-        details: errStr,
+
+      // Fail-safe emergency extraction directly from base64 buffer
+      let fallbackBoletos: any[] = [];
+      try {
+        const rawBody = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+        let rawB64 = rawBody?.fileBase64;
+        if (typeof rawB64 === "string" && rawB64.length > 0) {
+          if (rawB64.includes(",")) rawB64 = rawB64.split(",")[1];
+          rawB64 = rawB64.replace(/[\r\n\s]+/g, "");
+          const buffer = Buffer.from(rawB64, "base64");
+          fallbackBoletos = extractBoletosLocallyFromBuffer(buffer);
+        }
+      } catch (fbErr) {
+        console.error("Erro na extração de emergência local:", fbErr);
+      }
+
+      return res.status(200).json({
+        success: true,
+        fileName: req.body?.fileName || "boleto.pdf",
+        totalEncontrados: fallbackBoletos.length,
+        geminiApiError: `Aviso no servidor: ${errStr}`,
+        boletos: fallbackBoletos,
       });
     }
   });
