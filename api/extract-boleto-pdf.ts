@@ -247,7 +247,7 @@ REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS SUHAI, FINAN
 REGRA DE SCHEMA JSON:
 NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
 
-      const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash"];
+      const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
       for (const modelName of modelsToTry) {
         try {
           const response = await ai.models.generateContent({

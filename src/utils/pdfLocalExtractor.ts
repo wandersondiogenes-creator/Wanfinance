@@ -29,7 +29,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
     try {
       const pdfjsLib = await import('pdfjs-dist');
       if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.0.379'}/build/pdf.worker.min.mjs`;
       }
       const loadingTask = pdfjsLib.getDocument({ data: bytes.buffer });
       const pdfDoc = await loadingTask.promise;
