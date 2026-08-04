@@ -279,6 +279,20 @@ export interface LearnedCNABExtratoLayout {
   timesUsed: number;
   isCustomLearned: boolean;
 
+  // Associação com Empresa e Conta Específica
+  empresaId?: string;
+  empresaNome?: string;
+  agenciaPadrao?: string;
+  contaPadrao?: string;
+  convenioPadrao?: string;
+
+  // Linhas Modelo Originais Espelhadas (Copiar exatamente campos e tamanhos)
+  sampleHeaderArq?: string;
+  sampleHeaderLote?: string;
+  sampleSegmentE?: string;
+  sampleTrailerLote?: string;
+  sampleTrailerArq?: string;
+
   // Estrutura das posições dos registros
   headerArquivoFields: CNABExtratoFieldSpec[];
   headerLoteFields: CNABExtratoFieldSpec[];

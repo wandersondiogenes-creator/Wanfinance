@@ -33,11 +33,64 @@ interface ModelCnabAnalyzerViewProps {
   onShowToast?: (msg: string) => void;
 }
 
-export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ onShowToast }) => {
+import React, { useState } from 'react';
+import {
+  Brain,
+  Upload,
+  CheckCircle2,
+  FileCode,
+  Layers,
+  Sparkles,
+  Edit3,
+  Plus,
+  Trash2,
+  Save,
+  Search,
+  BookOpen,
+  ArrowRight,
+  ShieldCheck,
+  Building2,
+  HelpCircle,
+  Code2,
+  Terminal,
+} from 'lucide-react';
+import {
+  LearnedCNABExtratoLayout,
+  CNABExtratoFieldSpec,
+  MovementCodeDefinition,
+  CompanySettings,
+} from '../../types';
+import {
+  reverseEngineCnabStructure,
+  loadLearnedExtratoLayouts,
+  saveLearnedExtratoLayouts,
+  MOVEMENT_CODES_DATABASE,
+} from '../../utils/cnabExtratoEngine';
+
+interface ModelCnabAnalyzerViewProps {
+  company?: CompanySettings;
+  onShowToast?: (msg: string) => void;
+}
+
+export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
+  company,
+  onShowToast,
+}) => {
   const [modelFileName, setModelFileName] = useState('');
   const [analyzedLayout, setAnalyzedLayout] = useState<LearnedCNABExtratoLayout | null>(null);
-  const [selectedSegmentTab, setSelectedSegmentTab] = useState<'HEADER' | 'SEGMENTO_E' | 'CODES'>('SEGMENTO_E');
+  const [selectedSegmentTab, setSelectedSegmentTab] = useState<'HEADER' | 'SEGMENTO_E' | 'RAW_LINES' | 'CODES'>('SEGMENTO_E');
   const [selectedFieldPos, setSelectedFieldPos] = useState<CNABExtratoFieldSpec | null>(null);
+
+  // Form para edição dos vínculos do layout (Empresa, Banco, Agência, Conta, Convênio)
+  const [layoutForm, setLayoutForm] = useState({
+    nomeLayout: '',
+    bancoCodigo: '341',
+    bancoNome: 'Banco Itaú',
+    empresaNome: company?.razaoSocial || '',
+    agenciaPadrao: company?.agencia || '',
+    contaPadrao: company?.conta || '',
+    convenioPadrao: company?.convenio || '',
+  });
 
   // Mapeamento de Códigos de Movimentação editáveis
   const [movementCodes, setMovementCodes] = useState<MovementCodeDefinition[]>(MOVEMENT_CODES_DATABASE.DEFAULT_CODES);
@@ -67,13 +120,85 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ on
       }
 
       // Reverse engineering layout
-      const learned = reverseEngineCnabStructure(content, file.name);
+      const learned = reverseEngineCnabStructure(content, file.name, company);
       setAnalyzedLayout(learned);
+      setLayoutForm({
+        nomeLayout: learned.nomeLayout,
+        bancoCodigo: learned.bancoCodigo,
+        bancoNome: learned.bancoNome,
+        empresaNome: learned.empresaNome || company?.razaoSocial || '',
+        agenciaPadrao: learned.agenciaPadrao || company?.agencia || '',
+        contaPadrao: learned.contaPadrao || company?.conta || '',
+        convenioPadrao: learned.convenioPadrao || company?.convenio || '',
+      });
       setSavedLayouts(loadLearnedExtratoLayouts());
-      showToast(`Layout do arquivo ${file.name} analisado e aprendido com sucesso!`);
+      showToast(`Layout do arquivo ${file.name} analisado e copiado exatamente com sucesso!`);
     };
 
     reader.readAsText(file, 'ISO-8859-1'); // Suporte a caracteres acentuados de bancos
+  };
+
+  // Salva ou atualiza as alterações do layout
+  const handleSaveLayoutChanges = () => {
+    if (!analyzedLayout) return;
+
+    const updatedLayout: LearnedCNABExtratoLayout = {
+      ...analyzedLayout,
+      nomeLayout: layoutForm.nomeLayout || analyzedLayout.nomeLayout,
+      bancoCodigo: layoutForm.bancoCodigo,
+      bancoNome: layoutForm.bancoNome,
+      empresaId: company?.id || analyzedLayout.empresaId,
+      empresaNome: layoutForm.empresaNome,
+      agenciaPadrao: layoutForm.agenciaPadrao,
+      contaPadrao: layoutForm.contaPadrao,
+      convenioPadrao: layoutForm.convenioPadrao,
+    };
+
+    const currentLayouts = loadLearnedExtratoLayouts();
+    const idx = currentLayouts.findIndex((l) => l.id === updatedLayout.id);
+    if (idx >= 0) {
+      currentLayouts[idx] = updatedLayout;
+    } else {
+      currentLayouts.unshift(updatedLayout);
+    }
+
+    saveLearnedExtratoLayouts(currentLayouts);
+    setSavedLayouts(currentLayouts);
+    setAnalyzedLayout(updatedLayout);
+    showToast('Modelo de CNAB salvo com sucesso na base de layouts por Empresa e Banco!');
+  };
+
+  // Seleciona modelo salvo para visualizar/editar
+  const handleSelectSavedLayout = (layout: LearnedCNABExtratoLayout) => {
+    setAnalyzedLayout(layout);
+    setLayoutForm({
+      nomeLayout: layout.nomeLayout,
+      bancoCodigo: layout.bancoCodigo,
+      bancoNome: layout.bancoNome,
+      empresaNome: layout.empresaNome || company?.razaoSocial || '',
+      agenciaPadrao: layout.agenciaPadrao || company?.agencia || '',
+      contaPadrao: layout.contaPadrao || company?.conta || '',
+      convenioPadrao: layout.convenioPadrao || company?.convenio || '',
+    });
+    showToast(`Modelo "${layout.nomeLayout}" carregado para inspeção/edição.`);
+  };
+
+  // Exclui um modelo de layout salvo
+  const handleDeleteLayout = (layoutId: string, layoutName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm(`Tem certeza que deseja excluir o modelo de layout "${layoutName}"?`)) {
+      return;
+    }
+
+    const updated = savedLayouts.filter((l) => l.id !== layoutId);
+    saveLearnedExtratoLayouts(updated);
+    setSavedLayouts(updated);
+
+    if (analyzedLayout?.id === layoutId) {
+      setAnalyzedLayout(null);
+    }
+
+    showToast(`Modelo "${layoutName}" excluído com sucesso!`);
   };
 
   // Add custom code mapping
@@ -108,13 +233,13 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ on
               </div>
               <div>
                 <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight flex items-center gap-2">
-                  <span>Opção 2: Modelo CNAB → Aprendizado & Análise</span>
+                  <span>Opção 2: Modelo CNAB → Aprendizado Exato por Empresa & Banco</span>
                   <span className="bg-purple-400/20 text-purple-300 text-xs px-2.5 py-0.5 rounded-full border border-purple-400/30 normal-case font-bold">
-                    Engenharia Reversa & I.A.
+                    Engenharia Reversa
                   </span>
                 </h2>
                 <p className="text-xs sm:text-sm text-purple-200 font-medium">
-                  Envie um arquivo CNAB modelo para a IA aprender o layout, identificar posições e mapear códigos de extrato.
+                  Envie um arquivo CNAB modelo para a IA copiar exatamente todos os campos, posições e dados da empresa/banco para reuso rápido.
                 </p>
               </div>
             </div>
@@ -131,37 +256,102 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ on
       {/* TELA DE ANÁLISE DO LAYOUT APRENDIDO */}
       {analyzedLayout ? (
         <div className="space-y-6">
-          {/* Card Resumo do Layout */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-black">
-                <FileCode className="w-6 h-6" />
+          {/* Card Resumo do Layout & Vínculo da Empresa/Banco */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-black">
+                  <FileCode className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-purple-700 uppercase tracking-wider block">
+                    Layout CNAB Copiado Exatamente
+                  </span>
+                  <h3 className="text-lg font-black text-slate-900">{analyzedLayout.nomeLayout}</h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Banco: <strong>{analyzedLayout.bancoNome} ({analyzedLayout.bancoCodigo})</strong> • Padrão: <strong>CNAB {analyzedLayout.padraoCNAB}</strong>
+                  </p>
+                </div>
               </div>
-              <div>
-                <span className="text-xs font-bold text-purple-700 uppercase tracking-wider block">
-                  Layout CNAB Aprendido
-                </span>
-                <h3 className="text-lg font-black text-slate-900">{analyzedLayout.nomeLayout}</h3>
-                <p className="text-xs text-slate-500 font-medium">
-                  Banco: <strong>{analyzedLayout.bancoNome} ({analyzedLayout.bancoCodigo})</strong> • Padrão: <strong>CNAB {analyzedLayout.padraoCNAB}</strong>
-                </p>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleSaveLayoutChanges}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-5 py-3 rounded-2xl transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Salvar Vínculo Empresa & Banco</span>
+                </button>
+
+                <button
+                  onClick={() => handleDeleteLayout(analyzedLayout.id, analyzedLayout.nomeLayout)}
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-black px-4 py-3 rounded-2xl transition-all flex items-center gap-2 cursor-pointer"
+                  title="Excluir este modelo"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Excluir Modelo</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Salvo na Base Aprendida</span>
-              </span>
+            {/* Ajuste de Vínculos: Empresa, Banco, Agência, Conta, Convênio */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Nome da Empresa Vinculada:
+                </label>
+                <input
+                  type="text"
+                  value={layoutForm.empresaNome}
+                  onChange={(e) => setLayoutForm({ ...layoutForm, empresaNome: e.target.value })}
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Código do Banco:
+                </label>
+                <input
+                  type="text"
+                  value={layoutForm.bancoCodigo}
+                  onChange={(e) => setLayoutForm({ ...layoutForm, bancoCodigo: e.target.value })}
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Agência Padrão:
+                </label>
+                <input
+                  type="text"
+                  value={layoutForm.agenciaPadrao}
+                  onChange={(e) => setLayoutForm({ ...layoutForm, agenciaPadrao: e.target.value })}
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Conta Corrente Padrão:
+                </label>
+                <input
+                  type="text"
+                  value={layoutForm.contaPadrao}
+                  onChange={(e) => setLayoutForm({ ...layoutForm, contaPadrao: e.target.value })}
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                />
+              </div>
             </div>
           </div>
 
           {/* Abas de Navegação da Análise */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6">
-            <div className="flex border-b border-slate-100 pb-2 space-x-4">
+            <div className="flex border-b border-slate-100 pb-2 space-x-4 overflow-x-auto">
               <button
                 onClick={() => setSelectedSegmentTab('SEGMENTO_E')}
-                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer whitespace-nowrap ${
                   selectedSegmentTab === 'SEGMENTO_E'
                     ? 'border-purple-600 text-purple-700'
                     : 'border-transparent text-slate-400 hover:text-slate-600'
@@ -170,8 +360,18 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ on
                 Análise de Campos (Segmento E - Detalhe)
               </button>
               <button
+                onClick={() => setSelectedSegmentTab('RAW_LINES')}
+                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer whitespace-nowrap ${
+                  selectedSegmentTab === 'RAW_LINES'
+                    ? 'border-purple-600 text-purple-700'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                Linhas Modelo Espelhadas (240 Colunas)
+              </button>
+              <button
                 onClick={() => setSelectedSegmentTab('HEADER')}
-                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer whitespace-nowrap ${
                   selectedSegmentTab === 'HEADER'
                     ? 'border-purple-600 text-purple-700'
                     : 'border-transparent text-slate-400 hover:text-slate-600'
@@ -181,7 +381,7 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ on
               </button>
               <button
                 onClick={() => setSelectedSegmentTab('CODES')}
-                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer ${
+                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 cursor-pointer whitespace-nowrap ${
                   selectedSegmentTab === 'CODES'
                     ? 'border-purple-600 text-purple-700'
                     : 'border-transparent text-slate-400 hover:text-slate-600'
@@ -190,6 +390,50 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ on
                 Tabela de Códigos de Movimentação
               </button>
             </div>
+
+            {/* TAB: RAW LINES MODELO ESPELHADO */}
+            {selectedSegmentTab === 'RAW_LINES' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-purple-600" />
+                    <span>Amostras das Linhas Originais Modelo Copiadas Posição por Posição</span>
+                  </h4>
+                  <span className="text-[11px] text-purple-700 bg-purple-50 font-bold px-2.5 py-1 rounded-lg">
+                    Tamanho Exato: 240 Posições
+                  </span>
+                </div>
+
+                <div className="space-y-3 font-mono text-xs">
+                  {analyzedLayout.sampleHeaderArq && (
+                    <div className="bg-slate-950 text-emerald-400 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">
+                        Header de Arquivo Modelo:
+                      </span>
+                      <p className="whitespace-pre overflow-x-auto select-all">{analyzedLayout.sampleHeaderArq}</p>
+                    </div>
+                  )}
+
+                  {analyzedLayout.sampleHeaderLote && (
+                    <div className="bg-slate-950 text-emerald-400 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">
+                        Header de Lote Modelo:
+                      </span>
+                      <p className="whitespace-pre overflow-x-auto select-all">{analyzedLayout.sampleHeaderLote}</p>
+                    </div>
+                  )}
+
+                  {analyzedLayout.sampleSegmentE && (
+                    <div className="bg-slate-950 text-cyan-400 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold block uppercase">
+                        Segmento E (Detalhe do Extrato) Modelo:
+                      </span>
+                      <p className="whitespace-pre overflow-x-auto select-all">{analyzedLayout.sampleSegmentE}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* CONTEÚDO TAB: SEGMENTO E / HEADER */}
             {(selectedSegmentTab === 'SEGMENTO_E' || selectedSegmentTab === 'HEADER') && (
@@ -381,7 +625,7 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ on
           <div className="max-w-md mx-auto space-y-2">
             <h3 className="text-base font-black text-slate-900">Aguardando Envio de Arquivo CNAB Modelo</h3>
             <p className="text-xs text-slate-500 font-medium">
-              Faça o upload de um arquivo de extrato bancário (ex: Itaú, Bradesco, BB, Caixa, Santander) para o sistema aprender automaticamente o layout de posições.
+              Faça o upload de um arquivo de extrato bancário (ex: Santander, Bradesco, Banco do Brasil, Itaú, Caixa) para o sistema aprender automaticamente o layout e salvar o modelo vinculado à empresa e banco.
             </p>
           </div>
         </div>
@@ -389,32 +633,61 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({ on
 
       {/* Lista de Layouts já Aprendidos */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
-        <h3 className="text-base font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-purple-600" />
-          <span>Base de Layouts Aprendidos Continuamente ({savedLayouts.length})</span>
-        </h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {savedLayouts.map((layout) => (
-            <div
-              key={layout.id}
-              className="border border-slate-200 rounded-2xl p-4 hover:border-purple-300 transition-all space-y-2 relative group bg-slate-50/50"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full">
-                  CNAB {layout.padraoCNAB}
-                </span>
-                <span className="text-[11px] text-slate-400 font-bold">
-                  Usado {layout.timesUsed}x
-                </span>
-              </div>
-              <h4 className="text-xs font-black text-slate-900 line-clamp-1">{layout.nomeLayout}</h4>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Banco: <strong>{layout.bancoNome} ({layout.bancoCodigo})</strong>
-              </p>
-            </div>
-          ))}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 className="text-base font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-purple-600" />
+            <span>Base de Modelos por Empresa e Banco ({savedLayouts.length})</span>
+          </h3>
+          <span className="text-[11px] text-slate-400 font-bold">
+            Clique no card para carregar o modelo ou na lixeira para excluir
+          </span>
         </div>
+
+        {savedLayouts.length === 0 ? (
+          <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+            <p className="text-xs text-slate-500 font-medium">Nenhum modelo de layout de extrato cadastrado no momento.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {savedLayouts.map((layout) => (
+              <div
+                key={layout.id}
+                onClick={() => handleSelectSavedLayout(layout)}
+                className={`border rounded-2xl p-4 transition-all space-y-2 relative group bg-slate-50/50 cursor-pointer ${
+                  analyzedLayout?.id === layout.id
+                    ? 'border-purple-600 bg-purple-50/40 shadow-sm ring-2 ring-purple-500/20'
+                    : 'border-slate-200 hover:border-purple-300 hover:shadow-xs'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full">
+                    CNAB {layout.padraoCNAB}
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[11px] text-slate-400 font-bold">
+                      Banco {layout.bancoCodigo}
+                    </span>
+                    <button
+                      onClick={(e) => handleDeleteLayout(layout.id, layout.nomeLayout, e)}
+                      className="text-slate-400 hover:text-rose-600 hover:bg-rose-100 p-1.5 rounded-lg transition-colors cursor-pointer"
+                      title="Excluir este modelo"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <h4 className="text-xs font-black text-slate-900 line-clamp-1">{layout.nomeLayout}</h4>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Empresa: <strong>{layout.empresaNome || 'Todas as Empresas'}</strong>
+                </p>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold pt-1 border-t border-slate-200/60">
+                  <span>Ag: {layout.agenciaPadrao || 'N/I'} • CC: {layout.contaPadrao || 'N/I'}</span>
+                  <span>Usado {layout.timesUsed}x</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

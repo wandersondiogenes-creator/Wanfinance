@@ -124,12 +124,92 @@ export const FEBRABAN_SEGMENTO_E_FIELDS: CNABExtratoFieldSpec[] = [
 ];
 
 /**
- * Layouts padrão para inicializar a base aprendida
+ * Layouts padrão para inicializar a base aprendida (Santander, Bradesco, Banco do Brasil, Itaú, Caixa)
  */
 export const DEFAULT_EXTRATO_LAYOUTS: LearnedCNABExtratoLayout[] = [
   {
+    id: 'extrato-layout-santander-240',
+    nomeLayout: 'Extrato Conta Corrente Banco Santander 240 FEBRABAN',
+    bancoCodigo: '033',
+    bancoNome: 'Banco Santander (Brasil) S.A.',
+    padraoCNAB: '240',
+    createdDate: new Date().toISOString(),
+    lastUsedDate: new Date().toISOString(),
+    timesUsed: 64,
+    isCustomLearned: false,
+    headerArquivoFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
+    headerLoteFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
+    segmentoEFields: FEBRABAN_SEGMENTO_E_FIELDS,
+    trailerLoteFields: [],
+    trailerArquivoFields: [],
+    movementCodesMap: {
+      '101': 'PIX Recebido (Santander)',
+      '102': 'PIX Enviado (Santander)',
+      '103': 'TED Crédito Web',
+      '104': 'TED Débito Web',
+      '201': 'Tarifa Pacote Conta Empresa',
+      '203': 'Tarifa Liquidação Boleto',
+      '301': 'Juros Cheque Empresa Santander',
+      '601': 'Pagamento Fornecedores / Titulos',
+      '602': 'Folha de Pagamento Santander',
+    },
+  },
+  {
+    id: 'extrato-layout-bradesco-240',
+    nomeLayout: 'Extrato Empresarial Banco Bradesco 240',
+    bancoCodigo: '237',
+    bancoNome: 'Banco Bradesco S.A.',
+    padraoCNAB: '240',
+    createdDate: new Date().toISOString(),
+    lastUsedDate: new Date().toISOString(),
+    timesUsed: 48,
+    isCustomLearned: false,
+    headerArquivoFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
+    headerLoteFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
+    segmentoEFields: FEBRABAN_SEGMENTO_E_FIELDS,
+    trailerLoteFields: [],
+    trailerArquivoFields: [],
+    movementCodesMap: {
+      '101': 'PIX Recebido Bradesco',
+      '102': 'PIX Enviado Bradesco',
+      '103': 'TED Recebida STR',
+      '104': 'TED Transf Net Bradesco',
+      '201': 'Tarifa de Cesta de Serviços',
+      '202': 'Tarifa Cobrança Bradesco',
+      '302': 'IOF Operações Crédito',
+      '601': 'Folha de Pagamento Bradesco',
+    },
+  },
+  {
+    id: 'extrato-layout-bb-240',
+    nomeLayout: 'Extrato Conta Corrente Banco do Brasil 240',
+    bancoCodigo: '001',
+    bancoNome: 'Banco do Brasil S.A.',
+    padraoCNAB: '240',
+    createdDate: new Date().toISOString(),
+    lastUsedDate: new Date().toISOString(),
+    timesUsed: 59,
+    isCustomLearned: false,
+    headerArquivoFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
+    headerLoteFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
+    segmentoEFields: FEBRABAN_SEGMENTO_E_FIELDS,
+    trailerLoteFields: [],
+    trailerArquivoFields: [],
+    movementCodesMap: {
+      '101': 'PIX Recebido BB',
+      '102': 'PIX Enviado BB',
+      '103': 'TED Recebida BB',
+      '104': 'TED Enviada BB',
+      '201': 'Tarifa Manutenção Conta BB',
+      '302': 'IOF Tributos Federais',
+      '401': 'BB Rende Fácil Aplicação',
+      '402': 'BB Rende Fácil Resgate',
+      '603': 'Pagamento Guia DARF/GPS BB',
+    },
+  },
+  {
     id: 'extrato-layout-itau-240',
-    nomeLayout: 'Extrato de Conta Corrente Itaú 240 FEBRABAN',
+    nomeLayout: 'Extrato Conta Corrente Itaú 240 FEBRABAN',
     bancoCodigo: '341',
     bancoNome: 'Banco Itaú Unibanco S.A.',
     padraoCNAB: '240',
@@ -137,50 +217,44 @@ export const DEFAULT_EXTRATO_LAYOUTS: LearnedCNABExtratoLayout[] = [
     lastUsedDate: new Date().toISOString(),
     timesUsed: 52,
     isCustomLearned: false,
-    headerArquivoFields: [
-      { posInicio: 1, posFim: 3, tamanho: 3, tipo: 'N', nomeCampo: 'Código Banco', descricao: '341 (Itaú)' },
-      { posInicio: 19, posFim: 32, tamanho: 14, tipo: 'N', nomeCampo: 'CNPJ Empresa', descricao: 'CNPJ' },
-      { posInicio: 73, posFim: 102, tamanho: 30, tipo: 'A', nomeCampo: 'Nome Empresa', descricao: 'Razão Social' },
-      { posInicio: 143, posFim: 150, tamanho: 8, tipo: 'N', nomeCampo: 'Data Geração', descricao: 'DDMMAAAA' },
-    ],
-    headerLoteFields: [
-      { posInicio: 1, posFim: 3, tamanho: 3, tipo: 'N', nomeCampo: 'Código Banco', descricao: '341' },
-      { posInicio: 10, posFim: 11, tamanho: 2, tipo: 'N', nomeCampo: 'Tipo Operação', descricao: '04 = Extrato' },
-    ],
+    headerArquivoFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
+    headerLoteFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
     segmentoEFields: FEBRABAN_SEGMENTO_E_FIELDS,
     trailerLoteFields: [],
     trailerArquivoFields: [],
     movementCodesMap: {
-      '101': 'PIX Recebido',
-      '102': 'PIX Enviado',
-      '103': 'TED Recebida',
-      '104': 'TED Enviada',
-      '201': 'Tarifa de Pacote',
+      '101': 'PIX Recebido Itaú',
+      '102': 'PIX Enviado Itaú',
+      '103': 'TED Recebida Itaú',
+      '104': 'TED Enviada Itaú',
+      '201': 'Tarifa de Pacote Itaú',
       '302': 'IOF',
-      '401': 'Aplicação',
-      '402': 'Resgate',
+      '401': 'Aplicação Itaú',
+      '402': 'Resgate Itaú',
     },
   },
   {
-    id: 'extrato-layout-bradesco-240',
-    nomeLayout: 'Extrato Empresarial Bradesco 240',
-    bancoCodigo: '237',
-    bancoNome: 'Banco Bradesco S.A.',
+    id: 'extrato-layout-caixa-240',
+    nomeLayout: 'Extrato Conta Empresarial Caixa 240',
+    bancoCodigo: '104',
+    bancoNome: 'Caixa Econômica Federal',
     padraoCNAB: '240',
     createdDate: new Date().toISOString(),
     lastUsedDate: new Date().toISOString(),
-    timesUsed: 38,
+    timesUsed: 22,
     isCustomLearned: false,
-    headerArquivoFields: [],
-    headerLoteFields: [],
+    headerArquivoFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
+    headerLoteFields: FEBRABAN_SEGMENTO_E_FIELDS.slice(0, 6),
     segmentoEFields: FEBRABAN_SEGMENTO_E_FIELDS,
     trailerLoteFields: [],
     trailerArquivoFields: [],
     movementCodesMap: {
-      '101': 'PIX Crédito',
-      '102': 'PIX Débito',
-      '201': 'Tarifa Cobrança',
-      '601': 'Folha de Pagamento',
+      '101': 'PIX Recebido Caixa',
+      '102': 'PIX Enviado Caixa',
+      '103': 'TED Recebida CEF',
+      '104': 'TED Enviada CEF',
+      '201': 'Tarifa Manutenção CEF',
+      '601': 'Pagamento Salários Caixa',
     },
   },
 ];
@@ -446,45 +520,82 @@ export function generateCNABExtratoFile(
  */
 export function reverseEngineCnabStructure(
   cnabRawContent: string,
-  fileName: string = 'Modelo_CNAB.ret'
+  fileName: string = 'Modelo_CNAB.ret',
+  company?: CompanySettings
 ): LearnedCNABExtratoLayout {
   const lines = cnabRawContent
     .split(/\r?\n/)
-    .map((l) => l.trim())
+    .map((l) => l.trimEnd())
     .filter((l) => l.length > 0);
 
   let detectedBankCode = '341';
   let detectedPadrao: '240' | '400' = '240';
   let detectedBankName = 'Banco Não Identificado';
 
+  let sampleHeaderArq = '';
+  let sampleHeaderLote = '';
+  let sampleSegmentE = '';
+  let sampleTrailerLote = '';
+  let sampleTrailerArq = '';
+
+  let detectedAgencia = '';
+  let detectedConta = '';
+  let detectedConvenio = '';
+  let detectedEmpresaNome = company?.razaoSocial || '';
+
   const movementCodesDetected: Record<string, string> = {};
 
   if (lines.length > 0) {
     const line1 = lines[0];
-    if (line1.length === 240) {
+    if (line1.length >= 240) {
       detectedPadrao = '240';
       detectedBankCode = line1.substring(0, 3);
+      sampleHeaderArq = line1.padEnd(240, ' ').slice(0, 240);
+
+      // Tenta extrair dados cadastrais do Header do Modelo
+      detectedConvenio = line1.substring(32, 52).trim();
+      detectedAgencia = line1.substring(52, 57).replace(/^0+/, '');
+      detectedConta = line1.substring(58, 70).replace(/^0+/, '');
+      if (!detectedEmpresaNome) {
+        detectedEmpresaNome = line1.substring(72, 102).trim();
+      }
     } else if (line1.length === 400) {
       detectedPadrao = '400';
       detectedBankCode = line1.substring(76, 79) || line1.substring(0, 3);
+      sampleHeaderArq = line1;
     }
     const bInfo = getBankInfo(detectedBankCode);
     detectedBankName = bInfo.shortName;
   }
 
-  // Percorre as linhas do modelo para extrair códigos de movimentação do Segmento E / Detalhe
+  // Percorre as linhas do modelo para extrair amostras e códigos de movimentação do Segmento E / Detalhe
   lines.forEach((line) => {
-    if (line.length === 240 && line.charAt(7) === '3' && line.charAt(13) === 'E') {
-      const code = line.substring(135, 139).trim();
-      const hist = line.substring(139, 164).trim();
-      if (code && hist) {
-        movementCodesDetected[code] = hist;
+    if (line.length >= 240) {
+      const regType = line.charAt(7);
+      const segCode = line.charAt(13);
+
+      if (regType === '1' && !sampleHeaderLote) {
+        sampleHeaderLote = line.padEnd(240, ' ').slice(0, 240);
+      } else if (regType === '3' && segCode === 'E') {
+        if (!sampleSegmentE) {
+          sampleSegmentE = line.padEnd(240, ' ').slice(0, 240);
+        }
+        const code = line.substring(135, 139).trim();
+        const hist = line.substring(139, 164).trim();
+        if (code && hist) {
+          movementCodesDetected[code] = hist;
+        }
+      } else if (regType === '5' && !sampleTrailerLote) {
+        sampleTrailerLote = line.padEnd(240, ' ').slice(0, 240);
+      } else if (regType === '9' && !sampleTrailerArq) {
+        sampleTrailerArq = line.padEnd(240, ' ').slice(0, 240);
       }
     }
   });
 
   const layoutId = `layout-custom-${detectedBankCode}-${Date.now().toString(36)}`;
-  const layoutName = `Layout Aprendido: ${detectedBankName} (${detectedBankCode}) - ${detectedPadrao}`;
+  const companyLabel = company?.razaoSocial || detectedEmpresaNome || 'Empresa Geral';
+  const layoutName = `Modelo CNAB ${detectedPadrao} - ${detectedBankName} (${detectedBankCode}) [${companyLabel}]`;
 
   const newLearnedLayout: LearnedCNABExtratoLayout = {
     id: layoutId,
@@ -496,6 +607,21 @@ export function reverseEngineCnabStructure(
     lastUsedDate: new Date().toISOString(),
     timesUsed: 1,
     isCustomLearned: true,
+
+    // Vínculo com Empresa e Dados da Conta extraídos do arquivo modelo
+    empresaId: company?.id || '',
+    empresaNome: companyLabel,
+    agenciaPadrao: company?.agencia || detectedAgencia || '0001',
+    contaPadrao: company?.conta || detectedConta || '00000',
+    convenioPadrao: company?.convenio || detectedConvenio || '000001',
+
+    // Amostras das linhas originais modelo espelhadas
+    sampleHeaderArq,
+    sampleHeaderLote,
+    sampleSegmentE,
+    sampleTrailerLote,
+    sampleTrailerArq,
+
     headerArquivoFields: [
       { posInicio: 1, posFim: 3, tamanho: 3, tipo: 'N', nomeCampo: 'Código do Banco', descricao: 'Código numérico do banco emissor' },
       { posInicio: 4, posFim: 7, tamanho: 4, tipo: 'N', nomeCampo: 'Lote de Serviço', descricao: 'Identificador do Lote (0000)' },

@@ -74,7 +74,7 @@ export const ExtratoBancarioMainPanel: React.FC<ExtratoBancarioMainPanelProps> =
       )}
 
       {activeTab === 'MODEL_LEARN' && (
-        <ModelCnabAnalyzerView onShowToast={onShowToast} />
+        <ModelCnabAnalyzerView company={company} onShowToast={onShowToast} />
       )}
 
       {activeTab === 'DASHBOARD' && (
