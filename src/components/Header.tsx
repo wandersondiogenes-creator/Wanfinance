@@ -10,8 +10,8 @@ interface HeaderProps {
   activeBankId: string;
   onSelectCompany: (companyId: string) => void;
   onSelectBank: (bankId: string) => void;
-  activeTab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos';
-  setActiveTab: (tab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos') => void;
+  activeTab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos' | 'extratos_bancarios';
+  setActiveTab: (tab: 'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos' | 'extratos_bancarios') => void;
   selectedBoletosCount: number;
   totalSelectedValor: number;
   onQuickGenerateCNAB: () => void;
@@ -291,6 +291,22 @@ export const Header: React.FC<HeaderProps> = ({
             <span>API de Pagamentos</span>
             <span className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0.5 rounded-md font-extrabold uppercase border border-amber-500/30">
               Direto Banco
+            </span>
+          </button>
+
+          {/* Extratos CNAB Tab */}
+          <button
+            onClick={() => setActiveTab('extratos_bancarios')}
+            className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'extratos_bancarios'
+                ? 'bg-emerald-950/80 text-emerald-300 border-b-2 border-emerald-500 shadow-xs'
+                : 'text-slate-400 hover:text-emerald-300 hover:bg-[#131a27]'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Extratos CNAB</span>
+            <span className="bg-emerald-500/20 text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-md font-extrabold uppercase border border-emerald-500/30">
+              Novo
             </span>
           </button>
 

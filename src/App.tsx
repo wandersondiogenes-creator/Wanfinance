@@ -34,6 +34,7 @@ import { CNABValidator } from './components/CNABValidator';
 import { GoogleSheetsPanel } from './components/GoogleSheetsPanel';
 import { BankPaymentApiPanel } from './components/BankPaymentApiPanel';
 import { LearnedLayoutsAdminPanel } from './components/LearnedLayoutsAdminPanel';
+import { ExtratoBancarioMainPanel } from './components/extrato/ExtratoBancarioMainPanel';
 import { getBoletosDuplicateMap } from './utils/duplicateDetector';
 import { CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -83,7 +84,7 @@ export default function App() {
   };
 
   const [activeTab, setActiveTab] = useState<
-    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos'
+    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos' | 'extratos_bancarios'
   >('boletos');
 
 
@@ -651,6 +652,13 @@ export default function App() {
         {activeTab === 'modelos_aprendidos' && (
           <LearnedLayoutsAdminPanel
             onShowToast={(msg) => showToast(msg, 'info')}
+          />
+        )}
+
+        {activeTab === 'extratos_bancarios' && (
+          <ExtratoBancarioMainPanel
+            company={activeCompanySettings}
+            onShowToast={(msg) => showToast(msg, 'success')}
           />
         )}
       </main>

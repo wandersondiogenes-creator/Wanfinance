@@ -230,15 +230,84 @@ export interface LearnedLayoutPattern {
   };
 }
 
-export interface LayoutLearningMetrics {
-  totalLearnedModels: number;
-  fastPathCount: number;
-  fullAnalysisCount: number;
-  totalTimeSavedMs: number;
-  overallAccuracyPercentage: number;
-  averageFastPathTimeMs: number;
-  averageFullAnalysisTimeMs: number;
-  geminiQuotaSavedRequests: number;
+export interface ExtratoTransaction {
+  id: string;
+  dataLancamento: string; // YYYY-MM-DD
+  historico: string; // Descrição / Histórico
+  documentoRef?: string; // Nº do documento / NSU / Autenticação
+  valor: number;
+  tipo: 'C' | 'D'; // C = Crédito / Entradas, D = Débito / Saídas
+  codigoMovimento?: string; // ex: 01 = TED, 02 = PIX, 03 = Tarifa, 04 = DOC, etc.
+  categoria?: string; // ex: "Tributos", "Tarifas Bancárias", "Transferências", "Folha"
+  saldo?: number;
+  bancoCodigo?: string;
+  contaInfo?: string;
+  valid: boolean;
+  validationError?: string;
+}
+
+export interface ExcelExtratoColumnMapping {
+  dataColIndex: number;
+  historicoColIndex: number;
+  valorColIndex: number;
+  tipoColIndex: number; // Coluna contendo 'C'/'D' ou 'ENTRADA'/'SAIDA' (ou -1 se for detectado pelo sinal do valor)
+  documentoColIndex: number;
+  saldoColIndex: number;
+  codigoMovimentoColIndex: number;
+  categoriaColIndex: number;
+}
+
+export interface CNABExtratoFieldSpec {
+  posInicio: number; // 1-indexed
+  posFim: number;
+  tamanho: number;
+  tipo: 'A' | 'N'; // Alfa ou Numérico
+  nomeCampo: string;
+  descricao: string;
+  exemplo?: string;
+  identificadorCodigo?: string;
+}
+
+export interface LearnedCNABExtratoLayout {
+  id: string;
+  nomeLayout: string; // Ex: "Itaú Extrato 240 - Padrão Febraban"
+  bancoCodigo: string;
+  bancoNome: string;
+  padraoCNAB: '240' | '400';
+  createdDate: string;
+  lastUsedDate: string;
+  timesUsed: number;
+  isCustomLearned: boolean;
+
+  // Estrutura das posições dos registros
+  headerArquivoFields: CNABExtratoFieldSpec[];
+  headerLoteFields: CNABExtratoFieldSpec[];
+  segmentoEFields: CNABExtratoFieldSpec[]; // Detalhe do Extrato
+  trailerLoteFields: CNABExtratoFieldSpec[];
+  trailerArquivoFields: CNABExtratoFieldSpec[];
+
+  // Tabela de de/para de códigos de movimento reconhecidos
+  movementCodesMap: Record<string, string>; // Código -> Categoria (ex: '01' -> 'TED Crédito', '10' -> 'Tarifa Bancária')
+}
+
+export interface MovementCodeDefinition {
+  codigo: string;
+  descricao: string;
+  grupo: 'CREDITO' | 'DEBITO' | 'TARIFA' | 'IMPOSTO' | 'INVESTIMENTO' | 'OUTROS';
+  padraoBanco?: string;
+}
+
+export interface ExtratoConversionRecord {
+  id: string;
+  dataConversao: string;
+  nomeArquivoOriginal: string;
+  nomeArquivoCNAB: string;
+  qtdLancamentos: number;
+  totalCreditos: number;
+  totalDebitos: number;
+  bancoCodigo: string;
+  layoutNome: string;
+  cnabContent: string;
 }
 
 
