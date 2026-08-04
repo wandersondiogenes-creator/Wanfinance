@@ -1,4 +1,11 @@
-export type BoletoType = 'titulo_bancario' | 'concessionaria' | 'tributo' | 'manual';
+export type BoletoType =
+  | 'titulo_bancario'
+  | 'ipva_sefaz'
+  | 'taxa_detran'
+  | 'multa_transito'
+  | 'concessionaria'
+  | 'tributo'
+  | 'manual';
 
 export interface BoletoItem {
   id: string;
@@ -15,6 +22,10 @@ export interface BoletoItem {
   nossoNumero?: string;
   desconto?: number;
   jurosMulta?: number;
+  tipoBoleto?: BoletoType;
+  placa?: string;
+  renavam?: string;
+  autoInfracao?: string;
   categoria?: string;
   observacoes?: string;
   isValid: boolean;

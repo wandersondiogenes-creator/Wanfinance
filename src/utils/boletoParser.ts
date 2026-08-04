@@ -1,4 +1,5 @@
 import { getBankInfo } from './banks';
+import { BoletoType } from '../types';
 
 export interface ParsedBoletoInfo {
   linhaDigitavelLimpa: string;
@@ -8,8 +9,175 @@ export interface ParsedBoletoInfo {
   valor: number;
   dataVencimento: string; // YYYY-MM-DD
   isValid: boolean;
-  tipo: 'titulo_bancario' | 'concessionaria' | 'desconhecido';
+  tipo: BoletoType;
+  tipoBoleto?: BoletoType;
+  placa?: string;
+  renavam?: string;
+  autoInfracao?: string;
+  descricaoDebito?: string;
+  favorecidoNome?: string;
   errorMessage?: string;
+}
+
+export interface DetectedBoletoMetadata {
+  tipoBoleto: BoletoType;
+  favorecidoNome: string;
+  bancoCodigo: string;
+  bancoNome: string;
+  placa?: string;
+  renavam?: string;
+  autoInfracao?: string;
+  dataVencimento?: string;
+  valor?: number;
+  seuNumero?: string;
+  observacoes?: string;
+}
+
+/**
+ * Intelligent detector for Vehicle Taxes (IPVA), DETRAN Fees, Traffic Fines (CTTU/AMC/DETRAN),
+ * Utility bills, and Tributos from raw document text.
+ */
+export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: string = ''): DetectedBoletoMetadata {
+  if (!rawText) {
+    return {
+      tipoBoleto: 'titulo_bancario',
+      favorecidoNome: 'Beneficiário / Cedente',
+      bancoCodigo: '000',
+      bancoNome: bancoNomeDefault || 'Banco Não Identificado',
+    };
+  }
+
+  const textUpper = rawText.toUpperCase();
+
+  // 1. Placa extraction
+  let placa = '';
+  const placaMatch = rawText.match(/(?:PLACA|PLACA\/UF|VEÍCULO|VEICULO)\s*[:\s]*([A-Z]{3}[0-9][A-Z0-9][0-9]{2}|[A-Z]{3}-?[0-9]{4})/i);
+  if (placaMatch) {
+    placa = placaMatch[1].replace('-', '').toUpperCase();
+  } else {
+    // Try standalone Mercosul or Old Plate format
+    const standalonePlaca = rawText.match(/\b([A-Z]{3}[0-9][A-Z0-9][0-9]{2}|[A-Z]{3}-[0-9]{4})\b/g);
+    if (standalonePlaca) {
+      for (const cand of standalonePlaca) {
+        const cleanCand = cand.replace('-', '').toUpperCase();
+        if (!['BRL', 'BCO', 'CON', 'PDF', 'TXT', 'CPF', 'CNPJ', 'CTTU', 'SEFAZ'].includes(cleanCand)) {
+          placa = cleanCand;
+          break;
+        }
+      }
+    }
+  }
+
+  // 2. RENAVAM extraction
+  let renavam = '';
+  const renavamMatch = rawText.match(/(?:RENAVAM|CÓDIGO\s+RENAVAM|CODIGO\s+RENAVAM)\s*[:\s]*(\d{9,11})/i);
+  if (renavamMatch) {
+    renavam = renavamMatch[1].trim();
+  }
+
+  // 3. Auto de Infração extraction
+  let autoInfracao = '';
+  const autoMatch = rawText.match(/(?:Auto\s+de\s+Infração|Auto\s+Infração|Nº\s+do\s+Auto\s+de\s+Infração|Nº\s+Auto|Auto)\s*[:\s]*([\w\d/-]{5,25})/i);
+  if (autoMatch) {
+    autoInfracao = autoMatch[1].trim();
+  } else {
+    const standaloneAuto = rawText.match(/\b(PD\d{8}|V\d{9})\b/i);
+    if (standaloneAuto) {
+      autoInfracao = standaloneAuto[1].toUpperCase();
+    }
+  }
+
+  // 4. Extracted Due Date (Vencimento)
+  let dataVencimento = '';
+  const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|PAGAR\s+ATÉ)\s*[:\s]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+  if (vencMatch) {
+    const [d, m, y] = vencMatch[1].split(/[/-]/);
+    dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  // 5. Extracted Values (Valor Cobrado / Valor com Desconto / Valor Total)
+  let valor: number | undefined;
+  const valorCobradoMatch = rawText.match(/(?:VALOR\s+COBRADO|VALOR\s+A\s+PAGAR\s+COM\s+JUROS|VALOR\s+COM\s+DESCONTO|VALOR\s+TOTAL|TOTAL\s+A\s+RECOLHER)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+  if (valorCobradoMatch) {
+    const valStr = valorCobradoMatch[1].replace(/\./g, '').replace(',', '.');
+    const parsedVal = parseFloat(valStr);
+    if (!isNaN(parsedVal) && parsedVal > 0) {
+      valor = parsedVal;
+    }
+  }
+
+  // 6. Classification of Boleto Type & Favorecido
+  let tipoBoleto: BoletoType = 'titulo_bancario';
+  let favorecidoNome = 'Beneficiário / Cedente';
+  let bancoCodigo = '800';
+  let bancoNome = 'Concessionária / Tributo';
+
+  const isIPVA = textUpper.includes('IPVA') || textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ') || textUpper.includes('DISCRIMINAÇÃO DOS DÉBITOS');
+  const isLicenciamento = textUpper.includes('LICENCIAMENTO') || (textUpper.includes('DETRAN') && !textUpper.includes('MULTA') && !textUpper.includes('INFRAÇ') && !textUpper.includes('INFRAC'));
+  const isMulta = textUpper.includes('MULTA') || textUpper.includes('INFRAÇ') || textUpper.includes('INFRAC') || textUpper.includes('CTTU') || textUpper.includes('AMC') || textUpper.includes('PRF') || textUpper.includes('AUTARQUIA DE TRÂNSITO') || textUpper.includes('NOTIFICAÇÃO DA PENALIDADE') || textUpper.includes('PENALIDADE');
+  const isTributoFederal = textUpper.includes('DARF') || textUpper.includes('GNRE') || textUpper.includes('RECEITA FEDERAL') || textUpper.includes('SIMPLES NACIONAL');
+
+  if (isIPVA) {
+    tipoBoleto = 'ipva_sefaz';
+    favorecidoNome = 'SECRETARIA DA FAZENDA - IPVA';
+    bancoCodigo = '858';
+    bancoNome = 'SEFAZ / Secretaria da Fazenda';
+  } else if (isLicenciamento) {
+    tipoBoleto = 'taxa_detran';
+    favorecidoNome = 'DETRAN - Licenciamento e Taxas';
+    bancoCodigo = '858';
+    bancoNome = 'DETRAN - Taxas de Trânsito';
+  } else if (isMulta) {
+    tipoBoleto = 'multa_transito';
+    if (textUpper.includes('CTTU') || textUpper.includes('RECIFE')) {
+      favorecidoNome = 'CTTU Recife - Trânsito e Transporte';
+    } else if (textUpper.includes('AMC') || textUpper.includes('FORTALEZA')) {
+      favorecidoNome = 'AMC Fortaleza - Autarquia de Trânsito';
+    } else {
+      favorecidoNome = 'DETRAN - Multas de Trânsito';
+    }
+    bancoCodigo = '858';
+    bancoNome = 'Órgão de Trânsito / Multas';
+  } else if (isTributoFederal) {
+    tipoBoleto = 'tributo';
+    favorecidoNome = 'Receita Federal / Tributos';
+    bancoCodigo = '856';
+    bancoNome = 'DARF / GNRE / Tributos';
+  } else if (rawText.match(/(?:ÁGUA|AGUA|ENERGIA|COMPESA|ENEL|CELPE|COELBA|LIGHT|TELEFONICA|CLARO|VIVO|TIM)/i)) {
+    tipoBoleto = 'concessionaria';
+    favorecidoNome = extractFavorecidoFromText(rawText);
+    bancoCodigo = '800';
+    bancoNome = 'Concessionária de Serviços';
+  } else {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = extractFavorecidoFromText(rawText, bancoNomeDefault);
+    bancoCodigo = '000';
+    bancoNome = bancoNomeDefault || 'Banco Emissor';
+  }
+
+  // 7. Seu Número & Observações
+  let seuNumero = autoInfracao || (placa ? `${tipoBoleto.toUpperCase()}-${placa}` : '');
+  let obsParts: string[] = [];
+  if (tipoBoleto === 'ipva_sefaz') obsParts.push('IPVA 2026');
+  if (tipoBoleto === 'taxa_detran') obsParts.push('Licenciamento DETRAN');
+  if (tipoBoleto === 'multa_transito') obsParts.push('Multa de Trânsito');
+  if (placa) obsParts.push(`Placa: ${placa}`);
+  if (renavam) obsParts.push(`RENAVAM: ${renavam}`);
+  if (autoInfracao) obsParts.push(`Auto Infração: ${autoInfracao}`);
+
+  return {
+    tipoBoleto,
+    favorecidoNome,
+    bancoCodigo,
+    bancoNome,
+    placa: placa || undefined,
+    renavam: renavam || undefined,
+    autoInfracao: autoInfracao || undefined,
+    dataVencimento: dataVencimento || undefined,
+    valor,
+    seuNumero: seuNumero || undefined,
+    observacoes: obsParts.length > 0 ? obsParts.join(' | ') : undefined,
+  };
 }
 
 /**

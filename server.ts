@@ -5,7 +5,7 @@ import https from "https";
 import axios from "axios";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
-import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText } from "./src/utils/boletoParser";
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from "./src/utils/boletoParser";
 
 // In-memory logs for bank transmission history
 const bankApiLogsHistory: Array<{
@@ -281,28 +281,39 @@ async function startServer() {
           },
         });
 
-        const prompt = `Você é um leitor óptico (OCR) e especialista financeiro de MÁXIMA PRECISÃO em boletos bancários brasileiros, carnês de pagamento, parcelamentos, faturas, tributos, guias de arrecadação e GNRE.
+        const prompt = `Você é um leitor óptico (OCR) e especialista financeiro de MÁXIMA PRECISÃO em boletos bancários brasileiros, carnês de pagamento, faturas, tributos (IPVA, SEFAZ), taxas de trânsito (DETRAN, Licenciamento), multas de trânsito (CTTU, AMC, PRF, DER, DETRAN), guias de arrecadação e GNRE.
 
 Analise com EXTREMA ATENÇÃO TODO O CONTEÚDO DE TODAS AS PÁGINAS do arquivo enviado (${fileName}).
 
-REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS SUHAI, FINANCIAMENTOS, CONSÓRCIOS):
-1. O arquivo pode ser um CARNÊ com várias parcelas (ex: 12 parcelas de seguro Suhai / financiamento), onde cada página contém 2, 3 ou mais cupons/parcelas (por exemplo: Parcela 01/012 a Parcela 12/012).
-2. CADA PARCELA É UM BOLETO INDIVIDUAL com sua própria data de vencimento (ex: 04/05/2026, 25/05/2026, 25/06/2026...), valor próprio (ex: R$ 49,32 ou R$ 49,35), "Nº do Documento", "Nosso Número" e linha digitável.
-3. Você DEVE PERCORRER TODAS AS PÁGINAS do PDF e extrair CADA UMA DAS PARCELAS como um boleto separado no array "boletos".
-4. SE O CARNÊ TIVER 12 PARCELAS (01/012 até 12/012), VOCÊ DEVE RETORNAR EXATAMENTE 12 BOLETOS NO ARRAY! NUNCA pare na 1ª parcela e NUNCA pule nenhuma página.
-5. EXTRAÇÃO DE NÚMEROS E IDENTIFICAÇÃO (MUITO IMPORTANTE):
-   - "numeroDocumento": Número impresso no campo "Nº do Documento" do boleto (ex: "1003111990090/00000000/01" para a parcela 1, "1003111990090/00000000/02" para a parcela 2). Este é a Nota Fiscal/Número do Documento real.
-   - "seuNumero": Coloque o "Nº do Documento" exato impresso na parcela (ex: "1003111990090/00000000/01"). NUNCA substitua por um número genérico se o "Nº do Documento" estiver visível.
-   - "nossoNumero": Código impresso no campo "Nosso Número" ou "Cart. / Nosso Número" (ex: "5/00056921372-8", "5/00056921373-6").
-6. LINHA DIGITÁVEL E DADOS FINANCEIROS:
-   - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos). Se para alguma parcela a linha digitável não estiver em texto corrido impresso no topo, mas você tiver Banco (237 - Bradesco), Agência (3392), Conta (0201560-9), Carteira (05), Nosso Número (ex: 5/00056921372-8), Vencimento e Valor, monte/calcule a linha digitável correspondente de 47 dígitos.
-   - "favorecidoNome": NOME DA EMPRESA COBRADORA OU BENEFICIÁRIO/CEDENTE QUE ESTÁ EMITINDO A FATURA OU RECEBENDO O PAGAMENTO (ex: "SUHAI SEGURADORA S/A", "CLARO S.A."). NUNCA COLOQUE O NOME DO BANCO EMISSOR (como "Bradesco", "Banco Itaú") no favorecidoNome!
-   - "favorecidoCnpjCpf": CNPJ do Beneficiário (ex: "16.825.255/0001-23").
-   - "valor": Valor numérico exato do documento para ESTA PARCELA (ex: 49.32 ou 49.35).
-   - "dataVencimento": Data de Vencimento de ESTA PARCELA no formato YYYY-MM-DD.
-   - "bancoCodigo": Código de 3 dígitos do banco (ex: "237" para Bradesco).
-   - "bancoNome": Nome do banco emissor (ex: "Bradesco").
-   - "observacoes": Ex: "Parcela 01/012 de Suhai Seguradora".
+REGRAS OBRIGATÓRIAS PARA TIPOS DE BOLETOS, TRIBUTOS E DADOS VEICULARES:
+1. IDENTIFICAÇÃO DO TIPO DE BOLETO ("tipoBoleto"):
+   - "ipva_sefaz": Guia de IPVA / Secretaria da Fazenda / DAE.
+   - "taxa_detran": Licenciamento, Taxas de Vistoria, Registro de Veículos do DETRAN.
+   - "multa_transito": Multas de Trânsito (CTTU, AMC, DETRAN, PRF, DER, Prefeituras).
+   - "tributo": Impostos Federais/Estaduais (DARF, GNRE, DAS, Receita Federal).
+   - "concessionaria": Contas de Água, Luz, Telefone, Gás, Internet.
+   - "titulo_bancario": Boleto Bancário Padrão de cobrança.
+
+2. DADOS ESPECÍFICOS DE VEÍCULOS / MULTAS:
+   - "placa": Placa do veículo se presente no documento (ex: "GIO4D94", "SOH3G72", "QXC7187").
+   - "renavam": Código RENAVAM se presente (ex: "1298608357", "11542295211").
+   - "autoInfracao": Número do Auto de Infração para multas de trânsito (ex: "PD00210331", "V103112861").
+
+3. IDENTIFICAÇÃO DO FAVORECIDO / BENEFICIÁRIO:
+   - Para IPVA: "SECRETARIA DA FAZENDA - IPVA"
+   - Para DETRAN (Taxas/Licenciamento): "DETRAN - Licenciamento / Taxas"
+   - Para Multas de Trânsito: "CTTU Recife - Trânsito", "AMC Fortaleza - Trânsito", ou "DETRAN - Multas"
+   - NUNCA coloque o nome do banco arrecadador (ex: Banco do Brasil, Bradesco, Itaú) no "favorecidoNome"!
+
+4. NÚMEROS E IDENTIFICAÇÃO:
+   - "numeroDocumento": Número do documento impresso, Auto de Infração ou "IPVA-PLACA".
+   - "seuNumero": Auto de Infração ou Número do Documento exato.
+   - "nossoNumero": Código do campo Nosso Número se disponível.
+
+5. LINHA DIGITÁVEL E VALOR:
+   - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos/DETRAN/IPVA).
+   - "valor": Valor exato a pagar (R$). Para guias de arrecadação, leia o "VALOR COBRADO", "VALOR TOTAL" ou "VALOR COM DESCONTO".
+   - "dataVencimento": Data de Vencimento no formato YYYY-MM-DD (ex: "2026-08-04").
 
 REGRA DE SCHEMA JSON:
 NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
@@ -355,6 +366,10 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
                             nossoNumero: { type: Type.STRING },
                             bancoCodigo: { type: Type.STRING },
                             bancoNome: { type: Type.STRING },
+                            tipoBoleto: { type: Type.STRING },
+                            placa: { type: Type.STRING },
+                            renavam: { type: Type.STRING },
+                            autoInfracao: { type: Type.STRING },
                             observacoes: { type: Type.STRING },
                             desconto: { type: Type.NUMBER },
                             jurosMulta: { type: Type.NUMBER },
@@ -435,13 +450,31 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
         boletosExtracted = [];
       }
 
+      let pdfTextForEnrichment = "";
+      try {
+        const buffer = Buffer.from(cleanBase64, "base64");
+        pdfTextForEnrichment = extractTextFromPdfBuffer(buffer);
+      } catch (err) {}
+
       boletosExtracted = boletosExtracted
         .filter((b) => b && typeof b === "object")
         .map((b) => {
           const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
           const cleanLinha = onlyNumbers(rawDigits);
 
-          // Ensure favorecidoNome is the charging company and not the issuing bank
+          const detectedMeta = detectBoletoDetailsFromText(pdfTextForEnrichment, b.bancoNome);
+
+          if (!b.tipoBoleto || b.tipoBoleto === "titulo_bancario" || b.tipoBoleto === "concessionaria") {
+            if (detectedMeta.tipoBoleto !== "titulo_bancario") {
+              b.tipoBoleto = detectedMeta.tipoBoleto;
+            }
+          }
+
+          if (!b.placa && detectedMeta.placa) b.placa = detectedMeta.placa;
+          if (!b.renavam && detectedMeta.renavam) b.renavam = detectedMeta.renavam;
+          if (!b.autoInfracao && detectedMeta.autoInfracao) b.autoInfracao = detectedMeta.autoInfracao;
+
+          // Ensure favorecidoNome is accurate and not the issuing bank name
           let fav = String(b.favorecidoNome || "").trim();
           const bName = String(b.bancoNome || "").trim();
           const isBankName =
@@ -454,27 +487,28 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
             fav.toLowerCase().includes("caixa econ") ||
             fav.toLowerCase().includes("sicoob") ||
             fav.toLowerCase().includes("sicredi") ||
+            fav === "Beneficiário / Cedente" ||
+            fav === "Beneficiário Não Identificado" ||
             (bName && fav.toLowerCase() === bName.toLowerCase());
 
-          if (isBankName) {
-            let extractedCompany = "";
-            try {
-              const buffer = Buffer.from(cleanBase64, "base64");
-              const rawPdfText = extractTextFromPdfBuffer(buffer);
-              extractedCompany = extractFavorecidoFromText(rawPdfText, bName);
-            } catch (err) {}
+          if (isBankName && detectedMeta.favorecidoNome && detectedMeta.favorecidoNome !== "Beneficiário / Cedente") {
+            b.favorecidoNome = detectedMeta.favorecidoNome;
+          }
 
-            if (extractedCompany && extractedCompany !== "Beneficiário / Cedente") {
-              b.favorecidoNome = extractedCompany;
-            } else {
-              b.favorecidoNome = "Empresa Cobradora / Beneficiário";
-            }
+          if (detectedMeta.bancoCodigo && (b.bancoCodigo === "000" || !b.bancoCodigo || b.bancoCodigo === "800")) {
+            b.bancoCodigo = detectedMeta.bancoCodigo;
+            b.bancoNome = detectedMeta.bancoNome;
           }
 
           if (typeof b.valor === "string") {
             const cleanedVal = String(b.valor).replace(/[^\d.,]/g, "").replace(/\./g, "").replace(",", ".");
             const parsedNum = parseFloat(cleanedVal);
             if (!isNaN(parsedNum)) b.valor = parsedNum;
+          }
+
+          // If valor is still missing or 0 and detectedMeta found a value
+          if ((!b.valor || Number(b.valor) === 0) && detectedMeta.valor) {
+            b.valor = detectedMeta.valor;
           }
 
           // Sanitize and convert date formats like DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD
@@ -486,25 +520,33 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
             }
           }
 
+          if ((!b.dataVencimento || b.dataVencimento === "") && detectedMeta.dataVencimento) {
+            b.dataVencimento = detectedMeta.dataVencimento;
+          }
+
           b.favorecidoNome = b.favorecidoNome || b.beneficiario || b.cedente || "Beneficiário Não Identificado";
           b.cedente = b.cedente || b.favorecidoNome;
           b.beneficiario = b.beneficiario || b.favorecidoNome;
           b.favorecidoCnpjCpf = b.favorecidoCnpjCpf || b.CNPJ || "";
           b.CNPJ = b.CNPJ || b.favorecidoCnpjCpf || "";
-          b.seuNumero = b.seuNumero || b.numeroDocumento || "";
-          b.numeroDocumento = b.numeroDocumento || b.seuNumero || "";
+          b.seuNumero = b.seuNumero || b.numeroDocumento || detectedMeta.seuNumero || "";
+          b.numeroDocumento = b.numeroDocumento || b.seuNumero || detectedMeta.autoInfracao || "";
           b.banco = b.banco || b.bancoNome || "";
+          if (detectedMeta.observacoes && !b.observacoes) {
+            b.observacoes = detectedMeta.observacoes;
+          }
 
           if (cleanLinha.length >= 44) {
             const parsedCheck = parseLinhaDigitavel(cleanLinha);
             if (parsedCheck.isValid) {
               b.linhaDigitavel = cleanLinha;
               b.codigoBarras = b.codigoBarras || parsedCheck.codigoBarras;
-              b.bancoCodigo = parsedCheck.bancoCodigo || b.bancoCodigo || "000";
-              b.bancoNome = parsedCheck.bancoNome || b.bancoNome || b.banco;
+              if (!b.bancoCodigo || b.bancoCodigo === "000") {
+                b.bancoCodigo = parsedCheck.bancoCodigo || "000";
+                b.bancoNome = parsedCheck.bancoNome || b.banco;
+              }
               b.banco = b.bancoNome;
 
-              // If extracted valor is 0, use parsed value from linha digitável
               if (!b.valor || Number(b.valor) === 0) {
                 b.valor = parsedCheck.valor;
               }

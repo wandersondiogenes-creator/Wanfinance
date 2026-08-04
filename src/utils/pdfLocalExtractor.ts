@@ -1,4 +1,4 @@
-import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText } from './boletoParser';
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from './boletoParser';
 
 /**
  * Client-Side Browser Fallback for PDF & Image Boleto Data Extraction.
@@ -103,17 +103,6 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
     const fullDocText = pageTexts.join(' \n ');
 
-    // Extract Favorecido / Beneficiário from overall text if available
-    let docFavorecido = 'Beneficiário Emissor';
-    const suhaiMatch = fullDocText.match(/(SUHAI\s+SEGURADORA\s*(?:S\/?A)?)/i);
-    const sefazMatch = fullDocText.match(/(SECRETARIA\s+DA\s+FAZENDA[^\r\n]*|SEFAZ[-/ ][A-Z]{2}|GOVERNO\s+DO\s+ESTADO[^\r\n]*|RECEITA\s+FEDERAL)/i);
-    
-    if (suhaiMatch) {
-      docFavorecido = 'SUHAI SEGURADORA S/A';
-    } else if (sefazMatch) {
-      docFavorecido = sefazMatch[1].trim();
-    }
-
     // 2. Scan each page text for 47 and 48 digit linha digitável patterns
     const patterns = [
       /\d{5}[\.\s-]*\d{5}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d[\.\s-]*\d{14}/g,
@@ -123,6 +112,9 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
     ];
 
     for (const textBlock of pageTexts) {
+      const blockText = textBlock || fullDocText;
+      const detected = detectBoletoDetailsFromText(blockText);
+
       for (const pattern of patterns) {
         const matches = textBlock.match(pattern);
         if (matches) {
@@ -132,42 +124,46 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
               const parsed = parseLinhaDigitavel(clean);
               if (parsed.isValid) {
                 seenLines.add(clean);
-                let extractedValue = parsed.valor || 0;
+                let extractedValue = detected.valor || parsed.valor || 0;
 
-                const valorMatch = textBlock.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+DO\s+DOCUMENTO|VALOR\s+PRINCIPAL)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+                const valorMatch = textBlock.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+DO\s+DOCUMENTO|VALOR\s+PRINCIPAL|VALOR\s+COBRADO)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
                 if (valorMatch) {
                   const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
                   const parsedVal = parseFloat(valStr);
                   if (!isNaN(parsedVal) && parsedVal > 0) {
-                    if (extractedValue === 0 || parsed.bancoCodigo === '858' || parsed.bancoCodigo === '856') {
-                      extractedValue = parsedVal;
-                    }
+                    extractedValue = parsedVal;
                   }
                 }
 
-                const blockFavorecido = extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome);
-
-                let docNumber = '';
+                let docNumber = detected.autoInfracao || '';
                 let nossoNum = '';
                 const numDocMatch = textBlock.match(/(?:Nº\s+do\s+Documento|Número\s+do\s+Documento|Nº\s+Doc|Seu\s+Número)\s*[:\s]*([\w\/\.-]{5,30})/i);
-                if (numDocMatch) docNumber = numDocMatch[1].trim();
+                if (numDocMatch && !docNumber) docNumber = numDocMatch[1].trim();
 
                 const nossoNumMatch = textBlock.match(/(?:Nosso\s+Número|Cart\.\s*\/\s*Nosso\s+Número)\s*[:\s]*([\w\/\.-]{5,25})/i);
                 if (nossoNumMatch) nossoNum = nossoNumMatch[1].trim();
 
+                const finalFavorecido = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
+                  ? detected.favorecidoNome
+                  : extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome);
+
                 boletosFound.push({
                   linhaDigitavel: clean,
                   codigoBarras: parsed.codigoBarras || clean,
-                  favorecidoNome: blockFavorecido,
+                  favorecidoNome: finalFavorecido,
                   favorecidoCnpjCpf: '',
                   valor: extractedValue,
-                  dataVencimento: parsed.dataVencimento || new Date().toISOString().split('T')[0],
+                  dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
                   numeroDocumento: docNumber,
-                  seuNumero: docNumber || `PDF-BROWSER-${boletosFound.length + 1}`,
+                  seuNumero: docNumber || detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
                   nossoNumero: nossoNum,
-                  bancoCodigo: parsed.bancoCodigo,
-                  bancoNome: parsed.bancoNome,
-                  observacoes: 'Extraído via leitor de PDF local',
+                  bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
+                  bancoNome: detected.bancoNome || parsed.bancoNome,
+                  tipoBoleto: detected.tipoBoleto,
+                  placa: detected.placa,
+                  renavam: detected.renavam,
+                  autoInfracao: detected.autoInfracao,
+                  observacoes: detected.observacoes || 'Extraído via leitor de PDF local',
                   confidence: 0.9,
                 });
               }
@@ -177,11 +173,11 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       }
     }
 
-    // 3. Scan for scattered 47-digit sequences in extracted clean page text (e.g., spaces or linebreaks in numbers)
+    // 3. Scan for scattered 47-digit sequences in extracted clean page text
     if (boletosFound.length === 0) {
       for (const textBlock of pageTexts) {
         const textDigitsOnly = onlyNumbers(textBlock);
-        // Only scan if text came from actual PDF text items (length reasonable)
+        const detected = detectBoletoDetailsFromText(textBlock || fullDocText);
         if (textDigitsOnly.length >= 47 && textDigitsOnly.length < 5000) {
           for (let i = 0; i <= textDigitsOnly.length - 47; i++) {
             const chunk = textDigitsOnly.substring(i, i + 47);
@@ -192,15 +188,19 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                 boletosFound.push({
                   linhaDigitavel: chunk,
                   codigoBarras: parsed.codigoBarras || chunk,
-                  favorecidoNome: extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome),
+                  favorecidoNome: detected.favorecidoNome || extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome),
                   favorecidoCnpjCpf: '',
-                  valor: parsed.valor,
-                  dataVencimento: parsed.dataVencimento || new Date().toISOString().split('T')[0],
-                  seuNumero: `PDF-BROWSER-${boletosFound.length + 1}`,
+                  valor: detected.valor || parsed.valor,
+                  dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
+                  seuNumero: detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
                   nossoNumero: '',
-                  bancoCodigo: parsed.bancoCodigo,
-                  bancoNome: parsed.bancoNome,
-                  observacoes: 'Extraído via varredura de texto local',
+                  bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
+                  bancoNome: detected.bancoNome || parsed.bancoNome,
+                  tipoBoleto: detected.tipoBoleto,
+                  placa: detected.placa,
+                  renavam: detected.renavam,
+                  autoInfracao: detected.autoInfracao,
+                  observacoes: detected.observacoes || 'Extraído via varredura de texto local',
                   confidence: 0.85,
                 });
               }
