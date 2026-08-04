@@ -75,6 +75,35 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
     else alert(msg);
   };
 
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [pastedContent, setPastedContent] = useState('');
+
+  const processCnabContent = (content: string, fileName: string) => {
+    if (!content.trim()) {
+      alert('O conteúdo do arquivo modelo está vazio.');
+      return;
+    }
+    const learned = reverseEngineCnabStructure(content, fileName, company, true);
+    setAnalyzedLayout(learned);
+    setLayoutForm({
+      nomeLayout: learned.nomeLayout,
+      bancoCodigo: learned.bancoCodigo,
+      bancoNome: learned.bancoNome,
+      empresaNome: learned.empresaNome || company?.razaoSocial || '',
+      cnpjEmpresa: learned.cnpjEmpresa || company?.cnpj || '',
+      agenciaPadrao: learned.agenciaPadrao || company?.agencia || '',
+      digitoAgencia: learned.digitoAgencia || '',
+      contaPadrao: learned.contaPadrao || company?.conta || '',
+      digitoConta: learned.digitoConta || '',
+      convenioPadrao: learned.convenioPadrao || company?.convenio || '',
+      codigoEmpresaBanco: learned.codigoEmpresaBanco || company?.convenio || '',
+      seqArquivoModelo: learned.seqArquivoModelo || '000001',
+      versaoLayoutModelo: learned.versaoLayoutModelo || '087',
+    });
+    setSavedLayouts(loadLearnedExtratoLayouts());
+    showToast(`Layout do arquivo ${fileName} analisado e copiado exatamente com sucesso!`);
+  };
+
   // 1. Process CNAB Model File
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,34 +114,21 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
 
     reader.onload = (event) => {
       const content = (event.target?.result as string) || '';
-      if (!content.trim()) {
-        alert('O arquivo selecionado está vazio.');
-        return;
-      }
-
-      // Reverse engineering layout
-      const learned = reverseEngineCnabStructure(content, file.name, company);
-      setAnalyzedLayout(learned);
-      setLayoutForm({
-        nomeLayout: learned.nomeLayout,
-        bancoCodigo: learned.bancoCodigo,
-        bancoNome: learned.bancoNome,
-        empresaNome: learned.empresaNome || company?.razaoSocial || '',
-        cnpjEmpresa: learned.cnpjEmpresa || company?.cnpj || '',
-        agenciaPadrao: learned.agenciaPadrao || company?.agencia || '',
-        digitoAgencia: learned.digitoAgencia || '',
-        contaPadrao: learned.contaPadrao || company?.conta || '',
-        digitoConta: learned.digitoConta || '',
-        convenioPadrao: learned.convenioPadrao || company?.convenio || '',
-        codigoEmpresaBanco: learned.codigoEmpresaBanco || company?.convenio || '',
-        seqArquivoModelo: learned.seqArquivoModelo || '000001',
-        versaoLayoutModelo: learned.versaoLayoutModelo || '087',
-      });
-      setSavedLayouts(loadLearnedExtratoLayouts());
-      showToast(`Layout do arquivo ${file.name} analisado e copiado exatamente com sucesso!`);
+      processCnabContent(content, file.name);
     };
 
     reader.readAsText(file, 'ISO-8859-1'); // Suporte a caracteres acentuados de bancos
+  };
+
+  const handlePasteAnalyze = () => {
+    if (!pastedContent.trim()) {
+      alert('Por favor, cole o conteúdo do arquivo modelo CNAB.');
+      return;
+    }
+    setModelFileName('Modelo_CNAB_Colado.ret');
+    processCnabContent(pastedContent, 'Modelo_CNAB_Colado.ret');
+    setShowPasteModal(false);
+    setPastedContent('');
   };
 
   // Salva ou atualiza as alterações do layout
@@ -242,13 +258,72 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
             </div>
           </div>
 
-          <label className="bg-purple-500 hover:bg-purple-400 text-slate-950 text-xs font-black px-5 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 cursor-pointer self-start md:self-auto">
-            <Upload className="w-4 h-4" />
-            <span>Enviar Arquivo CNAB Modelo</span>
-            <input type="file" accept=".ret, .rem, .txt" onChange={handleFileUpload} className="hidden" />
-          </label>
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+            <button
+              onClick={() => setShowPasteModal(true)}
+              className="bg-purple-900/60 hover:bg-purple-900/90 text-purple-200 text-xs font-bold px-4 py-3 rounded-2xl border border-purple-500/40 transition-all flex items-center gap-2"
+            >
+              <Code2 className="w-4 h-4 text-purple-300" />
+              <span>Colar Texto do Modelo</span>
+            </button>
+            <label className="bg-purple-500 hover:bg-purple-400 text-slate-950 text-xs font-black px-5 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 cursor-pointer">
+              <Upload className="w-4 h-4" />
+              <span>Enviar Arquivo CNAB Modelo</span>
+              <input type="file" accept=".ret, .rem, .txt" onChange={handleFileUpload} className="hidden" />
+            </label>
+          </div>
         </div>
       </div>
+
+      {/* Modal para Colar Texto CNAB */}
+      {showPasteModal && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-black">
+                  <Terminal className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Colar Texto do Arquivo Modelo CNAB</h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Cole as linhas brutas do arquivo CNAB para cópia e engenharia reversa exata.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPasteModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <textarea
+              value={pastedContent}
+              onChange={(e) => setPastedContent(e.target.value)}
+              placeholder="Cole aqui o conteúdo completo do arquivo CNAB (Header, Segmentos E, Trailers)..."
+              className="w-full h-64 p-4 font-mono text-xs bg-slate-950 text-slate-100 rounded-2xl border border-slate-800 focus:outline-hidden focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+            />
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                onClick={() => setShowPasteModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handlePasteAnalyze}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-black text-xs px-5 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Analisar e Copiar Modelo Fiel</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TELA DE ANÁLISE DO LAYOUT APRENDIDO */}
       {analyzedLayout ? (
