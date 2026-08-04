@@ -265,9 +265,9 @@ export const DEFAULT_EXTRATO_LAYOUTS: LearnedCNABExtratoLayout[] = [
 export function loadLearnedExtratoLayouts(): LearnedCNABExtratoLayout[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_EXTRATO_LAYOUTS);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch (e) {
     console.warn('[Extrato Engine] Erro ao carregar layouts aprendidos:', e);
@@ -342,8 +342,31 @@ function formatDateDDMMAAAA(dateStr: string): string {
 }
 
 /**
+ * SOBREPOSIÇÃO DE CAMPOS (OVERLAY) MANTENDO 100% DAS INFORMAÇÕES DO MODELO CNAB
+ * Preserva exatamente todos os caracteres do arquivo enviado, alterando apenas os campos dinâmicos do extrato
+ */
+export function overlayField(
+  baseLine: string,
+  posStart1Based: number,
+  length: number,
+  replacement: string
+): string {
+  if (!baseLine) return '';
+  const targetLength = Math.max(baseLine.length, posStart1Based + length - 1, 240);
+  const padded = baseLine.padEnd(targetLength, ' ');
+  const chars = padded.split('');
+  const startIdx = posStart1Based - 1;
+  const repFormatted = replacement.slice(0, length);
+  for (let i = 0; i < length; i++) {
+    chars[startIdx + i] = repFormatted[i] ?? ' ';
+  }
+  return chars.join('');
+}
+
+/**
  * GERADOR DE ARQUIVO CNAB 240 DE EXTRATO BANCÁRIO
- * Converte lançamentos extraídos de planilha para as 240 colunas do Padrão Febraban
+ * Converte lançamentos extraídos de planilha espelhando com precisão de 100% o modelo CNAB enviado,
+ * alterando exclusivamente as movimentações do extrato (crédito e débito)
  */
 export function generateCNABExtratoFile(
   transactions: ExtratoTransaction[],
@@ -352,76 +375,110 @@ export function generateCNABExtratoFile(
 ): string {
   const lines: string[] = [];
 
-  const bankCode = padZero(company.bancoCodigo || layout.bancoCodigo || '341', 3);
-  const cnpjDigits = padZero(company.cnpjCpf.replace(/\D/g, ''), 14);
+  const bankCode = padZero(layout?.bancoCodigo || company.bancoCodigo || '341', 3);
+  const rawCnpj = layout?.cnpjEmpresa || company.cnpjCpf || company.cnpj || '00000000000000';
+  const cnpjDigits = padZero(rawCnpj.replace(/\D/g, ''), 14);
   const bankInfo = getBankInfo(bankCode);
 
-  const agency = padZero(company.agencia || '0001', 5);
-  const agencyDV = padText(company.agenciaDV || '0', 1);
-  const account = padZero(company.conta || '000000', 12);
-  const accountDV = padText(company.contaDV || '0', 1);
-  const companyName = padText(company.razaoSocial || 'EMPRESA TITULAR DA CONTA', 30);
-  const nsa = padZero(company.nsa || 1, 6);
+  const agency = padZero(layout?.agenciaPadrao || company.agencia || '0001', 5);
+  const agencyDV = padText(layout?.digitoAgencia || company.agenciaDV || '0', 1);
+  const account = padZero(layout?.contaPadrao || company.conta || '000000', 12);
+  const accountDV = padText(layout?.digitoConta || company.contaDV || '0', 1);
+  const companyName = padText(layout?.empresaNome || company.razaoSocial || 'EMPRESA TITULAR DA CONTA', 30);
+  const convenio = padText(layout?.codigoEmpresaBanco || layout?.convenioPadrao || company.convenio || '000000000000001', 20);
+  const nsa = padZero(layout?.seqArquivoModelo || company.nsa || 1, 6);
+  const versaoLayout = padZero(layout?.versaoLayoutModelo || '080', 3);
 
   const now = new Date();
   const dateDDMMAAAA = formatDateDDMMAAAA(now.toISOString().split('T')[0]);
   const timeHHMMSS = padZero(`${now.getHours()}${now.getMinutes()}${now.getSeconds()}`, 6);
 
-  // 1. HEADER DE ARQUIVO (240 posições)
+  // 1. HEADER DE ARQUIVO (240 posições - Usa o modelo original como base)
   let headerArq = '';
-  headerArq += bankCode; // 001-003: Banco
-  headerArq += '0000'; // 004-007: Lote 0000
-  headerArq += '0'; // 008-008: Tipo Reg 0 (Header Arq)
-  headerArq += padText('', 9); // 009-017: Uso FEBRABAN
-  headerArq += '2'; // 018-018: Tipo Inscrição (2 = CNPJ)
-  headerArq += cnpjDigits; // 019-032: CNPJ
-  headerArq += padText(company.convenio || '000000000000001', 20); // 033-052: Convênio
-  headerArq += agency; // 053-057: Agência
-  headerArq += agencyDV; // 058-058: DV Agência
-  headerArq += account; // 059-070: Conta
-  headerArq += accountDV; // 071-071: DV Conta
-  headerArq += ' '; // 072-072: DV Ag/Conta
-  headerArq += companyName; // 073-102: Nome Empresa
-  headerArq += padText(bankInfo.shortName.toUpperCase(), 30); // 103-132: Nome Banco
-  headerArq += padText('', 10); // 133-142: Uso FEBRABAN
-  headerArq += '1'; // 143-143: Código Remessa/Retorno (1=Remessa/Extrato)
-  headerArq += dateDDMMAAAA; // 144-151: Data Geração
-  headerArq += timeHHMMSS; // 152-157: Hora Geração
-  headerArq += nsa; // 158-163: Sequencial NSA
-  headerArq += '080'; // 164-166: Versão Layout 080
-  headerArq += '00000'; // 167-171: Densidade
-  headerArq += padText('', 69); // 172-240: Reservado Banco/FEBRABAN
-
+  if (layout?.sampleHeaderArq && layout.sampleHeaderArq.length >= 240) {
+    headerArq = layout.sampleHeaderArq.padEnd(240, ' ').slice(0, 240);
+    headerArq = overlayField(headerArq, 1, 3, bankCode);
+    headerArq = overlayField(headerArq, 18, 1, layout.tipoInscricaoEmpresa || '2');
+    headerArq = overlayField(headerArq, 19, 14, cnpjDigits);
+    headerArq = overlayField(headerArq, 33, 20, convenio);
+    headerArq = overlayField(headerArq, 53, 5, agency);
+    headerArq = overlayField(headerArq, 58, 1, agencyDV);
+    headerArq = overlayField(headerArq, 59, 12, account);
+    headerArq = overlayField(headerArq, 71, 1, accountDV);
+    headerArq = overlayField(headerArq, 73, 30, companyName);
+    headerArq = overlayField(headerArq, 103, 30, padText(layout?.nomeBancoModelo?.toUpperCase() || bankInfo.shortName.toUpperCase(), 30));
+    headerArq = overlayField(headerArq, 144, 8, dateDDMMAAAA);
+    headerArq = overlayField(headerArq, 152, 6, timeHHMMSS);
+    headerArq = overlayField(headerArq, 158, 6, nsa);
+    headerArq = overlayField(headerArq, 164, 3, versaoLayout);
+  } else {
+    headerArq += bankCode; // 001-003: Banco
+    headerArq += '0000'; // 004-007: Lote 0000
+    headerArq += '0'; // 008-008: Tipo Reg 0 (Header Arq)
+    headerArq += padText('', 9); // 009-017: Uso FEBRABAN
+    headerArq += '2'; // 018-018: Tipo Inscrição (2 = CNPJ)
+    headerArq += cnpjDigits; // 019-032: CNPJ
+    headerArq += convenio; // 033-052: Convênio / Código da Empresa no Banco
+    headerArq += agency; // 053-057: Agência
+    headerArq += agencyDV; // 058-058: DV Agência
+    headerArq += account; // 059-070: Conta
+    headerArq += accountDV; // 071-071: DV Conta
+    headerArq += ' '; // 072-072: DV Ag/Conta
+    headerArq += companyName; // 073-102: Nome Empresa
+    headerArq += padText(layout?.nomeBancoModelo?.toUpperCase() || bankInfo.shortName.toUpperCase(), 30); // 103-132: Nome Banco
+    headerArq += padText('', 10); // 133-142: Uso FEBRABAN
+    headerArq += '1'; // 143-143: Código Remessa/Retorno (1=Remessa/Extrato)
+    headerArq += dateDDMMAAAA; // 144-151: Data Geração
+    headerArq += timeHHMMSS; // 152-157: Hora Geração
+    headerArq += nsa; // 158-163: Sequencial NSA
+    headerArq += versaoLayout; // 164-166: Versão Layout 080/087
+    headerArq += '00000'; // 167-171: Densidade
+    headerArq += padText('', 69); // 172-240: Reservado Banco/FEBRABAN
+  }
   lines.push(headerArq);
 
-  // 2. HEADER DE LOTE DE EXTRATO (240 posições)
+  // 2. HEADER DE LOTE DE EXTRATO (240 posições - Usa o modelo original como base)
   let headerLote = '';
-  headerLote += bankCode; // 001-003: Banco
-  headerLote += '0001'; // 004-007: Lote 0001
-  headerLote += '1'; // 008-008: Tipo Reg 1 (Header Lote)
-  headerLote += 'E'; // 009-009: Operação 'E' (Extrato)
-  headerLote += '04'; // 010-011: Serviço 04 (Extrato de CC)
-  headerLote += '00'; // 012-013: Forma Lançamento
-  headerLote += '030'; // 014-016: Versão Layout Lote
-  headerLote += ' '; // 017-017: Uso FEBRABAN
-  headerLote += '2'; // 018-018: CNPJ
-  headerLote += cnpjDigits; // 019-032: CNPJ
-  headerLote += padText(company.convenio || '000000000000001', 20); // 033-052
-  headerLote += agency; // 053-057
-  headerLote += agencyDV; // 058-058
-  headerLote += account; // 059-070
-  headerLote += accountDV; // 071-071
-  headerLote += ' '; // 072-072
-  headerLote += companyName; // 073-102
-  headerLote += padText('', 40); // 103-142
-  headerLote += dateDDMMAAAA; // 143-150: Data Inicial
-  headerLote += formatValueInCents(0, 18); // 151-168: Saldo Inicial
-  headerLote += 'C'; // 169-169: Situação Saldo Inicial
-  headerLote += 'M'; // 170-170: Posição do Saldo (M = Matriz)
-  headerLote += 'BRL'; // 171-173: Moeda
-  headerLote += padZero(1, 6); // 174-179: Nº Sequencial Extrato
-  headerLote += padText('', 61); // 180-240: Uso FEBRABAN
-
+  if (layout?.sampleHeaderLote && layout.sampleHeaderLote.length >= 240) {
+    headerLote = layout.sampleHeaderLote.padEnd(240, ' ').slice(0, 240);
+    headerLote = overlayField(headerLote, 1, 3, bankCode);
+    headerLote = overlayField(headerLote, 4, 4, '0001');
+    headerLote = overlayField(headerLote, 8, 1, '1');
+    headerLote = overlayField(headerLote, 19, 14, cnpjDigits);
+    headerLote = overlayField(headerLote, 33, 20, convenio);
+    headerLote = overlayField(headerLote, 53, 5, agency);
+    headerLote = overlayField(headerLote, 58, 1, agencyDV);
+    headerLote = overlayField(headerLote, 59, 12, account);
+    headerLote = overlayField(headerLote, 71, 1, accountDV);
+    headerLote = overlayField(headerLote, 73, 30, companyName);
+    headerLote = overlayField(headerLote, 143, 8, dateDDMMAAAA);
+  } else {
+    headerLote += bankCode; // 001-003: Banco
+    headerLote += '0001'; // 004-007: Lote 0001
+    headerLote += '1'; // 008-008: Tipo Reg 1 (Header Lote)
+    headerLote += 'E'; // 009-009: Operação 'E' (Extrato)
+    headerLote += '04'; // 010-011: Serviço 04 (Extrato de CC)
+    headerLote += '00'; // 012-013: Forma Lançamento
+    headerLote += '030'; // 014-016: Versão Layout Lote
+    headerLote += ' '; // 017-017: Uso FEBRABAN
+    headerLote += '2'; // 018-018: CNPJ
+    headerLote += cnpjDigits; // 019-032: CNPJ
+    headerLote += convenio; // 033-052: Convênio
+    headerLote += agency; // 053-057: Agência
+    headerLote += agencyDV; // 058-058
+    headerLote += account; // 059-070
+    headerLote += accountDV; // 071-071
+    headerLote += ' '; // 072-072
+    headerLote += companyName; // 073-102
+    headerLote += padText('', 40); // 103-142
+    headerLote += dateDDMMAAAA; // 143-150: Data Inicial
+    headerLote += formatValueInCents(0, 18); // 151-168: Saldo Inicial
+    headerLote += 'C'; // 169-169: Situação Saldo Inicial
+    headerLote += 'M'; // 170-170: Posição do Saldo (M = Matriz)
+    headerLote += 'BRL'; // 171-173: Moeda
+    headerLote += padZero(1, 6); // 174-179: Nº Sequencial Extrato
+    headerLote += padText('', 61); // 180-240: Uso FEBRABAN
+  }
   lines.push(headerLote);
 
   // 3. REGISTROS DETALHE - SEGMENTO E (240 posições para cada transação do extrato)
@@ -444,71 +501,118 @@ export function generateCNABExtratoFile(
     const docOrigem = padText(tx.documentoRef || `NSU-${seqInLote}`, 20);
 
     let segE = '';
-    segE += bankCode; // 001-003
-    segE += '0001'; // 004-007: Lote 0001
-    segE += '3'; // 008-008: Detalhe
-    segE += padZero(seqInLote, 5); // 009-013: Seq no Lote
-    segE += 'E'; // 014-014: Segmento E
-    segE += padText('', 3); // 015-017: Uso FEBRABAN
-    segE += '2'; // 018-018: CNPJ
-    segE += cnpjDigits; // 019-032: CNPJ
-    segE += padText(company.convenio || '000000000000001', 15); // 033-047
-    segE += agency; // 048-052
-    segE += agencyDV; // 053-053
-    segE += account; // 054-065
-    segE += accountDV; // 066-066
-    segE += ' '; // 067-067
-    segE += companyName; // 068-097
-    segE += padText('', 6); // 098-103
-    segE += 'TR'; // 104-105: Natureza Lançamento
-    segE += '000'; // 106-108: Tipo Complemento
-    segE += txDate; // 109-116: Data Lançamento
-    segE += txValCents; // 117-134: Valor Lançamento
-    segE += txTipo; // 135-135: 'C' ou 'D'
-    segE += codigoMov; // 136-139: Categoria Lançamento
-    segE += historicoText; // 140-164: Histórico
-    segE += docRef; // 165-170: Documento/NSU
-    segE += docOrigem; // 171-190: Nº Documento Origem
-    segE += padText('', 50); // 191-240: Reservado
-
+    if (layout?.sampleSegmentE && layout.sampleSegmentE.length >= 240) {
+      // COPIA EXATAMENTE A LINHA DO MODELO ENVIADO! Alterando unicamente as informações do lançamento de extrato
+      segE = layout.sampleSegmentE.padEnd(240, ' ').slice(0, 240);
+      segE = overlayField(segE, 1, 3, bankCode);
+      segE = overlayField(segE, 4, 4, '0001');
+      segE = overlayField(segE, 8, 1, '3');
+      segE = overlayField(segE, 9, 5, padZero(seqInLote, 5));
+      segE = overlayField(segE, 14, 1, 'E');
+      segE = overlayField(segE, 19, 14, cnpjDigits);
+      segE = overlayField(segE, 33, 15, padText(convenio, 15));
+      segE = overlayField(segE, 48, 5, agency);
+      segE = overlayField(segE, 53, 1, agencyDV);
+      segE = overlayField(segE, 54, 12, account);
+      segE = overlayField(segE, 66, 1, accountDV);
+      segE = overlayField(segE, 68, 30, companyName);
+      segE = overlayField(segE, 109, 8, txDate);
+      segE = overlayField(segE, 117, 18, txValCents);
+      segE = overlayField(segE, 135, 1, txTipo);
+      segE = overlayField(segE, 136, 4, codigoMov);
+      segE = overlayField(segE, 140, 25, historicoText);
+      segE = overlayField(segE, 165, 6, docRef);
+      segE = overlayField(segE, 171, 20, docOrigem);
+    } else {
+      segE += bankCode; // 001-003
+      segE += '0001'; // 004-007: Lote 0001
+      segE += '3'; // 008-008: Detalhe
+      segE += padZero(seqInLote, 5); // 009-013: Seq no Lote
+      segE += 'E'; // 014-014: Segmento E
+      segE += padText('', 3); // 015-017: Uso FEBRABAN
+      segE += '2'; // 018-018: CNPJ
+      segE += cnpjDigits; // 019-032: CNPJ
+      segE += padText(convenio, 15); // 033-047
+      segE += agency; // 048-052
+      segE += agencyDV; // 053-053
+      segE += account; // 054-065
+      segE += accountDV; // 066-066
+      segE += ' '; // 067-067
+      segE += companyName; // 068-097
+      segE += padText('', 6); // 098-103
+      segE += 'TR'; // 104-105: Natureza Lançamento
+      segE += '000'; // 106-108: Tipo Complemento
+      segE += txDate; // 109-116: Data Lançamento
+      segE += txValCents; // 117-134: Valor Lançamento
+      segE += txTipo; // 135-135: 'C' ou 'D'
+      segE += codigoMov; // 136-139: Categoria Lançamento
+      segE += historicoText; // 140-164: Histórico
+      segE += docRef; // 165-170: Documento/NSU
+      segE += docOrigem; // 171-190: Nº Documento Origem
+      segE += padText('', 50); // 191-240: Reservado
+    }
     lines.push(segE);
   });
 
-  // 4. TRAILER DE LOTE (240 posições)
+  // 4. TRAILER DE LOTE (240 posições - Usa o modelo original como base)
   const totalRegLote = seqInLote + 2; // + HeaderLote + TrailerLote
   let trailerLote = '';
-  trailerLote += bankCode; // 001-003
-  trailerLote += '0001'; // 004-007
-  trailerLote += '5'; // 008-008: Tipo Reg 5 (Trailer Lote)
-  trailerLote += padText('', 9); // 009-017
-  trailerLote += '2'; // 018-018: CNPJ
-  trailerLote += cnpjDigits; // 019-032
-  trailerLote += padText('', 15); // 033-047
-  trailerLote += agency; // 048-052
-  trailerLote += agencyDV; // 053-053
-  trailerLote += account; // 054-065
-  trailerLote += accountDV; // 066-066
-  trailerLote += ' '; // 067-067
-  trailerLote += formatValueInCents(totalDebitos, 18); // 068-085: Total Débitos
-  trailerLote += formatValueInCents(totalCreditos, 18); // 086-103: Total Créditos
-  trailerLote += formatValueInCents(totalCreditos - totalDebitos, 18); // 104-121: Saldo Final
-  trailerLote += totalCreditos >= totalDebitos ? 'C' : 'D'; // 122-122: Situação Saldo Final
-  trailerLote += padZero(totalRegLote, 6); // 123-128: Qtd Registros no Lote
-  trailerLote += padText('', 112); // 129-240: Uso FEBRABAN
-
+  if (layout?.sampleTrailerLote && layout.sampleTrailerLote.length >= 240) {
+    trailerLote = layout.sampleTrailerLote.padEnd(240, ' ').slice(0, 240);
+    trailerLote = overlayField(trailerLote, 1, 3, bankCode);
+    trailerLote = overlayField(trailerLote, 4, 4, '0001');
+    trailerLote = overlayField(trailerLote, 8, 1, '5');
+    trailerLote = overlayField(trailerLote, 19, 14, cnpjDigits);
+    trailerLote = overlayField(trailerLote, 48, 5, agency);
+    trailerLote = overlayField(trailerLote, 53, 1, agencyDV);
+    trailerLote = overlayField(trailerLote, 54, 12, account);
+    trailerLote = overlayField(trailerLote, 66, 1, accountDV);
+    trailerLote = overlayField(trailerLote, 68, 18, formatValueInCents(totalDebitos, 18));
+    trailerLote = overlayField(trailerLote, 86, 18, formatValueInCents(totalCreditos, 18));
+    trailerLote = overlayField(trailerLote, 104, 18, formatValueInCents(totalCreditos - totalDebitos, 18));
+    trailerLote = overlayField(trailerLote, 122, 1, totalCreditos >= totalDebitos ? 'C' : 'D');
+    trailerLote = overlayField(trailerLote, 123, 6, padZero(totalRegLote, 6));
+  } else {
+    trailerLote += bankCode; // 001-003
+    trailerLote += '0001'; // 004-007
+    trailerLote += '5'; // 008-008: Tipo Reg 5 (Trailer Lote)
+    trailerLote += padText('', 9); // 009-017
+    trailerLote += '2'; // 018-018: CNPJ
+    trailerLote += cnpjDigits; // 019-032
+    trailerLote += padText('', 15); // 033-047
+    trailerLote += agency; // 048-052
+    trailerLote += agencyDV; // 053-053
+    trailerLote += account; // 054-065
+    trailerLote += accountDV; // 066-066
+    trailerLote += ' '; // 067-067
+    trailerLote += formatValueInCents(totalDebitos, 18); // 068-085: Total Débitos
+    trailerLote += formatValueInCents(totalCreditos, 18); // 086-103: Total Créditos
+    trailerLote += formatValueInCents(totalCreditos - totalDebitos, 18); // 104-121: Saldo Final
+    trailerLote += totalCreditos >= totalDebitos ? 'C' : 'D'; // 122-122: Situação Saldo Final
+    trailerLote += padZero(totalRegLote, 6); // 123-128: Qtd Registros no Lote
+    trailerLote += padText('', 112); // 129-240: Uso FEBRABAN
+  }
   lines.push(trailerLote);
 
-  // 5. TRAILER DE ARQUIVO (240 posições)
+  // 5. TRAILER DE ARQUIVO (240 posições - Usa o modelo original como base)
   const totalRegArquivo = lines.length + 1;
   let trailerArq = '';
-  trailerArq += bankCode; // 001-003
-  trailerArq += '9999'; // 004-007
-  trailerArq += '9'; // 008-008: Tipo Reg 9 (Trailer Arq)
-  trailerArq += padText('', 9); // 009-017
-  trailerArq += padZero(1, 6); // 018-023: Qtd Lotes
-  trailerArq += padZero(totalRegArquivo, 6); // 024-029: Qtd Registros Arquivo
-  trailerArq += padText('', 211); // 030-240: Uso FEBRABAN
-
+  if (layout?.sampleTrailerArq && layout.sampleTrailerArq.length >= 240) {
+    trailerArq = layout.sampleTrailerArq.padEnd(240, ' ').slice(0, 240);
+    trailerArq = overlayField(trailerArq, 1, 3, bankCode);
+    trailerArq = overlayField(trailerArq, 4, 4, '9999');
+    trailerArq = overlayField(trailerArq, 8, 1, '9');
+    trailerArq = overlayField(trailerArq, 18, 6, padZero(1, 6));
+    trailerArq = overlayField(trailerArq, 24, 6, padZero(totalRegArquivo, 6));
+  } else {
+    trailerArq += bankCode; // 001-003
+    trailerArq += '9999'; // 004-007
+    trailerArq += '9'; // 008-008: Tipo Reg 9 (Trailer Arq)
+    trailerArq += padText('', 9); // 009-017
+    trailerArq += padZero(1, 6); // 018-023: Qtd Lotes
+    trailerArq += padZero(totalRegArquivo, 6); // 024-029: Qtd Registros Arquivo
+    trailerArq += padText('', 211); // 030-240: Uso FEBRABAN
+  }
   lines.push(trailerArq);
 
   return lines.join('\r\n');
@@ -538,10 +642,20 @@ export function reverseEngineCnabStructure(
   let sampleTrailerLote = '';
   let sampleTrailerArq = '';
 
-  let detectedAgencia = '';
-  let detectedConta = '';
-  let detectedConvenio = '';
+  let detectedTipoInscricao = '2'; // 2 = CNPJ, 1 = CPF
+  let detectedCnpj = company?.cnpj || '';
+  let detectedCodigoEmpresaBanco = company?.convenio || '';
+  let detectedAgencia = company?.agencia || '';
+  let detectedDigitoAgencia = '';
+  let detectedConta = company?.conta || '';
+  let detectedDigitoConta = '';
+  let detectedConvenio = company?.convenio || '';
   let detectedEmpresaNome = company?.razaoSocial || '';
+  let detectedNomeBancoModelo = '';
+  let detectedDataGeracao = '';
+  let detectedHoraGeracao = '';
+  let detectedSeqArquivo = '000001';
+  let detectedVersaoLayout = '087';
 
   const movementCodesDetected: Record<string, string> = {};
 
@@ -552,17 +666,40 @@ export function reverseEngineCnabStructure(
       detectedBankCode = line1.substring(0, 3);
       sampleHeaderArq = line1.padEnd(240, ' ').slice(0, 240);
 
-      // Tenta extrair dados cadastrais do Header do Modelo
-      detectedConvenio = line1.substring(32, 52).trim();
-      detectedAgencia = line1.substring(52, 57).replace(/^0+/, '');
-      detectedConta = line1.substring(58, 70).replace(/^0+/, '');
-      if (!detectedEmpresaNome) {
-        detectedEmpresaNome = line1.substring(72, 102).trim();
+      // Tenta extrair dados cadastrais detalhados do Header de Arquivo 240
+      detectedTipoInscricao = line1.substring(17, 18).trim() || '2';
+      const rawCnpj = line1.substring(18, 32).trim();
+      if (rawCnpj && rawCnpj !== '00000000000000') {
+        detectedCnpj = rawCnpj;
       }
+      detectedCodigoEmpresaBanco = line1.substring(32, 52).trim();
+      detectedConvenio = detectedCodigoEmpresaBanco;
+
+      const rawAg = line1.substring(52, 57).replace(/^0+/, '');
+      if (rawAg) detectedAgencia = rawAg;
+      detectedDigitoAgencia = line1.substring(57, 58).trim();
+
+      const rawConta = line1.substring(58, 70).replace(/^0+/, '');
+      if (rawConta) detectedConta = rawConta;
+      detectedDigitoConta = line1.substring(70, 71).trim();
+
+      const rawEmpresa = line1.substring(72, 102).trim();
+      if (rawEmpresa) detectedEmpresaNome = rawEmpresa;
+
+      const rawBanco = line1.substring(102, 132).trim();
+      if (rawBanco) detectedNomeBancoModelo = rawBanco;
+
+      detectedDataGeracao = line1.substring(143, 151).trim();
+      detectedHoraGeracao = line1.substring(151, 157).trim();
+      detectedSeqArquivo = line1.substring(157, 163).trim() || '000001';
+      detectedVersaoLayout = line1.substring(163, 166).trim() || '087';
     } else if (line1.length === 400) {
       detectedPadrao = '400';
       detectedBankCode = line1.substring(76, 79) || line1.substring(0, 3);
       sampleHeaderArq = line1;
+      const rawEmpresa400 = line1.substring(46, 76).trim();
+      if (rawEmpresa400) detectedEmpresaNome = rawEmpresa400;
+      detectedCodigoEmpresaBanco = line1.substring(26, 46).trim();
     }
     const bInfo = getBankInfo(detectedBankCode);
     detectedBankName = bInfo.shortName;
@@ -576,6 +713,9 @@ export function reverseEngineCnabStructure(
 
       if (regType === '1' && !sampleHeaderLote) {
         sampleHeaderLote = line.padEnd(240, ' ').slice(0, 240);
+        // Tenta reforçar os dados do Header do Lote
+        const loteEmpresa = line.substring(72, 102).trim();
+        if (loteEmpresa && !detectedEmpresaNome) detectedEmpresaNome = loteEmpresa;
       } else if (regType === '3' && segCode === 'E') {
         if (!sampleSegmentE) {
           sampleSegmentE = line.padEnd(240, ' ').slice(0, 240);
@@ -597,6 +737,29 @@ export function reverseEngineCnabStructure(
   const companyLabel = company?.razaoSocial || detectedEmpresaNome || 'Empresa Geral';
   const layoutName = `Modelo CNAB ${detectedPadrao} - ${detectedBankName} (${detectedBankCode}) [${companyLabel}]`;
 
+  const headerArquivoFieldsExtracted: CNABExtratoFieldSpec[] = [
+    { posInicio: 1, posFim: 3, tamanho: 3, tipo: 'N', nomeCampo: 'Código do Banco', descricao: `Banco Emissor (${detectedBankCode})` },
+    { posInicio: 4, posFim: 7, tamanho: 4, tipo: 'N', nomeCampo: 'Lote de Serviço', descricao: '0000 (Header de Arquivo)' },
+    { posInicio: 8, posFim: 8, tamanho: 1, tipo: 'N', nomeCampo: 'Tipo de Registro', descricao: '0 = Header de Arquivo' },
+    { posInicio: 9, posFim: 17, tamanho: 9, tipo: 'A', nomeCampo: 'Uso Exclusivo FEBRABAN/Banco', descricao: 'Brancos' },
+    { posInicio: 18, posFim: 18, tamanho: 1, tipo: 'N', nomeCampo: 'Tipo de Inscrição', descricao: `${detectedTipoInscricao === '1' ? '1 = CPF' : '2 = CNPJ'}` },
+    { posInicio: 19, posFim: 32, tamanho: 14, tipo: 'N', nomeCampo: 'CNPJ/CPF da Empresa', descricao: `CNPJ Modelo: ${detectedCnpj || 'Não informado'}` },
+    { posInicio: 33, posFim: 52, tamanho: 20, tipo: 'A', nomeCampo: 'Código do Convênio / Empresa no Banco', descricao: `Convênio Modelo: ${detectedCodigoEmpresaBanco || 'Não informado'}` },
+    { posInicio: 53, posFim: 57, tamanho: 5, tipo: 'N', nomeCampo: 'Agência Mantenedora', descricao: `Agência: ${detectedAgencia || '00000'}` },
+    { posInicio: 58, posFim: 58, tamanho: 1, tipo: 'A', nomeCampo: 'Dígito Verificador Agência', descricao: `DV Agência: ${detectedDigitoAgencia || '-'}` },
+    { posInicio: 59, posFim: 70, tamanho: 12, tipo: 'N', nomeCampo: 'Número da Conta Corrente', descricao: `Conta: ${detectedConta || '000000000000'}` },
+    { posInicio: 71, posFim: 71, tamanho: 1, tipo: 'A', nomeCampo: 'Dígito Verificador Conta', descricao: `DV Conta: ${detectedDigitoConta || '-'}` },
+    { posInicio: 72, posFim: 72, tamanho: 1, tipo: 'A', nomeCampo: 'Dígito Verificador Ag/Conta', descricao: 'DV Ag/Conta' },
+    { posInicio: 73, posFim: 102, tamanho: 30, tipo: 'A', nomeCampo: 'Nome da Empresa / Razão Social', descricao: `Razão Social: ${detectedEmpresaNome || 'Não informada'}` },
+    { posInicio: 103, posFim: 132, tamanho: 30, tipo: 'A', nomeCampo: 'Nome do Banco Emissor', descricao: `Banco Modelo: ${detectedNomeBancoModelo || detectedBankName}` },
+    { posInicio: 133, posFim: 142, tamanho: 10, tipo: 'A', nomeCampo: 'Uso Exclusivo FEBRABAN/Banco', descricao: 'Reservado' },
+    { posInicio: 143, posFim: 143, tamanho: 1, tipo: 'N', nomeCampo: 'Código Remessa / Retorno', descricao: '2 = Retorno / Extrato' },
+    { posInicio: 144, posFim: 151, tamanho: 8, tipo: 'N', nomeCampo: 'Data de Geração do Arquivo', descricao: `Data Modelo: ${detectedDataGeracao || 'DDMMAAAA'}` },
+    { posInicio: 152, posFim: 157, tamanho: 6, tipo: 'N', nomeCampo: 'Hora de Geração do Arquivo', descricao: `Hora Modelo: ${detectedHoraGeracao || 'HHMMSS'}` },
+    { posInicio: 158, posFim: 163, tamanho: 6, tipo: 'N', nomeCampo: 'Número Sequencial do Arquivo (NSA)', descricao: `NSA Modelo: ${detectedSeqArquivo || '000001'}` },
+    { posInicio: 164, posFim: 166, tamanho: 3, tipo: 'N', nomeCampo: 'Nº da Versão do Layout do Arquivo', descricao: `Versão Modelo: ${detectedVersaoLayout || '087'}` },
+  ];
+
   const newLearnedLayout: LearnedCNABExtratoLayout = {
     id: layoutId,
     nomeLayout: layoutName,
@@ -608,12 +771,22 @@ export function reverseEngineCnabStructure(
     timesUsed: 1,
     isCustomLearned: true,
 
-    // Vínculo com Empresa e Dados da Conta extraídos do arquivo modelo
+    // Vínculo detalhado com Empresa, CNPJ e Dados da Conta extraídos do arquivo modelo
     empresaId: company?.id || '',
     empresaNome: companyLabel,
-    agenciaPadrao: company?.agencia || detectedAgencia || '0001',
-    contaPadrao: company?.conta || detectedConta || '00000',
-    convenioPadrao: company?.convenio || detectedConvenio || '000001',
+    cnpjEmpresa: detectedCnpj,
+    tipoInscricaoEmpresa: detectedTipoInscricao,
+    agenciaPadrao: detectedAgencia || company?.agencia || '0001',
+    digitoAgencia: detectedDigitoAgencia,
+    contaPadrao: detectedConta || company?.conta || '00000',
+    digitoConta: detectedDigitoConta,
+    convenioPadrao: detectedConvenio || company?.convenio || '000001',
+    codigoEmpresaBanco: detectedCodigoEmpresaBanco,
+    nomeBancoModelo: detectedNomeBancoModelo || detectedBankName,
+    dataGeracaoModelo: detectedDataGeracao,
+    horaGeracaoModelo: detectedHoraGeracao,
+    seqArquivoModelo: detectedSeqArquivo,
+    versaoLayoutModelo: detectedVersaoLayout,
 
     // Amostras das linhas originais modelo espelhadas
     sampleHeaderArq,
@@ -621,19 +794,20 @@ export function reverseEngineCnabStructure(
     sampleSegmentE,
     sampleTrailerLote,
     sampleTrailerArq,
+    rawModelContent: cnabRawContent,
 
-    headerArquivoFields: [
-      { posInicio: 1, posFim: 3, tamanho: 3, tipo: 'N', nomeCampo: 'Código do Banco', descricao: 'Código numérico do banco emissor' },
-      { posInicio: 4, posFim: 7, tamanho: 4, tipo: 'N', nomeCampo: 'Lote de Serviço', descricao: 'Identificador do Lote (0000)' },
-      { posInicio: 8, posFim: 8, tamanho: 1, tipo: 'N', nomeCampo: 'Tipo de Registro', descricao: '0 = Header de Arquivo' },
-      { posInicio: 19, posFim: 32, tamanho: 14, tipo: 'N', nomeCampo: 'CNPJ/CPF Empresa', descricao: 'Inscrição do titular da conta' },
-      { posInicio: 73, posFim: 102, tamanho: 30, tipo: 'A', nomeCampo: 'Nome da Empresa', descricao: 'Razão social cadastrada' },
-      { posInicio: 144, posFim: 151, tamanho: 8, tipo: 'N', nomeCampo: 'Data de Geração', descricao: 'Data de emissão do arquivo (DDMMAAAA)' },
-    ],
+    headerArquivoFields: headerArquivoFieldsExtracted,
     headerLoteFields: [
-      { posInicio: 1, posFim: 3, tamanho: 3, tipo: 'N', nomeCampo: 'Código do Banco', descricao: 'Código do banco' },
+      { posInicio: 1, posFim: 3, tamanho: 3, tipo: 'N', nomeCampo: 'Código do Banco', descricao: `Código do Banco (${detectedBankCode})` },
+      { posInicio: 4, posFim: 7, tamanho: 4, tipo: 'N', nomeCampo: 'Lote de Serviço', descricao: '0001 (Primeiro Lote)' },
       { posInicio: 8, posFim: 8, tamanho: 1, tipo: 'N', nomeCampo: 'Tipo de Registro', descricao: '1 = Header de Lote' },
-      { posInicio: 10, posFim: 11, tamanho: 2, tipo: 'N', nomeCampo: 'Tipo de Serviço', descricao: '04 = Extrato de Conta Corrente' },
+      { posInicio: 9, posFim: 9, tamanho: 1, tipo: 'A', nomeCampo: 'Tipo de Operação', descricao: 'E = Extrato de Conta' },
+      { posInicio: 10, posFim: 11, tamanho: 2, tipo: 'N', nomeCampo: 'Tipo de Serviço', descricao: '04 = Extrato para Conciliação' },
+      { posInicio: 18, posFim: 32, tamanho: 14, tipo: 'N', nomeCampo: 'CNPJ/CPF do Titular', descricao: `CNPJ: ${detectedCnpj}` },
+      { posInicio: 33, posFim: 52, tamanho: 20, tipo: 'A', nomeCampo: 'Convênio / Código da Empresa', descricao: `Convênio: ${detectedConvenio}` },
+      { posInicio: 53, posFim: 57, tamanho: 5, tipo: 'N', nomeCampo: 'Agência Mantenedora', descricao: `Agência: ${detectedAgencia}` },
+      { posInicio: 59, posFim: 70, tamanho: 12, tipo: 'N', nomeCampo: 'Número da Conta Corrente', descricao: `Conta: ${detectedConta}` },
+      { posInicio: 73, posFim: 102, tamanho: 30, tipo: 'A', nomeCampo: 'Nome da Empresa Titular', descricao: `Empresa: ${detectedEmpresaNome}` },
     ],
     segmentoEFields: FEBRABAN_SEGMENTO_E_FIELDS,
     trailerLoteFields: [],

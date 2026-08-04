@@ -16,41 +16,6 @@ import {
   ShieldCheck,
   Building2,
   HelpCircle,
-} from 'lucide-react';
-import {
-  LearnedCNABExtratoLayout,
-  CNABExtratoFieldSpec,
-  MovementCodeDefinition,
-} from '../../types';
-import {
-  reverseEngineCnabStructure,
-  loadLearnedExtratoLayouts,
-  saveLearnedExtratoLayouts,
-  MOVEMENT_CODES_DATABASE,
-} from '../../utils/cnabExtratoEngine';
-
-interface ModelCnabAnalyzerViewProps {
-  onShowToast?: (msg: string) => void;
-}
-
-import React, { useState } from 'react';
-import {
-  Brain,
-  Upload,
-  CheckCircle2,
-  FileCode,
-  Layers,
-  Sparkles,
-  Edit3,
-  Plus,
-  Trash2,
-  Save,
-  Search,
-  BookOpen,
-  ArrowRight,
-  ShieldCheck,
-  Building2,
-  HelpCircle,
   Code2,
   Terminal,
 } from 'lucide-react';
@@ -81,15 +46,21 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
   const [selectedSegmentTab, setSelectedSegmentTab] = useState<'HEADER' | 'SEGMENTO_E' | 'RAW_LINES' | 'CODES'>('SEGMENTO_E');
   const [selectedFieldPos, setSelectedFieldPos] = useState<CNABExtratoFieldSpec | null>(null);
 
-  // Form para edição dos vínculos do layout (Empresa, Banco, Agência, Conta, Convênio)
+  // Form para edição dos vínculos do layout (Empresa, CNPJ, Banco, Agência, Conta, Convênio, Versão)
   const [layoutForm, setLayoutForm] = useState({
     nomeLayout: '',
     bancoCodigo: '341',
     bancoNome: 'Banco Itaú',
     empresaNome: company?.razaoSocial || '',
+    cnpjEmpresa: company?.cnpj || '',
     agenciaPadrao: company?.agencia || '',
+    digitoAgencia: '',
     contaPadrao: company?.conta || '',
+    digitoConta: '',
     convenioPadrao: company?.convenio || '',
+    codigoEmpresaBanco: company?.convenio || '',
+    seqArquivoModelo: '000001',
+    versaoLayoutModelo: '087',
   });
 
   // Mapeamento de Códigos de Movimentação editáveis
@@ -127,9 +98,15 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
         bancoCodigo: learned.bancoCodigo,
         bancoNome: learned.bancoNome,
         empresaNome: learned.empresaNome || company?.razaoSocial || '',
+        cnpjEmpresa: learned.cnpjEmpresa || company?.cnpj || '',
         agenciaPadrao: learned.agenciaPadrao || company?.agencia || '',
+        digitoAgencia: learned.digitoAgencia || '',
         contaPadrao: learned.contaPadrao || company?.conta || '',
+        digitoConta: learned.digitoConta || '',
         convenioPadrao: learned.convenioPadrao || company?.convenio || '',
+        codigoEmpresaBanco: learned.codigoEmpresaBanco || company?.convenio || '',
+        seqArquivoModelo: learned.seqArquivoModelo || '000001',
+        versaoLayoutModelo: learned.versaoLayoutModelo || '087',
       });
       setSavedLayouts(loadLearnedExtratoLayouts());
       showToast(`Layout do arquivo ${file.name} analisado e copiado exatamente com sucesso!`);
@@ -149,9 +126,15 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
       bancoNome: layoutForm.bancoNome,
       empresaId: company?.id || analyzedLayout.empresaId,
       empresaNome: layoutForm.empresaNome,
+      cnpjEmpresa: layoutForm.cnpjEmpresa,
       agenciaPadrao: layoutForm.agenciaPadrao,
+      digitoAgencia: layoutForm.digitoAgencia,
       contaPadrao: layoutForm.contaPadrao,
+      digitoConta: layoutForm.digitoConta,
       convenioPadrao: layoutForm.convenioPadrao,
+      codigoEmpresaBanco: layoutForm.codigoEmpresaBanco,
+      seqArquivoModelo: layoutForm.seqArquivoModelo,
+      versaoLayoutModelo: layoutForm.versaoLayoutModelo,
     };
 
     const currentLayouts = loadLearnedExtratoLayouts();
@@ -176,29 +159,43 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
       bancoCodigo: layout.bancoCodigo,
       bancoNome: layout.bancoNome,
       empresaNome: layout.empresaNome || company?.razaoSocial || '',
+      cnpjEmpresa: layout.cnpjEmpresa || company?.cnpj || '',
       agenciaPadrao: layout.agenciaPadrao || company?.agencia || '',
+      digitoAgencia: layout.digitoAgencia || '',
       contaPadrao: layout.contaPadrao || company?.conta || '',
+      digitoConta: layout.digitoConta || '',
       convenioPadrao: layout.convenioPadrao || company?.convenio || '',
+      codigoEmpresaBanco: layout.codigoEmpresaBanco || company?.convenio || '',
+      seqArquivoModelo: layout.seqArquivoModelo || '000001',
+      versaoLayoutModelo: layout.versaoLayoutModelo || '087',
     });
     showToast(`Modelo "${layout.nomeLayout}" carregado para inspeção/edição.`);
   };
 
-  // Exclui um modelo de layout salvo
-  const handleDeleteLayout = (layoutId: string, layoutName: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!window.confirm(`Tem certeza que deseja excluir o modelo de layout "${layoutName}"?`)) {
-      return;
-    }
+  // State para modal de confirmação de exclusão
+  const [deleteModalTarget, setDeleteModalTarget] = useState<{ id: string; name: string } | null>(null);
 
-    const updated = savedLayouts.filter((l) => l.id !== layoutId);
+  // Solicita exclusão de um modelo de layout salvo
+  const promptDeleteLayout = (layoutId: string, layoutName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setDeleteModalTarget({ id: layoutId, name: layoutName });
+  };
+
+  // Executa a exclusão confirmada
+  const confirmDeleteLayout = () => {
+    if (!deleteModalTarget) return;
+    const { id, name } = deleteModalTarget;
+
+    const updated = savedLayouts.filter((l) => l.id !== id);
     saveLearnedExtratoLayouts(updated);
     setSavedLayouts(updated);
 
-    if (analyzedLayout?.id === layoutId) {
+    if (analyzedLayout?.id === id) {
       setAnalyzedLayout(null);
     }
 
-    showToast(`Modelo "${layoutName}" excluído com sucesso!`);
+    setDeleteModalTarget(null);
+    showToast(`Modelo "${name}" excluído com sucesso!`);
   };
 
   // Add custom code mapping
@@ -284,7 +281,7 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => handleDeleteLayout(analyzedLayout.id, analyzedLayout.nomeLayout)}
+                  onClick={() => promptDeleteLayout(analyzedLayout.id, analyzedLayout.nomeLayout)}
                   className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-black px-4 py-3 rounded-2xl transition-all flex items-center gap-2 cursor-pointer"
                   title="Excluir este modelo"
                 >
@@ -294,54 +291,135 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
               </div>
             </div>
 
-            {/* Ajuste de Vínculos: Empresa, Banco, Agência, Conta, Convênio */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl">
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Nome da Empresa Vinculada:
-                </label>
-                <input
-                  type="text"
-                  value={layoutForm.empresaNome}
-                  onChange={(e) => setLayoutForm({ ...layoutForm, empresaNome: e.target.value })}
-                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-bold"
-                />
-              </div>
+            {/* Ajuste de Vínculos: Empresa, CNPJ, Banco, Agência, Conta, Convênio, Versão */}
+            <div className="space-y-4 bg-slate-50 border border-slate-200 p-5 rounded-2xl">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-purple-600" />
+                <span>Dados do Modelo CNAB Extraídos (Empresa, Banco, Conta & Convênio)</span>
+              </h4>
 
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Código do Banco:
-                </label>
-                <input
-                  type="text"
-                  value={layoutForm.bancoCodigo}
-                  onChange={(e) => setLayoutForm({ ...layoutForm, bancoCodigo: e.target.value })}
-                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
-                />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Razão Social da Empresa:
+                  </label>
+                  <input
+                    type="text"
+                    value={layoutForm.empresaNome}
+                    onChange={(e) => setLayoutForm({ ...layoutForm, empresaNome: e.target.value })}
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-bold"
+                    placeholder="Razão Social"
+                  />
+                </div>
 
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Agência Padrão:
-                </label>
-                <input
-                  type="text"
-                  value={layoutForm.agenciaPadrao}
-                  onChange={(e) => setLayoutForm({ ...layoutForm, agenciaPadrao: e.target.value })}
-                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
-                />
-              </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    CNPJ / CPF da Empresa:
+                  </label>
+                  <input
+                    type="text"
+                    value={layoutForm.cnpjEmpresa}
+                    onChange={(e) => setLayoutForm({ ...layoutForm, cnpjEmpresa: e.target.value })}
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                    placeholder="CNPJ (14 dígitos)"
+                  />
+                </div>
 
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Conta Corrente Padrão:
-                </label>
-                <input
-                  type="text"
-                  value={layoutForm.contaPadrao}
-                  onChange={(e) => setLayoutForm({ ...layoutForm, contaPadrao: e.target.value })}
-                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
-                />
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Código do Banco:
+                  </label>
+                  <input
+                    type="text"
+                    value={layoutForm.bancoCodigo}
+                    onChange={(e) => setLayoutForm({ ...layoutForm, bancoCodigo: e.target.value })}
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                    placeholder="Ex: 001, 033, 237, 341"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Agência e DV:
+                  </label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={layoutForm.agenciaPadrao}
+                      onChange={(e) => setLayoutForm({ ...layoutForm, agenciaPadrao: e.target.value })}
+                      className="w-3/4 bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                      placeholder="Agência"
+                    />
+                    <input
+                      type="text"
+                      value={layoutForm.digitoAgencia}
+                      onChange={(e) => setLayoutForm({ ...layoutForm, digitoAgencia: e.target.value })}
+                      className="w-1/4 bg-white border border-slate-200 text-slate-900 text-xs px-2 py-2 rounded-xl font-mono font-bold text-center"
+                      placeholder="DV"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Conta Corrente e DV:
+                  </label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={layoutForm.contaPadrao}
+                      onChange={(e) => setLayoutForm({ ...layoutForm, contaPadrao: e.target.value })}
+                      className="w-3/4 bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                      placeholder="Conta"
+                    />
+                    <input
+                      type="text"
+                      value={layoutForm.digitoConta}
+                      onChange={(e) => setLayoutForm({ ...layoutForm, digitoConta: e.target.value })}
+                      className="w-1/4 bg-white border border-slate-200 text-slate-900 text-xs px-2 py-2 rounded-xl font-mono font-bold text-center"
+                      placeholder="DV"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Código do Convênio / Transmissão:
+                  </label>
+                  <input
+                    type="text"
+                    value={layoutForm.codigoEmpresaBanco}
+                    onChange={(e) => setLayoutForm({ ...layoutForm, codigoEmpresaBanco: e.target.value, convenioPadrao: e.target.value })}
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                    placeholder="Convênio Banco"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Nº Sequencial do Arquivo (NSA):
+                  </label>
+                  <input
+                    type="text"
+                    value={layoutForm.seqArquivoModelo}
+                    onChange={(e) => setLayoutForm({ ...layoutForm, seqArquivoModelo: e.target.value })}
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                    placeholder="000001"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                    Versão do Layout CNAB:
+                  </label>
+                  <input
+                    type="text"
+                    value={layoutForm.versaoLayoutModelo}
+                    onChange={(e) => setLayoutForm({ ...layoutForm, versaoLayoutModelo: e.target.value })}
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl font-mono font-bold"
+                    placeholder="087"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -668,7 +746,7 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
                       Banco {layout.bancoCodigo}
                     </span>
                     <button
-                      onClick={(e) => handleDeleteLayout(layout.id, layout.nomeLayout, e)}
+                      onClick={(e) => promptDeleteLayout(layout.id, layout.nomeLayout, e)}
                       className="text-slate-400 hover:text-rose-600 hover:bg-rose-100 p-1.5 rounded-lg transition-colors cursor-pointer"
                       title="Excluir este modelo"
                     >
@@ -689,6 +767,39 @@ export const ModelCnabAnalyzerView: React.FC<ModelCnabAnalyzerViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {deleteModalTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">Excluir Modelo CNAB?</h3>
+            </div>
+
+            <p className="text-xs text-slate-600 font-medium leading-relaxed">
+              Tem certeza que deseja remover o modelo <strong className="text-slate-900">{deleteModalTarget.name}</strong> da sua base de layouts por empresa e banco? Esta ação não poderá ser desfeita.
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                onClick={() => setDeleteModalTarget(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteLayout}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black transition-all shadow-sm cursor-pointer"
+              >
+                Sim, Excluir Modelo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

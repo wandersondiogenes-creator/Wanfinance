@@ -389,7 +389,7 @@ export const ExcelToCnabExtratoView: React.FC<ExcelToCnabExtratoViewProps> = ({
               </div>
 
               {/* Layout Target Select */}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <label className="text-xs font-bold text-slate-600">Layout CNAB Alvo:</label>
                 <select
                   value={selectedLayoutId}
@@ -402,6 +402,12 @@ export const ExcelToCnabExtratoView: React.FC<ExcelToCnabExtratoViewProps> = ({
                     </option>
                   ))}
                 </select>
+                {learnedLayouts.find((l) => l.id === selectedLayoutId)?.sampleSegmentE && (
+                  <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Espelhamento Fiel de Arquivo Modelo Ativo</span>
+                  </div>
+                )}
               </div>
             </div>
 

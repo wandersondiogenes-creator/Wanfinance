@@ -56,8 +56,10 @@ export interface CompanyProfile {
 }
 
 export interface CompanySettings {
+  id?: string;
   razaoSocial: string;
   cnpjCpf: string;
+  cnpj?: string;
   tipoInscricao: 'CNPJ' | 'CPF'; // 1=CPF, 2=CNPJ
   bancoCodigo: string;
   bancoNome: string;
@@ -188,6 +190,22 @@ export interface CNABBatchHistory {
   boletos?: BoletoItem[];
 }
 
+export interface LayoutLearningMetrics {
+  totalLayoutsLearned?: number;
+  totalLearnedModels?: number;
+  totalExtractionsProcessed?: number;
+  avgConfidenceScore?: number;
+  learningAccuracyRate?: number;
+  lastTrainedDate?: string;
+  fullAnalysisCount?: number;
+  fastPathCount?: number;
+  totalTimeSavedMs?: number;
+  averageFastPathTimeMs?: number;
+  averageFullAnalysisTimeMs?: number;
+  geminiQuotaSavedRequests?: number;
+  overallAccuracyPercentage?: number;
+}
+
 export interface LearnedLayoutPattern {
   id: string;
   signature: string; // Fingerprint única gerada do layout
@@ -282,9 +300,19 @@ export interface LearnedCNABExtratoLayout {
   // Associação com Empresa e Conta Específica
   empresaId?: string;
   empresaNome?: string;
+  cnpjEmpresa?: string;
+  tipoInscricaoEmpresa?: string; // 1 = CPF, 2 = CNPJ
   agenciaPadrao?: string;
+  digitoAgencia?: string;
   contaPadrao?: string;
+  digitoConta?: string;
   convenioPadrao?: string;
+  codigoEmpresaBanco?: string;
+  nomeBancoModelo?: string;
+  dataGeracaoModelo?: string;
+  horaGeracaoModelo?: string;
+  seqArquivoModelo?: string;
+  versaoLayoutModelo?: string;
 
   // Linhas Modelo Originais Espelhadas (Copiar exatamente campos e tamanhos)
   sampleHeaderArq?: string;
@@ -292,6 +320,7 @@ export interface LearnedCNABExtratoLayout {
   sampleSegmentE?: string;
   sampleTrailerLote?: string;
   sampleTrailerArq?: string;
+  rawModelContent?: string;
 
   // Estrutura das posições dos registros
   headerArquivoFields: CNABExtratoFieldSpec[];
