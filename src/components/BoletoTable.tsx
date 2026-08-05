@@ -868,11 +868,39 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
 
                       {/* Favorecido & Linha Digitável */}
                       <td className="p-4">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center space-x-2">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <p className="font-bold text-slate-900 truncate max-w-[280px]">
                               {boleto.favorecidoNome}
                             </p>
+
+                            {/* Boleto Type Tag */}
+                            {boleto.tipoBoleto === 'ipva_sefaz' && (
+                              <span className="bg-purple-100 text-purple-900 border border-purple-300 text-[10px] font-black px-2 py-0.5 rounded-md">
+                                IPVA / SEFAZ
+                              </span>
+                            )}
+                            {boleto.tipoBoleto === 'taxa_detran' && (
+                              <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-md">
+                                DETRAN Taxas
+                              </span>
+                            )}
+                            {boleto.tipoBoleto === 'multa_transito' && (
+                              <span className="bg-rose-100 text-rose-900 border border-rose-300 text-[10px] font-black px-2 py-0.5 rounded-md">
+                                Multa Trânsito
+                              </span>
+                            )}
+                            {boleto.tipoBoleto === 'concessionaria' && (
+                              <span className="bg-teal-100 text-teal-900 border border-teal-300 text-[10px] font-black px-2 py-0.5 rounded-md">
+                                Concessionária
+                              </span>
+                            )}
+                            {boleto.tipoBoleto === 'tributo' && (
+                              <span className="bg-indigo-100 text-indigo-900 border border-indigo-300 text-[10px] font-black px-2 py-0.5 rounded-md">
+                                Tributo / DARF
+                              </span>
+                            )}
+
                             {dupInfo?.isDuplicate && (
                               <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
                                 <AlertTriangle className="w-3 h-3 text-amber-600" />
@@ -884,6 +912,28 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                               </span>
                             )}
                           </div>
+
+                          {/* Vehicle Details (Placa, RENAVAM, Auto de Infração) */}
+                          {(boleto.placa || boleto.renavam || boleto.autoInfracao) && (
+                            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                              {boleto.placa && (
+                                <span className="bg-slate-900 text-amber-300 font-mono font-black px-1.5 py-0.5 rounded border border-slate-700">
+                                  PLACA: {boleto.placa}
+                                </span>
+                              )}
+                              {boleto.renavam && (
+                                <span className="bg-slate-100 text-slate-700 font-mono font-bold px-1.5 py-0.5 rounded border border-slate-300">
+                                  RENAVAM: {boleto.renavam}
+                                </span>
+                              )}
+                              {boleto.autoInfracao && (
+                                <span className="bg-rose-50 text-rose-800 font-mono font-bold px-1.5 py-0.5 rounded border border-rose-200">
+                                  AUTO: {boleto.autoInfracao}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           <p className="font-mono text-xs text-slate-500 tracking-tight font-medium">
                             {formatLinhaDigitavelDisplay(boleto.linhaDigitavel)}
                           </p>

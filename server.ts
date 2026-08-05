@@ -319,12 +319,11 @@ REGRA DE SCHEMA JSON:
 NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
 
         const callGeminiWithRetryAndFallback = async () => {
-          const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+          const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
             try {
-              console.log(`[Gemini API] Tentando extração com ${modelName}...`);
               const response = await ai.models.generateContent({
                 model: modelName,
                 contents: [
@@ -386,10 +385,12 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
             } catch (err: any) {
               lastError = err;
               const errMsg = String(err?.message || err);
-              console.warn(`[Gemini API] Erro ao tentar modelo ${modelName}:`, errMsg);
               if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota exceeded")) {
-                console.log("[Gemini API] Cota atingida, aguardando 2s antes do próximo modelo...");
-                await new Promise((resolve) => setTimeout(resolve, 2000));
+                console.warn(`[Gemini API] Cota excedida (429) no modelo ${modelName}. Alternando para fallback...`);
+                // Break out on rate limit to trigger instant local regex/PDF extraction
+                break;
+              } else {
+                console.warn(`[Gemini API] Erro ao tentar modelo ${modelName}: ${errMsg.substring(0, 150)}`);
               }
             }
           }

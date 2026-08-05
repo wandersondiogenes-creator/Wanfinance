@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BoletoItem, CNABBatchHistory } from '../types';
+import { BoletoItem, CNABBatchHistory, BoletoType } from '../types';
 import { parseLinhaDigitavel, formatLinhaDigitavelDisplay, formatCurrencyBRL, onlyNumbers } from '../utils/boletoParser';
 import { getBankInfo, BRAZILIAN_BANKS } from '../utils/banks';
 import { X, CheckCircle, AlertCircle, Sparkles, Building2, Calendar, DollarSign, Tag, FileText, AlertTriangle, Percent, Clock, TrendingUp, TrendingDown } from 'lucide-react';
@@ -34,6 +34,10 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
   const [categoria, setCategoria] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [bancoCodigo, setBancoCodigo] = useState('001');
+  const [tipoBoleto, setTipoBoleto] = useState<BoletoType>('titulo_bancario');
+  const [placa, setPlaca] = useState('');
+  const [renavam, setRenavam] = useState('');
+  const [autoInfracao, setAutoInfracao] = useState('');
 
   const [parseStatus, setParseStatus] = useState<{
     isValid: boolean;
@@ -72,6 +76,10 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
       setCategoria(initialData.categoria || '');
       setObservacoes(initialData.observacoes || '');
       setBancoCodigo(initialData.bancoCodigo);
+      setTipoBoleto(initialData.tipoBoleto || 'titulo_bancario');
+      setPlaca(initialData.placa || '');
+      setRenavam(initialData.renavam || '');
+      setAutoInfracao(initialData.autoInfracao || '');
       setParseStatus({
         isValid: initialData.isValid,
         bancoNome: initialData.bancoNome,
@@ -91,6 +99,10 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
       setCategoria('Fornecedores');
       setObservacoes('');
       setBancoCodigo('001');
+      setTipoBoleto('titulo_bancario');
+      setPlaca('');
+      setRenavam('');
+      setAutoInfracao('');
       setParseStatus({ isValid: false, bancoNome: '', bancoCodigo: '001' });
     }
   }, [initialData, isOpen]);
@@ -151,6 +163,10 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
       jurosMulta: Number(jurosMulta) || 0,
       categoria: categoria || 'Geral',
       observacoes: observacoes,
+      tipoBoleto: tipoBoleto,
+      placa: placa ? placa.toUpperCase().trim() : undefined,
+      renavam: renavam ? renavam.trim() : undefined,
+      autoInfracao: autoInfracao ? autoInfracao.toUpperCase().trim() : undefined,
       isValid: parsed.isValid || linhaDigitavel.replace(/\D/g, '').length >= 44,
       selected: true,
       createdAt: initialData ? initialData.createdAt : new Date().toISOString(),

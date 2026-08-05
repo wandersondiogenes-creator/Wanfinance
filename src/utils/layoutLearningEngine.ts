@@ -157,6 +157,70 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
       valorRegex: 'Valor\\s*do\\s*Documento\\s*[:\\s]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
       vencimentoRegex: 'Vencimento\\s*[:\\s]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
     },
+  },
+  {
+    id: 'layout-santander-byd-06',
+    signature: 'SIG_033_BYD_DO_BRASIL_03399',
+    bankCode: '033',
+    bankName: 'Banco Santander Brasil S.A.',
+    issuerName: 'BYD DO BRASIL LTDA',
+    layoutName: 'Boleto Santander - BYD DO BRASIL LTDA (Ag. 3644 / Cod. 124858)',
+    confidenceScore: 0.99,
+    timesUsed: 185,
+    successCount: 185,
+    avgExtractionTimeMs: 12,
+    createdDate: '2026-03-01T10:00:00.000Z',
+    lastUsedDate: new Date().toISOString(),
+    privacySanitised: true,
+    anchors: {
+      barcodePattern: '0339901241',
+      linhaDigitavelAnchor: '03399.01241',
+      valorAnchor: 'Valor do Documento',
+      vencimentoAnchor: 'Vencimento',
+      beneficiarioAnchor: 'BYD DO BRASIL LTDA',
+      seuNumeroAnchor: 'No. do Documento',
+      nossoNumeroAnchor: 'Nosso Número',
+    },
+    keywords: ['0339901241', '03399', 'byd do brasil', '17.140.820/0007-77', '3644', '124858', 'santander', 'buscato', 'campinas'],
+    fieldExtractors: {
+      linhaRegex: '0339901241\\d{37}',
+      valorRegex: 'Valor\\s*do\\s*Documento\\s*[:\\s]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      vencimentoRegex: 'Vencimento\\s*[:\\s]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
+      favorecidoRegex: '(BYD\\s+DO\\s+BRASIL\\s+LTDA)',
+      seuNumeroRegex: '(?:No\\.\\s+do\\s+Documento|Número\\s+do\\s+Documento)\\s*[:\\s]*([\\d]{8,15})',
+    },
+  },
+  {
+    id: 'layout-santander-byd-auto-07',
+    signature: 'SIG_033_BYD_AUTO_DO_BRASIL_03399',
+    bankCode: '033',
+    bankName: 'Banco Santander Brasil S.A.',
+    issuerName: 'BYD AUTO DO BRASIL LTDA',
+    layoutName: 'Boleto Santander - BYD AUTO DO BRASIL LTDA (Ag. 2271 / Cod. 548328)',
+    confidenceScore: 0.99,
+    timesUsed: 190,
+    successCount: 190,
+    avgExtractionTimeMs: 12,
+    createdDate: '2026-03-01T10:00:00.000Z',
+    lastUsedDate: new Date().toISOString(),
+    privacySanitised: true,
+    anchors: {
+      barcodePattern: '0339905481',
+      linhaDigitavelAnchor: '03399.05481',
+      valorAnchor: 'Valor do Documento',
+      vencimentoAnchor: 'Vencimento',
+      beneficiarioAnchor: 'BYD AUTO DO BRASIL LTDA',
+      seuNumeroAnchor: 'No. do Documento',
+      nossoNumeroAnchor: 'Nosso Número',
+    },
+    keywords: ['0339905481', '03399', 'byd auto do brasil', '50.351.104/0001-19', '2271', '548328', 'santander', 'camacari'],
+    fieldExtractors: {
+      linhaRegex: '0339905481\\d{37}',
+      valorRegex: 'Valor\\s*do\\s*Documento\\s*[:\\s]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      vencimentoRegex: 'Vencimento\\s*[:\\s]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
+      favorecidoRegex: '(BYD\\s+AUTO\\s+DO\\s+BRASIL\\s+LTDA)',
+      seuNumeroRegex: '(?:No\\.\\s+do\\s+Documento|Número\\s+do\\s+Documento)\\s*[:\\s]*([\\d]{8,15})',
+    },
   }
 ];
 
@@ -241,7 +305,9 @@ export function generateLayoutSignature(text: string, bankCode?: string): string
   const bankMatch = bankCode || (normalizedText.match(/\b(237|341|001|104|033|756|748|077|858|856)\b/)?.[1] || '000');
   
   let issuerToken = 'GENERIC';
-  if (normalizedText.includes('suhai')) issuerToken = 'SUHAI_SEGURADORA';
+  if (normalizedText.includes('byd auto') || normalizedText.includes('50.351.104/0001-19') || normalizedText.includes('0339905481')) issuerToken = 'BYD_AUTO_DO_BRASIL';
+  else if (normalizedText.includes('byd do brasil') || normalizedText.includes('17.140.820/0007-77') || normalizedText.includes('0339901241')) issuerToken = 'BYD_DO_BRASIL';
+  else if (normalizedText.includes('suhai')) issuerToken = 'SUHAI_SEGURADORA';
   else if (normalizedText.includes('claro')) issuerToken = 'CLARO_SA';
   else if (normalizedText.includes('sefaz') || normalizedText.includes('gnre')) issuerToken = 'SEFAZ_GNRE';
   else if (normalizedText.includes('receita federal') || normalizedText.includes('darf')) issuerToken = 'RECEITA_FEDERAL';

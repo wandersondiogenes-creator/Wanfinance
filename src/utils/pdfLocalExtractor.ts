@@ -28,10 +28,18 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
     // 1. Structural PDF page-by-page extraction using pdfjs-dist
     try {
       const pdfjsLib = await import('pdfjs-dist');
-      if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.0.379'}/build/pdf.worker.min.mjs`;
+      if (pdfjsLib) {
+        if (pdfjsLib.GlobalWorkerOptions) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.0.379'}/build/pdf.worker.min.mjs`;
+        }
+        if ('verbosity' in pdfjsLib) {
+          (pdfjsLib as any).verbosity = 0; // Silent verbosity mode
+        }
       }
-      const loadingTask = pdfjsLib.getDocument({ data: bytes.buffer });
+      const loadingTask = pdfjsLib.getDocument({
+        data: bytes.buffer,
+        stopAtErrors: false,
+      });
       const pdfDoc = await loadingTask.promise;
 
       for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
@@ -41,8 +49,11 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
         const pageCombined = pageStrings.join(' ');
         pageTexts.push(pageCombined);
       }
-    } catch (pdfJsErr) {
-      console.warn('[PDFJS Extractor] Avisos no PDF.js:', pdfJsErr);
+    } catch (pdfJsErr: any) {
+      const msg = String(pdfJsErr?.message || pdfJsErr);
+      if (!msg.includes('Bad uncompressed size') && !msg.includes('decompression')) {
+        console.warn('[PDFJS Extractor] Aviso no PDF.js:', msg);
+      }
     }
 
     // If pdfjs failed to get text, try decompressed streams safely without regex

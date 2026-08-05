@@ -117,7 +117,20 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   const isMulta = textUpper.includes('MULTA') || textUpper.includes('INFRAÇ') || textUpper.includes('INFRAC') || textUpper.includes('CTTU') || textUpper.includes('AMC') || textUpper.includes('PRF') || textUpper.includes('AUTARQUIA DE TRÂNSITO') || textUpper.includes('NOTIFICAÇÃO DA PENALIDADE') || textUpper.includes('PENALIDADE');
   const isTributoFederal = textUpper.includes('DARF') || textUpper.includes('GNRE') || textUpper.includes('RECEITA FEDERAL') || textUpper.includes('SIMPLES NACIONAL');
 
-  if (isIPVA) {
+  const isBYDAuto = textUpper.includes('BYD AUTO DO BRASIL') || textUpper.includes('50.351.104/0001-19') || textUpper.includes('03399.05481');
+  const isBYDBrasil = textUpper.includes('BYD DO BRASIL') || textUpper.includes('17.140.820/0007-77') || textUpper.includes('03399.01241');
+
+  if (isBYDAuto) {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = 'BYD AUTO DO BRASIL LTDA';
+    bancoCodigo = '033';
+    bancoNome = 'Banco Santander Brasil S.A.';
+  } else if (isBYDBrasil) {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = 'BYD DO BRASIL LTDA';
+    bancoCodigo = '033';
+    bancoNome = 'Banco Santander Brasil S.A.';
+  } else if (isIPVA) {
     tipoBoleto = 'ipva_sefaz';
     favorecidoNome = 'SECRETARIA DA FAZENDA - IPVA';
     bancoCodigo = '858';
@@ -239,6 +252,13 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   if (!text) return 'Beneficiário / Cedente';
 
   // 1. Direct high-frequency matches
+  if (/BYD\s+AUTO\s+DO\s+BRASIL/i.test(text) || text.includes('50.351.104/0001-19')) {
+    return 'BYD AUTO DO BRASIL LTDA';
+  }
+  if (/BYD\s+DO\s+BRASIL/i.test(text) || text.includes('17.140.820/0007-77')) {
+    return 'BYD DO BRASIL LTDA';
+  }
+
   const suhaiMatch = text.match(/(SUHAI\s+SEGURADORA\s*(?:S\/?A)?)/i);
   if (suhaiMatch) return 'SUHAI SEGURADORA S/A';
 
@@ -382,7 +402,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       valor: 0,
       dataVencimento: '',
       isValid: false,
-      tipo: 'desconhecido',
+      tipo: 'titulo_bancario',
       errorMessage: 'Linha digitável vazia',
     };
   }
@@ -396,7 +416,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       valor: 0,
       dataVencimento: '',
       isValid: false,
-      tipo: 'desconhecido',
+      tipo: 'titulo_bancario',
       errorMessage: `Linha digitável deve ter 47 dígitos (Boleto Bancário) ou 48 dígitos (Concessionária). Recebido: ${limpa.length} dígitos.`,
     };
   }
@@ -484,7 +504,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
     valor: 0,
     dataVencimento: '',
     isValid: false,
-    tipo: 'desconhecido',
+    tipo: 'titulo_bancario',
   };
 }
 
