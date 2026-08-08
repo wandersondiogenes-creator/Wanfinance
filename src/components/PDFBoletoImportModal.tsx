@@ -1254,7 +1254,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                   Arquivo {idx + 1} de {totalFiles}
                                 </span>
                               </div>
-                              <span className="text-[11px] font-bold text-blue-700 block mt-0.5">
+                              <span key={`step-status-${item.progress}`} className="text-[11px] font-bold text-blue-700 block mt-0.5">
                                 Status: {item.stepMessage}
                               </span>
                             </div>
@@ -1262,14 +1262,14 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
                           <div className="flex items-center space-x-2 shrink-0">
                             {item.status === 'loading' && (
-                              <span className="text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 flex items-center space-x-1.5 font-bold">
+                              <span key="status-badge-loading" className="text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 flex items-center space-x-1.5 font-bold">
                                 <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
                                 <span>Processando ({item.progress}%)</span>
                               </span>
                             )}
 
                             {(item.status === 'success' || item.status === 'partial') && (
-                              <div className="flex items-center space-x-2">
+                              <div key="status-badge-success" className="flex items-center space-x-2">
                                 <span
                                   className={`text-xs px-2.5 py-1 rounded-full border flex items-center space-x-1 font-bold ${
                                     item.status === 'success'
@@ -1295,13 +1295,14 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                             )}
 
                             {item.status === 'error' && (
-                              <span className="text-xs text-red-800 bg-red-50 px-2.5 py-1 rounded-full border border-red-200 flex items-center space-x-1 font-bold">
+                              <span key="status-badge-error" className="text-xs text-red-800 bg-red-50 px-2.5 py-1 rounded-full border border-red-200 flex items-center space-x-1 font-bold">
                                 <AlertCircle className="w-3.5 h-3.5 text-red-600" />
                                 <span>Erro na extração</span>
                               </span>
                             )}
 
                             <button
+                              type="button"
                               onClick={() => handleRemoveItem(item.id)}
                               className="p-1.5 text-slate-400 hover:text-red-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
                               title="Remover da fila"
@@ -1315,10 +1316,14 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                         <div className="py-2">
                           <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
                             <span className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-                              <span>Etapa do Processamento: {item.stepMessage}</span>
+                              {item.status === 'loading' && (
+                                <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                              )}
+                              <span key={`msg-progress-${item.progress}`}>
+                                Etapa do Processamento: {item.stepMessage}
+                              </span>
                             </span>
-                            <span className="font-mono text-blue-800 font-extrabold">
+                            <span key={`pct-${item.progress}`} className="font-mono text-blue-800 font-extrabold">
                               {item.progress}%
                             </span>
                           </div>
