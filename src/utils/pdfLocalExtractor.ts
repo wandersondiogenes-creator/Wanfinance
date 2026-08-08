@@ -130,6 +130,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
     const patterns = [
       /\d{5}[\.\s-]*\d{5}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d[\.\s-]*\d{14}/g,
       /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
+      /\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d/g,
       /\b\d{47,48}\b/g,
       /\b\d{44}\b/g,
     ];
@@ -149,7 +150,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                 seenLines.add(clean);
                 let extractedValue = detected.valor || parsed.valor || 0;
 
-                const valorMatch = textBlock.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+DO\s+DOCUMENTO|VALOR\s+PRINCIPAL|VALOR\s+COBRADO)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+                const valorMatch = textBlock.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+DO\s+DOCUMENTO|VALOR\s+COBRADO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
                 if (valorMatch) {
                   const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
                   const parsedVal = parseFloat(valStr);
@@ -160,7 +161,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
                 let docNumber = detected.autoInfracao || '';
                 let nossoNum = '';
-                const numDocMatch = textBlock.match(/(?:Nº\s+do\s+Documento|Número\s+do\s+Documento|Nº\s+Doc|Seu\s+Número)\s*[:\s]*([\w\/\.-]{5,30})/i);
+                const numDocMatch = textBlock.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+do\s+Documento|Número\s+do\s+Documento|Nº\s+Doc|Seu\s+Número)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
                 if (numDocMatch && !docNumber) docNumber = numDocMatch[1].trim();
 
                 const nossoNumMatch = textBlock.match(/(?:Nosso\s+Número|Cart\.\s*\/\s*Nosso\s+Número)\s*[:\s]*([\w\/\.-]{5,25})/i);
@@ -196,13 +197,42 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       }
     }
 
-    // 3. Scan for scattered 47-digit sequences in extracted clean page text
+    // 3. Scan for scattered 47 or 48-digit sequences in extracted clean page text
     if (boletosFound.length === 0) {
       for (const textBlock of pageTexts) {
         const textDigitsOnly = onlyNumbers(textBlock);
         const detected = detectBoletoDetailsFromText(textBlock || fullDocText);
         if (textDigitsOnly.length >= 47 && textDigitsOnly.length < 5000) {
           for (let i = 0; i <= textDigitsOnly.length - 47; i++) {
+            if (i <= textDigitsOnly.length - 48) {
+              const chunk48 = textDigitsOnly.substring(i, i + 48);
+              if (chunk48.startsWith('8') && !seenLines.has(chunk48)) {
+                const parsed48 = parseLinhaDigitavel(chunk48);
+                if (parsed48.isValid && parsed48.valor >= 0) {
+                  seenLines.add(chunk48);
+                  boletosFound.push({
+                    linhaDigitavel: chunk48,
+                    codigoBarras: parsed48.codigoBarras || chunk48,
+                    favorecidoNome: detected.favorecidoNome || extractFavorecidoFromText(textBlock || fullDocText, parsed48.bancoNome),
+                    favorecidoCnpjCpf: '',
+                    valor: detected.valor || parsed48.valor,
+                    dataVencimento: detected.dataVencimento || parsed48.dataVencimento || new Date().toISOString().split('T')[0],
+                    seuNumero: detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
+                    nossoNumero: '',
+                    bancoCodigo: detected.bancoCodigo || parsed48.bancoCodigo,
+                    bancoNome: detected.bancoNome || parsed48.bancoNome,
+                    tipoBoleto: detected.tipoBoleto,
+                    placa: detected.placa,
+                    renavam: detected.renavam,
+                    autoInfracao: detected.autoInfracao,
+                    observacoes: detected.observacoes || 'Extraído via varredura de texto local (GNRE/Tributo)',
+                    confidence: 0.85,
+                  });
+                  continue;
+                }
+              }
+            }
+
             const chunk = textDigitsOnly.substring(i, i + 47);
             if (!seenLines.has(chunk)) {
               const parsed = parseLinhaDigitavel(chunk);

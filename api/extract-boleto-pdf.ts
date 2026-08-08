@@ -100,6 +100,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
   const patterns = [
     /\d{5}[\.\s]*\d{5}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d[\.\s]*\d{14}/g,
     /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
+    /\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d/g,
     /\b\d{47,48}\b/g,
     /\b\d{44}\b/g,
   ];
@@ -115,7 +116,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             seenLines.add(clean);
             let extractedValue = parsed.valor || 0;
 
-            const valorMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+PRINCIPAL)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+            const valorMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
             if (valorMatch) {
               const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
               const parsedVal = parseFloat(valStr);
@@ -126,12 +127,25 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               }
             }
 
+            let extractedDueDate = parsed.dataVencimento || '';
+            const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|DOCUMENTO\s+VÁLIDO\s+PARA\s+PAGAMENTO|VÁLIDO\s+PARA\s+PAGAMENTO|VALIDO\s+PARA\s+PAGAMENTO)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+            if (vencMatch) {
+              const [d, m, y] = vencMatch[1].split(/[/-]/);
+              extractedDueDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+            }
+
             let favorecidoNome = extractFavorecidoFromText(rawText, parsed.bancoNome);
             if (parsed.bancoCodigo === '858') {
-              favorecidoNome = 'SEFAZ - Guia GNRE';
+              const ufMatch = rawText.match(/(?:UF\s+Favorecida|UF\s+Favorecido)\s*[:\s\r\n]*([A-Z]{2})/i);
+              const ufStr = ufMatch ? ` (SEFAZ-${ufMatch[1].toUpperCase()})` : '';
+              favorecidoNome = `GNRE - Tributos Estaduais${ufStr}`;
             } else if (parsed.bancoCodigo === '856') {
               favorecidoNome = 'Receita Federal - DARF';
             }
+
+            let docNum = `PDF-TEXT-${boletosFound.length + 1}`;
+            const ctrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
+            if (ctrlMatch) docNum = ctrlMatch[1].trim();
 
             boletosFound.push({
               linhaDigitavel: clean,
@@ -142,9 +156,9 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               favorecidoCnpjCpf: "",
               CNPJ: "",
               valor: extractedValue,
-              dataVencimento: parsed.dataVencimento || new Date().toISOString().split("T")[0],
-              seuNumero: `PDF-TEXT-${boletosFound.length + 1}`,
-              numeroDocumento: `PDF-TEXT-${boletosFound.length + 1}`,
+              dataVencimento: extractedDueDate || new Date().toISOString().split("T")[0],
+              seuNumero: docNum,
+              numeroDocumento: docNum,
               nossoNumero: "",
               bancoCodigo: parsed.bancoCodigo,
               bancoNome: parsed.bancoNome,

@@ -89,15 +89,15 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   // 4. Extracted Due Date (Vencimento)
   let dataVencimento = '';
-  const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|PAGAR\s+ATÉ)\s*[:\s]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+  const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|DOCUMENTO\s+VÁLIDO\s+PARA\s+PAGAMENTO|VÁLIDO\s+PARA\s+PAGAMENTO|VALIDO\s+PARA\s+PAGAMENTO|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
   if (vencMatch) {
     const [d, m, y] = vencMatch[1].split(/[/-]/);
     dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
 
-  // 5. Extracted Values (Valor Cobrado / Valor com Desconto / Valor Total)
+  // 5. Extracted Values (Valor Cobrado / Valor com Desconto / Valor Total / Total a Recolher)
   let valor: number | undefined;
-  const valorCobradoMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|VALOR\s+A\s+PAGAR\s+COM\s+JUROS|VALOR\s+COM\s+DESCONTO|VALOR\s+TOTAL|VALOR\s+PRINCIPAL)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+  const valorCobradoMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+COBRADO|VALOR\s+A\s+PAGAR\s+COM\s+JUROS|VALOR\s+COM\s+DESCONTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
   if (valorCobradoMatch) {
     const valStr = valorCobradoMatch[1].replace(/\./g, '').replace(',', '.');
     const parsedVal = parseFloat(valStr);
@@ -106,23 +106,43 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     }
   }
 
+  // GNRE / Control Number extraction
+  let gnomeNum = '';
+  const gnreCtrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
+  if (gnreCtrlMatch) {
+    gnomeNum = gnreCtrlMatch[1].trim();
+  }
+
   // 6. Classification of Boleto Type & Favorecido
   let tipoBoleto: BoletoType = 'titulo_bancario';
   let favorecidoNome = 'Beneficiário / Cedente';
   let bancoCodigo = '800';
   let bancoNome = 'Concessionária / Tributo';
 
+  const isGNRE = textUpper.includes('GNRE') || textUpper.includes('GUIA NACIONAL DE RECOLHIMENTO') || textUpper.includes('TRIBUTOS ESTADUAIS');
   const isDAEBahia = textUpper.includes('GOVERNO DO ESTADO DA BAHIA') || textUpper.includes('DAE ÚNICO') || textUpper.includes('DAE UNICO') || textUpper.includes('SERVICOS.DETRAN.BA.GOV.BR');
   const isDARParaiba = textUpper.includes('GOVERNO DO ESTADO DA PARAÍBA') || textUpper.includes('SEFAZ-PB') || textUpper.includes('DAR - MOD 2') || textUpper.includes('AUTO LANÇAMENTO DO IPVA');
-  const isIPVA = textUpper.includes('IPVA') || textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ') || textUpper.includes('DISCRIMINAÇÃO DOS DÉBITOS');
+  const isIPVA = !isGNRE && (textUpper.includes('IPVA') || textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ') || textUpper.includes('DISCRIMINAÇÃO DOS DÉBITO'));
   const isLicenciamento = textUpper.includes('LICENCIAMENTO') || (textUpper.includes('DETRAN') && !textUpper.includes('MULTA') && !textUpper.includes('INFRAÇ') && !textUpper.includes('INFRAC'));
   const isMulta = textUpper.includes('MULTA') || textUpper.includes('INFRAÇ') || textUpper.includes('INFRAC') || textUpper.includes('CTTU') || textUpper.includes('AMC') || textUpper.includes('PRF') || textUpper.includes('AUTARQUIA DE TRÂNSITO') || textUpper.includes('NOTIFICAÇÃO DA PENALIDADE') || textUpper.includes('PENALIDADE');
-  const isTributoFederal = textUpper.includes('DARF') || textUpper.includes('GNRE') || textUpper.includes('RECEITA FEDERAL') || textUpper.includes('SIMPLES NACIONAL');
+  const isTributoFederal = textUpper.includes('DARF') || textUpper.includes('RECEITA FEDERAL') || textUpper.includes('SIMPLES NACIONAL');
 
   const isBYDAuto = textUpper.includes('BYD AUTO DO BRASIL') || textUpper.includes('50.351.104/0001-19') || textUpper.includes('03399.05481');
   const isBYDBrasil = textUpper.includes('BYD DO BRASIL') || textUpper.includes('17.140.820/0007-77') || textUpper.includes('03399.01241');
 
-  if (isBYDAuto) {
+  if (isGNRE) {
+    tipoBoleto = 'tributo';
+    bancoCodigo = '858';
+    bancoNome = 'GNRE - Guia Nacional de Recolhimento';
+
+    const ufMatch = rawText.match(/(?:UF\s+Favorecida|UF\s+Favorecido)\s*[:\s\r\n]*([A-Z]{2})/i);
+    const ufStr = ufMatch ? ` (SEFAZ-${ufMatch[1].toUpperCase()})` : '';
+
+    const emitenteMatch = rawText.match(/(?:Razão\s+Social|Contribuinte\s+Emitente)\s*[:\s\r\n]*([A-Z0-9\.\&\s\-\/]{3,50})/i);
+    const emitName = emitenteMatch ? ` - ${emitenteMatch[1].trim()}` : '';
+
+    favorecidoNome = `GNRE - Tributos Estaduais${ufStr}${emitName}`;
+  } else if (isBYDAuto) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BYD AUTO DO BRASIL LTDA';
     bancoCodigo = '033';
@@ -181,7 +201,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   }
 
   // 7. Seu Número & Observações
-  let seuNumero = autoInfracao || (placa ? `${tipoBoleto.toUpperCase()}-${placa}` : '');
+  let seuNumero = gnomeNum || autoInfracao || (placa ? `${tipoBoleto.toUpperCase()}-${placa}` : '');
   let obsParts: string[] = [];
   if (tipoBoleto === 'ipva_sefaz') obsParts.push('IPVA 2026');
   if (tipoBoleto === 'taxa_detran') obsParts.push('Licenciamento DETRAN');
