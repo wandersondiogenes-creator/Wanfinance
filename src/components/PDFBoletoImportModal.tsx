@@ -876,40 +876,50 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       .map((item) => ({ ...item.data!, id: item.id }));
   }, [items]);
 
-  const duplicateCount = useMemo(() => {
-    return items.filter((item) => {
-      if (!item.data) return false;
-      const dup = detectBoletoDuplicate(
-        { ...item.data, id: item.id },
-        allExtractedData,
-        existingBoletos,
-        history
-      );
-      return dup.isDuplicate;
-    }).length;
-  }, [items, allExtractedData, existingBoletos, history]);
-
-  const handleRemoveDuplicates = () => {
+  const duplicateItemIds = useMemo(() => {
+    const ids = new Set<string>();
     const seenKeys = new Set<string>();
     const seenRefs = new Set<string>();
 
-    setItems((prev) =>
-      prev.filter((item) => {
-        if (!item.data) return true;
+    for (const item of items) {
+      if (!item.data) continue;
 
-        const key = getBoletoCleanKey(item.data.linhaDigitavel, item.data.codigoBarras);
-        const cnpj = onlyNumbers(item.data.favorecidoCnpjCpf || item.data.beneficiarioCnpjCpf || '');
-        const ref = item.data.seuNumero ? `${item.data.seuNumero.trim().toUpperCase()}_${cnpj}` : '';
+      const dup = detectBoletoDuplicate(
+        { ...item.data, id: item.id },
+        [],
+        existingBoletos,
+        history
+      );
 
-        if (key && seenKeys.has(key)) return false;
-        if (ref && seenRefs.has(ref)) return false;
+      if (dup.isSystemDuplicate || dup.isHistoryDuplicate) {
+        ids.add(item.id);
+        continue;
+      }
 
-        if (key) seenKeys.add(key);
-        if (ref) seenRefs.add(ref);
+      const key = getBoletoCleanKey(item.data.linhaDigitavel, item.data.codigoBarras);
+      const cnpj = onlyNumbers(item.data.favorecidoCnpjCpf || item.data.beneficiarioCnpjCpf || '');
+      const ref = item.data.seuNumero ? `${item.data.seuNumero.trim().toUpperCase()}_${cnpj}` : '';
 
-        return true;
-      })
-    );
+      if (key && seenKeys.has(key)) {
+        ids.add(item.id);
+        continue;
+      }
+      if (ref && seenRefs.has(ref)) {
+        ids.add(item.id);
+        continue;
+      }
+
+      if (key) seenKeys.add(key);
+      if (ref) seenRefs.add(ref);
+    }
+
+    return ids;
+  }, [items, existingBoletos, history]);
+
+  const duplicateCount = duplicateItemIds.size;
+
+  const handleRemoveDuplicates = () => {
+    setItems((prev) => prev.filter((item) => !duplicateItemIds.has(item.id)));
   };
 
   if (!isOpen) return null;
