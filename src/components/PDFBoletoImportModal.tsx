@@ -89,6 +89,17 @@ export interface PDFExtractedItem {
     desconto?: number;
     jurosMulta?: number;
     confidence: number;
+    confianca?: number;
+    alertas?: string[];
+    camposDivergentes?: string[];
+    beneficiario?: string;
+    beneficiarioCnpjCpf?: string;
+    pagador?: string;
+    numeroDocumento?: string;
+    agenciaConta?: string;
+    juros?: number;
+    multa?: number;
+    tipoDocumento?: string;
     tipoBoleto?: string;
     placa?: string;
     renavam?: string;
@@ -516,8 +527,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             codigoBarras: extracted.codigoBarras || parsedCheck.codigoBarras || '',
             favorecidoNome: finalFavorecido,
             favorecidoCnpjCpf: finalCnpj,
-            pagadorNome: extracted.pagadorNome || extracted.pagador || '',
+            beneficiario: extracted.beneficiario || finalFavorecido,
+            beneficiarioCnpjCpf: extracted.beneficiarioCnpjCpf || finalCnpj,
+            pagador: extracted.pagador || extracted.pagadorNome || '',
             pagadorCnpjCpf: extracted.pagadorCnpjCpf || '',
+            pagadorNome: extracted.pagador || extracted.pagadorNome || '',
             valor: finalValor,
             dataVencimento:
               extracted.dataVencimento ||
@@ -530,10 +544,13 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               parsedCheck.dataVencimento ||
               new Date().toISOString().split('T')[0],
             seuNumero: finalSeuNumero,
+            numeroDocumento: extracted.numeroDocumento || finalSeuNumero,
             nossoNumero: extracted.nossoNumero || '',
+            agenciaConta: extracted.agenciaConta || '',
             bancoCodigo: finalBancoCodigo,
             bancoNome: finalBancoNome,
             tipoBoleto: extracted.tipoBoleto || 'titulo_bancario',
+            tipoDocumento: extracted.tipoDocumento || 'boleto',
             placa: extracted.placa || '',
             renavam: extracted.renavam || '',
             autoInfracao: extracted.autoInfracao || '',
@@ -542,7 +559,10 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               (rawBoletos.length > 1
                 ? `Boleto ${idx + 1}/${rawBoletos.length} de ${file.name}`
                 : `Extraído de ${file.name}`),
-            confidence: extracted.confidence || (isFastPathUsed ? 0.99 : 0.92),
+            confidence: typeof extracted.confianca === 'number' ? extracted.confianca / 100 : (extracted.confidence || 0.95),
+            confianca: extracted.confianca || 95,
+            alertas: extracted.alertas || [],
+            camposDivergentes: extracted.camposDivergentes || [],
           },
         };
       });
@@ -721,16 +741,26 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       codigoBarras: d.codigoBarras || parsed.codigoBarras,
       bancoCodigo: d.bancoCodigo || parsed.bancoCodigo,
       bancoNome: d.bancoNome || parsed.bancoNome,
-      favorecidoNome: d.favorecidoNome || 'Favorecido Não Identificado',
-      favorecidoCnpjCpf: d.favorecidoCnpjCpf,
+      favorecidoNome: d.favorecidoNome || d.beneficiario || 'Favorecido Não Identificado',
+      favorecidoCnpjCpf: d.favorecidoCnpjCpf || d.beneficiarioCnpjCpf,
+      beneficiario: d.beneficiario || d.favorecidoNome,
+      beneficiarioCnpjCpf: d.beneficiarioCnpjCpf || d.favorecidoCnpjCpf,
+      pagador: d.pagador || d.pagadorNome || 'Pagador Não Identificado',
+      pagadorCnpjCpf: d.pagadorCnpjCpf,
       valor: d.valor,
       dataVencimento: d.dataVencimento,
       dataPagamento: d.dataPagamento || d.dataVencimento,
       seuNumero: d.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`,
+      numeroDocumento: d.numeroDocumento || d.seuNumero,
       nossoNumero: d.nossoNumero,
+      agenciaConta: d.agenciaConta,
       desconto: d.desconto || 0,
       jurosMulta: d.jurosMulta || 0,
       observacoes: d.observacoes,
+      confianca: d.confianca || Math.round((d.confidence || 0.95) * 100),
+      alertas: d.alertas || [],
+      camposDivergentes: d.camposDivergentes || [],
+      tipoDocumento: d.tipoDocumento || 'boleto',
       isValid: cleanLinha.length === 47 || cleanLinha.length === 48,
       selected: true,
       createdAt: new Date().toISOString(),
@@ -757,16 +787,26 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         codigoBarras: d.codigoBarras || parsed.codigoBarras,
         bancoCodigo: d.bancoCodigo || parsed.bancoCodigo,
         bancoNome: d.bancoNome || parsed.bancoNome,
-        favorecidoNome: d.favorecidoNome || 'Favorecido Não Identificado',
-        favorecidoCnpjCpf: d.favorecidoCnpjCpf,
+        favorecidoNome: d.favorecidoNome || d.beneficiario || 'Favorecido Não Identificado',
+        favorecidoCnpjCpf: d.favorecidoCnpjCpf || d.beneficiarioCnpjCpf,
+        beneficiario: d.beneficiario || d.favorecidoNome,
+        beneficiarioCnpjCpf: d.beneficiarioCnpjCpf || d.favorecidoCnpjCpf,
+        pagador: d.pagador || d.pagadorNome || 'Pagador Não Identificado',
+        pagadorCnpjCpf: d.pagadorCnpjCpf,
         valor: d.valor,
         dataVencimento: d.dataVencimento,
         dataPagamento: d.dataPagamento || d.dataVencimento,
         seuNumero: d.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`,
+        numeroDocumento: d.numeroDocumento || d.seuNumero,
         nossoNumero: d.nossoNumero,
+        agenciaConta: d.agenciaConta,
         desconto: d.desconto || 0,
         jurosMulta: d.jurosMulta || 0,
         observacoes: d.observacoes,
+        confianca: d.confianca || Math.round((d.confidence || 0.95) * 100),
+        alertas: d.alertas || [],
+        camposDivergentes: d.camposDivergentes || [],
+        tipoDocumento: d.tipoDocumento || 'boleto',
         isValid: cleanLinha.length === 47 || cleanLinha.length === 48,
         selected: true,
         createdAt: new Date().toISOString(),
@@ -1343,7 +1383,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
                         {/* Indicador de Memória / Reconhecimento de Layout */}
                         {item.status !== 'loading' && (
-                          <div className="my-2">
+                          <div className="my-2 space-y-2">
                             {item.layoutRecognized ? (
                               <div className="bg-indigo-50/90 border border-indigo-200 rounded-xl p-2.5 text-xs text-indigo-900 flex items-center justify-between gap-2">
                                 <div className="flex items-center space-x-2">
@@ -1379,6 +1419,47 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                   <Sparkles className="w-3 h-3" />
                                   <span>Novo Aprendizado</span>
                                 </span>
+                              </div>
+                            )}
+
+                            {/* Banner de Nível de Confiança e Alertas Financeiros */}
+                            {item.data && (
+                              <div className={`border rounded-xl p-3 text-xs ${
+                                (item.data.confianca || 100) >= 85
+                                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                                  : (item.data.confianca || 100) >= 65
+                                  ? 'bg-amber-50/80 border-amber-200 text-amber-950'
+                                  : 'bg-red-50/80 border-red-200 text-red-950'
+                              }`}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-bold flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                    <span>Pontuação de Confiança da Extração:</span>
+                                  </span>
+                                  <span className={`font-mono font-black text-xs px-2 py-0.5 rounded-lg ${
+                                    (item.data.confianca || 100) >= 85
+                                      ? 'bg-emerald-200 text-emerald-900'
+                                      : (item.data.confianca || 100) >= 65
+                                      ? 'bg-amber-200 text-amber-900'
+                                      : 'bg-red-200 text-red-900'
+                                  }`}>
+                                    {item.data.confianca || Math.round((item.data.confidence || 0.95) * 100)}%
+                                  </span>
+                                </div>
+
+                                {Array.isArray(item.data.alertas) && item.data.alertas.length > 0 && (
+                                  <div className="mt-2 space-y-1 border-t border-slate-200/60 pt-2">
+                                    <span className="font-extrabold text-[11px] block uppercase tracking-wider text-slate-700">
+                                      Alertas e Inconsistências Identificadas:
+                                    </span>
+                                    {item.data.alertas.map((alerta, aIdx) => (
+                                      <p key={aIdx} className="text-[11px] font-semibold text-amber-900 flex items-start gap-1">
+                                        <span>•</span>
+                                        <span>{alerta}</span>
+                                      </p>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

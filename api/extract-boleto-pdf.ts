@@ -1,6 +1,12 @@
 import zlib from "zlib";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText } from "../src/utils/boletoParser.js";
+import {
+  SYSTEM_INSTRUCTION_BOLETO,
+  PROMPT_BOLETO_EXTRACTION,
+  GEMINI_BOLETO_SCHEMA,
+  validateAndCrossCheckBoleto,
+} from "../src/utils/boletoExtractorEngine.js";
 
 export const config = {
   api: {
@@ -222,32 +228,6 @@ export default async function handler(req: any, res: any) {
         },
       });
 
-      const prompt = `Você é um leitor óptico (OCR) e especialista financeiro de MÁXIMA PRECISÃO em boletos bancários brasileiros, carnês de pagamento, parcelamentos, faturas, tributos, guias de arrecadação e GNRE.
-
-Analise com EXTREMA ATENÇÃO TODO O CONTEÚDO DE TODAS AS PÁGINAS do arquivo enviado (${fileName}).
-
-REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS SUHAI, FINANCIAMENTOS, CONSÓRCIOS):
-1. O arquivo pode ser um CARNÊ com várias parcelas (ex: 12 parcelas de seguro Suhai / financiamento), onde cada página contém 2, 3 ou mais cupons/parcelas (por exemplo: Parcela 01/012 a Parcela 12/012).
-2. CADA PARCELA É UM BOLETO INDIVIDUAL com sua própria data de vencimento (ex: 04/05/2026, 25/05/2026, 25/06/2026...), valor próprio (ex: R$ 49,32 ou R$ 49,35), "Nº do Documento", "Nosso Número" e linha digitável.
-3. Você DEVE PERCORRER TODAS AS PÁGINAS do PDF e extrair CADA UMA DAS PARCELAS como um boleto separado no array "boletos".
-4. SE O CARNÊ TIVER 12 PARCELAS (01/012 até 12/012), VOCÊ DEVE RETORNAR EXATAMENTE 12 BOLETOS NO ARRAY! NUNCA pare na 1ª parcela e NUNCA pule nenhuma página.
-5. EXTRAÇÃO DE NÚMEROS E IDENTIFICAÇÃO (MUITO IMPORTANTE):
-   - "numeroDocumento": Número impresso no campo "Nº do Documento" do boleto (ex: "1003111990090/00000000/01" para a parcela 1, "1003111990090/00000000/02" para a parcela 2). Este é a Nota Fiscal/Número do Documento real.
-   - "seuNumero": Coloque o "Nº do Documento" exato impresso na parcela (ex: "1003111990090/00000000/01"). NUNCA substitua por um número genérico se o "Nº do Documento" estiver visível.
-   - "nossoNumero": Código impresso no campo "Nosso Número" ou "Cart. / Nosso Número" (ex: "5/00056921372-8", "5/00056921373-6").
-6. LINHA DIGITÁVEL E DADOS FINANCEIROS:
-   - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos). Se para alguma parcela a linha digitável não estiver em texto corrido impresso no topo, mas você tiver Banco (237 - Bradesco), Agência (3392), Conta (0201560-9), Carteira (05), Nosso Número (ex: 5/00056921372-8), Vencimento e Valor, monte/calcule a linha digitável correspondente de 47 dígitos.
-   - "favorecidoNome": NOME DA EMPRESA COBRADORA OU BENEFICIÁRIO/CEDENTE QUE ESTÁ EMITINDO A FATURA OU RECEBENDO O PAGAMENTO (ex: "SUHAI SEGURADORA S/A", "CLARO S.A."). NUNCA COLOQUE O NOME DO BANCO EMISSOR (como "Bradesco", "Banco Itaú") no favorecidoNome!
-   - "favorecidoCnpjCpf": CNPJ do Beneficiário (ex: "16.825.255/0001-23").
-   - "valor": Valor numérico exato do documento para ESTA PARCELA (ex: 49.32 ou 49.35).
-   - "dataVencimento": Data de Vencimento de ESTA PARCELA no formato YYYY-MM-DD.
-   - "bancoCodigo": Código de 3 dígitos do banco (ex: "237" para Bradesco).
-   - "bancoNome": Nome do banco emissor (ex: "Bradesco").
-   - "observacoes": Ex: "Parcela 01/012 de Suhai Seguradora".
-
-REGRA DE SCHEMA JSON:
-NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
-
       const modelsToTry = [
         "gemini-3.6-flash",
         "gemini-flash-latest",
@@ -267,46 +247,16 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
                       data: cleanBase64,
                     },
                   },
-                  { text: prompt },
+                  { text: PROMPT_BOLETO_EXTRACTION(fileName) },
                 ],
               },
             ],
             config: {
+              systemInstruction: SYSTEM_INSTRUCTION_BOLETO,
+              temperature: 0.1,
               responseMimeType: "application/json",
               maxOutputTokens: 8192,
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  boletos: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        linhaDigitavel: { type: Type.STRING },
-                        codigoBarras: { type: Type.STRING },
-                        valor: { type: Type.NUMBER },
-                        dataVencimento: { type: Type.STRING },
-                        cedente: { type: Type.STRING },
-                        beneficiario: { type: Type.STRING },
-                        favorecidoNome: { type: Type.STRING },
-                        CNPJ: { type: Type.STRING },
-                        favorecidoCnpjCpf: { type: Type.STRING },
-                        numeroDocumento: { type: Type.STRING },
-                        seuNumero: { type: Type.STRING },
-                        nossoNumero: { type: Type.STRING },
-                        banco: { type: Type.STRING },
-                        bancoCodigo: { type: Type.STRING },
-                        bancoNome: { type: Type.STRING },
-                        observacoes: { type: Type.STRING },
-                        desconto: { type: Type.NUMBER },
-                        jurosMulta: { type: Type.NUMBER },
-                        confidence: { type: Type.NUMBER },
-                      },
-                    },
-                  },
-                },
-                required: ["boletos"],
-              },
+              responseSchema: GEMINI_BOLETO_SCHEMA as any,
             },
           });
 
@@ -355,37 +305,10 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
       boletosExtracted = [];
     }
 
+    // Apply strict financial cross-validation & sanity checks
     boletosExtracted = boletosExtracted
       .filter((b) => b && typeof b === "object")
-      .map((b) => {
-        const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
-        const cleanLinha = onlyNumbers(rawDigits);
-
-        b.favorecidoNome = b.favorecidoNome || b.beneficiario || b.cedente || "Beneficiário Não Identificado";
-        b.cedente = b.cedente || b.favorecidoNome;
-        b.beneficiario = b.beneficiario || b.favorecidoNome;
-        b.favorecidoCnpjCpf = b.favorecidoCnpjCpf || b.CNPJ || "";
-        b.CNPJ = b.CNPJ || b.favorecidoCnpjCpf || "";
-        b.numeroDocumento = b.numeroDocumento || b.seuNumero || "";
-        b.seuNumero = b.numeroDocumento || b.seuNumero || "";
-        b.banco = b.banco || b.bancoNome || "";
-
-        if (cleanLinha.length >= 44) {
-          const parsedCheck = parseLinhaDigitavel(cleanLinha);
-          if (parsedCheck.isValid) {
-            b.linhaDigitavel = cleanLinha;
-            b.codigoBarras = b.codigoBarras || parsedCheck.codigoBarras;
-            b.bancoCodigo = parsedCheck.bancoCodigo || b.bancoCodigo || "000";
-            b.bancoNome = parsedCheck.bancoNome || b.bancoNome || b.banco;
-            b.banco = b.bancoNome;
-            if (!b.valor || Number(b.valor) === 0) b.valor = parsedCheck.valor;
-            if (parsedCheck.dataVencimento && (!b.dataVencimento || b.dataVencimento === '')) {
-              b.dataVencimento = parsedCheck.dataVencimento;
-            }
-          }
-        }
-        return b;
-      });
+      .map((b) => validateAndCrossCheckBoleto(b));
 
     // Deduplicate boletos (prevents 1st, 2nd, 3rd via duplication while keeping distinct parcelas)
     const seenKeys = new Set<string>();

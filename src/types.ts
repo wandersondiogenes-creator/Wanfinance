@@ -13,21 +13,33 @@ export interface BoletoItem {
   codigoBarras: string;
   bancoCodigo: string;
   bancoNome: string;
-  favorecidoNome: string;
-  favorecidoCnpjCpf?: string;
+  favorecidoNome: string; // Beneficiário / Cedente
+  favorecidoCnpjCpf?: string; // CNPJ / CPF do Beneficiário
+  beneficiario?: string;
+  beneficiarioCnpjCpf?: string;
+  pagador?: string; // Nome / Razão Social do Pagador / Sacado
+  pagadorCnpjCpf?: string; // CPF / CNPJ do Pagador
   valor: number;
   dataVencimento: string; // YYYY-MM-DD
   dataPagamento: string; // YYYY-MM-DD
   seuNumero: string; // ID interno / Referência do pagamento (ex: NF 1234)
+  numeroDocumento?: string; // Número do documento impresso no boleto
   nossoNumero?: string;
+  agenciaConta?: string; // Agência e Conta do Beneficiário se disponível
   desconto?: number;
   jurosMulta?: number;
+  juros?: number;
+  multa?: number;
   tipoBoleto?: BoletoType;
+  tipoDocumento?: string; // 'boleto', 'darf', 'gnre', 'carnet', 'tributo'
   placa?: string;
   renavam?: string;
   autoInfracao?: string;
   categoria?: string;
   observacoes?: string;
+  confianca?: number | Record<string, number>; // Score 0-100 ou por campo
+  alertas?: string[]; // Avisos de inconsistência ou divergência
+  camposDivergentes?: string[];
   isValid: boolean;
   validationError?: string;
   selected: boolean;

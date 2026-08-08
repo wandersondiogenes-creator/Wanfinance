@@ -6,6 +6,12 @@ import axios from "axios";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from "./src/utils/boletoParser";
+import {
+  SYSTEM_INSTRUCTION_BOLETO,
+  PROMPT_BOLETO_EXTRACTION,
+  GEMINI_BOLETO_SCHEMA,
+  validateAndCrossCheckBoleto,
+} from "./src/utils/boletoExtractorEngine";
 
 // In-memory logs for bank transmission history
 const bankApiLogsHistory: Array<{
@@ -281,43 +287,6 @@ async function startServer() {
           },
         });
 
-        const prompt = `Você é um leitor óptico (OCR) e especialista financeiro de MÁXIMA PRECISÃO em boletos bancários brasileiros, carnês de pagamento, faturas, tributos (IPVA, SEFAZ), taxas de trânsito (DETRAN, Licenciamento), multas de trânsito (CTTU, AMC, PRF, DER, DETRAN), guias de arrecadação e GNRE.
-
-Analise com EXTREMA ATENÇÃO TODO O CONTEÚDO DE TODAS AS PÁGINAS do arquivo enviado (${fileName}).
-
-REGRAS OBRIGATÓRIAS PARA TIPOS DE BOLETOS, TRIBUTOS E DADOS VEICULARES:
-1. IDENTIFICAÇÃO DO TIPO DE BOLETO ("tipoBoleto"):
-   - "ipva_sefaz": Guia de IPVA / Secretaria da Fazenda / DAE.
-   - "taxa_detran": Licenciamento, Taxas de Vistoria, Registro de Veículos do DETRAN.
-   - "multa_transito": Multas de Trânsito (CTTU, AMC, DETRAN, PRF, DER, Prefeituras).
-   - "tributo": Impostos Federais/Estaduais (DARF, GNRE, DAS, Receita Federal).
-   - "concessionaria": Contas de Água, Luz, Telefone, Gás, Internet.
-   - "titulo_bancario": Boleto Bancário Padrão de cobrança.
-
-2. DADOS ESPECÍFICOS DE VEÍCULOS / MULTAS:
-   - "placa": Placa do veículo se presente no documento (ex: "GIO4D94", "SOH3G72", "QXC7187").
-   - "renavam": Código RENAVAM se presente (ex: "1298608357", "11542295211").
-   - "autoInfracao": Número do Auto de Infração para multas de trânsito (ex: "PD00210331", "V103112861").
-
-3. IDENTIFICAÇÃO DO FAVORECIDO / BENEFICIÁRIO:
-   - Para IPVA: "SECRETARIA DA FAZENDA - IPVA"
-   - Para DETRAN (Taxas/Licenciamento): "DETRAN - Licenciamento / Taxas"
-   - Para Multas de Trânsito: "CTTU Recife - Trânsito", "AMC Fortaleza - Trânsito", ou "DETRAN - Multas"
-   - NUNCA coloque o nome do banco arrecadador (ex: Banco do Brasil, Bradesco, Itaú) no "favorecidoNome"!
-
-4. NÚMEROS E IDENTIFICAÇÃO:
-   - "numeroDocumento": Número do documento impresso, Auto de Infração ou "IPVA-PLACA".
-   - "seuNumero": Auto de Infração ou Número do Documento exato.
-   - "nossoNumero": Código do campo Nosso Número se disponível.
-
-5. LINHA DIGITÁVEL E VALOR:
-   - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos/DETRAN/IPVA).
-   - "valor": Valor exato a pagar (R$). Para guias de arrecadação, leia o "VALOR COBRADO", "VALOR TOTAL" ou "VALOR COM DESCONTO".
-   - "dataVencimento": Data de Vencimento no formato YYYY-MM-DD (ex: "2026-08-04").
-
-REGRA DE SCHEMA JSON:
-NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
-
         const callGeminiWithRetryAndFallback = async () => {
           const modelsToTry = [
             "gemini-3.6-flash",
@@ -342,48 +311,17 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
                         },
                       },
                       {
-                        text: prompt,
+                        text: PROMPT_BOLETO_EXTRACTION(fileName),
                       },
                     ],
                   },
                 ],
                 config: {
+                  systemInstruction: SYSTEM_INSTRUCTION_BOLETO,
+                  temperature: 0.1,
                   responseMimeType: "application/json",
                   maxOutputTokens: 8192,
-                  responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                      boletos: {
-                        type: Type.ARRAY,
-                        description: "Lista de todos os boletos identificados no arquivo",
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            linhaDigitavel: { type: Type.STRING },
-                            codigoBarras: { type: Type.STRING },
-                            favorecidoNome: { type: Type.STRING },
-                            favorecidoCnpjCpf: { type: Type.STRING },
-                            valor: { type: Type.NUMBER },
-                            dataVencimento: { type: Type.STRING },
-                            numeroDocumento: { type: Type.STRING },
-                            seuNumero: { type: Type.STRING },
-                            nossoNumero: { type: Type.STRING },
-                            bancoCodigo: { type: Type.STRING },
-                            bancoNome: { type: Type.STRING },
-                            tipoBoleto: { type: Type.STRING },
-                            placa: { type: Type.STRING },
-                            renavam: { type: Type.STRING },
-                            autoInfracao: { type: Type.STRING },
-                            observacoes: { type: Type.STRING },
-                            desconto: { type: Type.NUMBER },
-                            jurosMulta: { type: Type.NUMBER },
-                            confidence: { type: Type.NUMBER },
-                          },
-                        },
-                      },
-                    },
-                    required: ["boletos"],
-                  },
+                  responseSchema: GEMINI_BOLETO_SCHEMA as any,
                 },
               });
               return response;
@@ -391,7 +329,7 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
               lastError = err;
               const errMsg = String(err?.message || err);
               if (errMsg.includes("503") || errMsg.includes("high demand") || errMsg.includes("UNAVAILABLE")) {
-                console.info(`[Gemini API] Modelo ${modelName} em alta demanda (503). Alternando automaticamente para o próximo modelo de reserva...`);
+                console.info(`[Gemini API] Modelo ${modelName} em alta demanda (503). Alternando para modelo de reserva...`);
                 await new Promise((res) => setTimeout(res, 200));
               } else if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota exceeded")) {
                 console.info(`[Gemini API] Modelo ${modelName} com limite de requisições (429). Alternando para modelo de reserva...`);
@@ -466,105 +404,7 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
 
       boletosExtracted = boletosExtracted
         .filter((b) => b && typeof b === "object")
-        .map((b) => {
-          const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
-          const cleanLinha = onlyNumbers(rawDigits);
-
-          const detectedMeta = detectBoletoDetailsFromText(pdfTextForEnrichment, b.bancoNome);
-
-          if (!b.tipoBoleto || b.tipoBoleto === "titulo_bancario" || b.tipoBoleto === "concessionaria") {
-            if (detectedMeta.tipoBoleto !== "titulo_bancario") {
-              b.tipoBoleto = detectedMeta.tipoBoleto;
-            }
-          }
-
-          if (!b.placa && detectedMeta.placa) b.placa = detectedMeta.placa;
-          if (!b.renavam && detectedMeta.renavam) b.renavam = detectedMeta.renavam;
-          if (!b.autoInfracao && detectedMeta.autoInfracao) b.autoInfracao = detectedMeta.autoInfracao;
-
-          // Ensure favorecidoNome is accurate and not the issuing bank name
-          let fav = String(b.favorecidoNome || "").trim();
-          const bName = String(b.bancoNome || "").trim();
-          const isBankName =
-            !fav ||
-            fav.toLowerCase().startsWith("banco") ||
-            fav.toLowerCase().includes("bradesco") ||
-            fav.toLowerCase().includes("itau") ||
-            fav.toLowerCase().includes("itaú") ||
-            fav.toLowerCase().includes("santander") ||
-            fav.toLowerCase().includes("caixa econ") ||
-            fav.toLowerCase().includes("sicoob") ||
-            fav.toLowerCase().includes("sicredi") ||
-            fav === "Beneficiário / Cedente" ||
-            fav === "Beneficiário Não Identificado" ||
-            (bName && fav.toLowerCase() === bName.toLowerCase());
-
-          if (isBankName && detectedMeta.favorecidoNome && detectedMeta.favorecidoNome !== "Beneficiário / Cedente") {
-            b.favorecidoNome = detectedMeta.favorecidoNome;
-          }
-
-          if (detectedMeta.bancoCodigo && (b.bancoCodigo === "000" || !b.bancoCodigo || b.bancoCodigo === "800")) {
-            b.bancoCodigo = detectedMeta.bancoCodigo;
-            b.bancoNome = detectedMeta.bancoNome;
-          }
-
-          if (typeof b.valor === "string") {
-            const cleanedVal = String(b.valor).replace(/[^\d.,]/g, "").replace(/\./g, "").replace(",", ".");
-            const parsedNum = parseFloat(cleanedVal);
-            if (!isNaN(parsedNum)) b.valor = parsedNum;
-          }
-
-          // If valor is still missing or 0 and detectedMeta found a value
-          if ((!b.valor || Number(b.valor) === 0) && detectedMeta.valor) {
-            b.valor = detectedMeta.valor;
-          }
-
-          // Sanitize and convert date formats like DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD
-          if (b.dataVencimento && typeof b.dataVencimento === "string") {
-            const ddmmyyyy = b.dataVencimento.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-            if (ddmmyyyy) {
-              const [, day, month, year] = ddmmyyyy;
-              b.dataVencimento = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-            }
-          }
-
-          if ((!b.dataVencimento || b.dataVencimento === "") && detectedMeta.dataVencimento) {
-            b.dataVencimento = detectedMeta.dataVencimento;
-          }
-
-          b.favorecidoNome = b.favorecidoNome || b.beneficiario || b.cedente || "Beneficiário Não Identificado";
-          b.cedente = b.cedente || b.favorecidoNome;
-          b.beneficiario = b.beneficiario || b.favorecidoNome;
-          b.favorecidoCnpjCpf = b.favorecidoCnpjCpf || b.CNPJ || "";
-          b.CNPJ = b.CNPJ || b.favorecidoCnpjCpf || "";
-          b.seuNumero = b.seuNumero || b.numeroDocumento || detectedMeta.seuNumero || "";
-          b.numeroDocumento = b.numeroDocumento || b.seuNumero || detectedMeta.autoInfracao || "";
-          b.banco = b.banco || b.bancoNome || "";
-          if (detectedMeta.observacoes && !b.observacoes) {
-            b.observacoes = detectedMeta.observacoes;
-          }
-
-          if (cleanLinha.length >= 44) {
-            const parsedCheck = parseLinhaDigitavel(cleanLinha);
-            if (parsedCheck.isValid) {
-              b.linhaDigitavel = cleanLinha;
-              b.codigoBarras = b.codigoBarras || parsedCheck.codigoBarras;
-              if (!b.bancoCodigo || b.bancoCodigo === "000") {
-                b.bancoCodigo = parsedCheck.bancoCodigo || "000";
-                b.bancoNome = parsedCheck.bancoNome || b.banco;
-              }
-              b.banco = b.bancoNome;
-
-              if (!b.valor || Number(b.valor) === 0) {
-                b.valor = parsedCheck.valor;
-              }
-              if (parsedCheck.dataVencimento && (!b.dataVencimento || b.dataVencimento === "")) {
-                b.dataVencimento = parsedCheck.dataVencimento;
-              }
-            }
-          }
-          return b;
-        });
+        .map((b) => validateAndCrossCheckBoleto(b));
 
       // Deduplicate boletos (prevents 1st, 2nd, 3rd via duplication while keeping distinct parcelas)
       const seenKeys = new Set<string>();
