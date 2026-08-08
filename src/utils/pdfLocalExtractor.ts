@@ -1,12 +1,21 @@
 import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from './boletoParser';
+import { technicalLogger } from './technicalLogger';
 
 /**
  * Client-Side Browser Fallback for PDF & Image Boleto Data Extraction.
  * Uses pdfjs-dist page-by-page text parsing and intelligent regex matching.
  */
 export async function extractBoletosLocallyInBrowser(fileBase64: string, fileName: string): Promise<any[]> {
+  const startTime = performance.now();
   const boletosFound: any[] = [];
   const seenLines = new Set<string>();
+
+  technicalLogger.log({
+    step: 'Extração Local PDF (Browser)',
+    fileName,
+    severity: 'info',
+    errorMessage: 'Iniciando varredura local de texto e estrutura PDF no navegador',
+  });
 
   try {
     let cleanBase64 = fileBase64;
@@ -51,9 +60,12 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       }
     } catch (pdfJsErr: any) {
       const msg = String(pdfJsErr?.message || pdfJsErr);
-      if (!msg.includes('Bad uncompressed size') && !msg.includes('decompression')) {
-        console.warn('[PDFJS Extractor] Aviso no PDF.js:', msg);
-      }
+      technicalLogger.log({
+        step: 'Aviso pdfjs-dist',
+        fileName,
+        severity: 'warn',
+        errorMessage: msg,
+      });
     }
 
     // If pdfjs failed to get text, try decompressed streams safely without regex
@@ -220,9 +232,24 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
         }
       }
     }
-  } catch (err) {
-    console.warn('[Browser PDF Extractor] Erro na extração local:', err);
+  } catch (err: any) {
+    technicalLogger.log({
+      step: 'Erro na Extração Local PDF',
+      fileName,
+      severity: 'error',
+      errorMessage: err.message || String(err),
+    });
   }
+
+  const duration = Math.round(performance.now() - startTime);
+  technicalLogger.log({
+    step: 'Conclusão Extração Local PDF',
+    fileName,
+    processingTimeMs: duration,
+    severity: boletosFound.length > 0 ? 'info' : 'warn',
+    errorMessage: `Encontrados ${boletosFound.length} boleto(s) localmente no navegador em ${duration}ms`,
+  });
 
   return boletosFound;
 }
+

@@ -22,12 +22,16 @@ import {
   Hash,
   Barcode,
   Info,
+  Terminal,
+  Copy,
 } from 'lucide-react';
 import { BoletoItem, CNABBatchHistory } from '../types';
 import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate } from '../utils/duplicateDetector';
 import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
+import { technicalLogger } from '../utils/technicalLogger';
+
 import {
   matchLayoutPattern,
   extractViaLearnedLayout,
@@ -133,6 +137,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [learnedCountInSession, setLearnedCountInSession] = useState(0);
   const [reusedCountInSession, setReusedCountInSession] = useState(0);
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [copiedLogs, setCopiedLogs] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileMapRef = useRef<Map<string, File>>(new Map());
@@ -259,41 +265,118 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           stepMessage: '60% — Extraindo informações e linhas digitáveis',
         });
 
-        try {
-          const response = await fetch('/api/extract-boleto-pdf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              fileBase64,
-              mimeType: file.type || 'application/pdf',
-              fileName: file.name,
-            }),
+        const base64Len = fileBase64.length;
+        const reqStartTime = performance.now();
+
+        // Se o payload for maior que 3.5MB, redireciona diretamente para o extrator local para evitar erro 413 do Vercel
+        if (base64Len > 3_500_000) {
+          technicalLogger.log({
+            step: 'Verificação Limite Payload Vercel',
+            fileName: file.name,
+            fileSize: file.size,
+            severity: 'warn',
+            errorMessage: `Base64 (${(base64Len / 1024 / 1024).toFixed(2)} MB) excede limite seguro do Vercel (3.5MB). Redirecionando para extrator local do navegador.`,
           });
 
-          const contentType = response.headers.get('content-type') || '';
-          if (response.ok && contentType.includes('application/json')) {
-            const result = await response.json();
-            if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
-              rawBoletos = result.boletos;
-              serverSuccess = true;
-            } else if (result && result.geminiApiError) {
-              serverErrorMsg = String(result.geminiApiError);
-            }
-          } else {
-            serverErrorMsg = `Servidor respondeu com status ${response.status}`;
-          }
-        } catch (fetchErr: any) {
-          serverErrorMsg = `Falha na requisição ao servidor: ${fetchErr?.message || fetchErr}`;
-        }
-
-        // Client-Side Fallback Extractor if server didn't find boletos
-        if (!serverSuccess || rawBoletos.length === 0) {
           const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
-          if (localExtracted.length > 0) {
+          if (localExtracted && localExtracted.length > 0) {
             rawBoletos = localExtracted;
+          }
+        } else {
+          try {
+            technicalLogger.log({
+              step: 'Chamada API Servidor (/api/extract-boleto-pdf)',
+              fileName: file.name,
+              fileSize: file.size,
+              endpoint: '/api/extract-boleto-pdf',
+              severity: 'info',
+            });
+
+            const response = await fetch('/api/extract-boleto-pdf', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fileBase64,
+                mimeType: file.type || 'application/pdf',
+                fileName: file.name,
+              }),
+            });
+
+            const reqTimeMs = Math.round(performance.now() - reqStartTime);
+            const contentType = response.headers.get('content-type') || '';
+
+            if (response.ok && contentType.includes('application/json')) {
+              const result = await response.json();
+              if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
+                rawBoletos = result.boletos;
+                serverSuccess = true;
+
+                technicalLogger.log({
+                  step: 'Resposta API Sucesso',
+                  fileName: file.name,
+                  endpoint: '/api/extract-boleto-pdf',
+                  httpStatus: response.status,
+                  processingTimeMs: reqTimeMs,
+                  severity: 'info',
+                  errorMessage: `Sucesso: ${result.boletos.length} boleto(s) extraído(s) via backend`,
+                });
+              } else if (result && result.geminiApiError) {
+                serverErrorMsg = String(result.geminiApiError);
+                technicalLogger.log({
+                  step: 'Aviso API Backend (Gemini API)',
+                  fileName: file.name,
+                  endpoint: '/api/extract-boleto-pdf',
+                  httpStatus: response.status,
+                  backendResponse: serverErrorMsg,
+                  processingTimeMs: reqTimeMs,
+                  severity: 'warn',
+                  errorMessage: serverErrorMsg,
+                });
+              }
+            } else {
+              const responseText = await response.text();
+              serverErrorMsg = `Servidor retornou status ${response.status}`;
+              technicalLogger.log({
+                step: 'Erro Resposta Servidor (Status/HTML)',
+                fileName: file.name,
+                endpoint: '/api/extract-boleto-pdf',
+                httpStatus: response.status,
+                backendResponse: responseText.substring(0, 300),
+                processingTimeMs: reqTimeMs,
+                severity: 'error',
+                errorMessage: `Status HTTP ${response.status} retornado pelo Vercel/Servidor`,
+              });
+            }
+          } catch (fetchErr: any) {
+            const reqTimeMs = Math.round(performance.now() - reqStartTime);
+            serverErrorMsg = `Falha na requisição ao servidor: ${fetchErr?.message || fetchErr}`;
+            technicalLogger.log({
+              step: 'Falha Conexão API',
+              fileName: file.name,
+              endpoint: '/api/extract-boleto-pdf',
+              processingTimeMs: reqTimeMs,
+              severity: 'error',
+              errorMessage: serverErrorMsg,
+            });
+          }
+
+          // Client-Side Fallback Extractor se o servidor não retornou boletos
+          if (!serverSuccess || rawBoletos.length === 0) {
+            technicalLogger.log({
+              step: 'Iniciando Fallback Leitor Local',
+              fileName: file.name,
+              severity: 'info',
+              errorMessage: 'Servidor não extraiu boletos ou falhou. Utilizando varredura local do navegador.',
+            });
+
+            const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
+            if (localExtracted && localExtracted.length > 0) {
+              rawBoletos = localExtracted;
+            }
           }
         }
       }
+
 
       // 75% — Validando dados
       updateItemState(itemId, {
@@ -1579,12 +1662,24 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
         {/* Modal Footer */}
         <div className="p-5 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-          >
-            Cancelar
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowLogsModal(true)}
+              className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 bg-slate-200/80 hover:bg-slate-200 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Terminal className="w-3.5 h-3.5 text-blue-600" />
+              <span>Logs Técnicos</span>
+            </button>
+          </div>
 
           <button
             onClick={handleConfirmImport}
@@ -1597,7 +1692,89 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             </span>
           </button>
         </div>
+
+        {/* TECHNICAL LOGS DIAGNOSTIC MODAL */}
+        {showLogsModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center space-x-2 text-blue-400">
+                  <Terminal className="w-5 h-5" />
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                    Logs Técnicos & Diagnóstico
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLogsModal(false)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs font-mono">
+                {technicalLogger.getLogs().length === 0 ? (
+                  <p className="text-slate-500 italic p-4 text-center">Nenhum log técnico registrado na sessão atual.</p>
+                ) : (
+                  technicalLogger.getLogs().map((l) => (
+                    <div
+                      key={l.id}
+                      className={`p-3 rounded-xl border ${
+                        l.severity === 'error'
+                          ? 'bg-red-950/60 border-red-900/80 text-red-200'
+                          : l.severity === 'warn'
+                          ? 'bg-amber-950/60 border-amber-900/80 text-amber-200'
+                          : 'bg-slate-800 border-slate-700 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold border-b border-white/10 pb-1 mb-1.5 text-[11px]">
+                        <span className="text-blue-300">[{l.step}]</span>
+                        <span className="text-slate-400">{l.timestamp.split('T')[1].split('.')[0]}</span>
+                      </div>
+                      {l.fileName && <div>📄 Arquivo: <span className="font-semibold">{l.fileName}</span></div>}
+                      {l.endpoint && <div>🔗 Endpoint: <span className="text-indigo-300">{l.endpoint}</span></div>}
+                      {l.httpStatus && <div>⚡ Status HTTP: <span className="font-bold text-amber-400">{l.httpStatus}</span></div>}
+                      {l.processingTimeMs && <div>⏱️ Tempo: <span>{l.processingTimeMs}ms</span></div>}
+                      {l.errorMessage && <div className="font-semibold text-white mt-1">Detalhes: {l.errorMessage}</div>}
+                      {l.backendResponse && (
+                        <div className="mt-1 text-[10px] bg-black/40 p-1.5 rounded overflow-x-auto text-slate-400">
+                          Resposta Backend: {l.backendResponse}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-between shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = technicalLogger.exportLogsAsString();
+                    navigator.clipboard.writeText(text);
+                    setCopiedLogs(true);
+                    setTimeout(() => setCopiedLogs(false), 2000);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs px-4 py-2 rounded-xl transition-all flex items-center space-x-2 cursor-pointer"
+                >
+                  {copiedLogs ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedLogs ? 'Copiado para Área de Transferência!' : 'Copiar Logs JSON'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowLogsModal(false)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs px-4 py-2 rounded-xl"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+

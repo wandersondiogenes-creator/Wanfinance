@@ -9,6 +9,7 @@ export const config = {
     },
   },
 };
+export const maxDuration = 60;
 
 function extractTextFromPdfBuffer(buffer: Buffer): string {
   if (!buffer || buffer.length < 4) return "";
