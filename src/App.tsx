@@ -36,6 +36,7 @@ import { BankPaymentApiPanel } from './components/BankPaymentApiPanel';
 import { LearnedLayoutsAdminPanel } from './components/LearnedLayoutsAdminPanel';
 import { ExtratoBancarioMainPanel } from './components/extrato/ExtratoBancarioMainPanel';
 import { getBoletosDuplicateMap } from './utils/duplicateDetector';
+import { validateAndClampPaymentDate } from './utils/boletoParser';
 import { CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
 export default function App() {
@@ -223,9 +224,16 @@ export default function App() {
   };
 
   const handleBatchUpdatePaymentDate = (newDate: string) => {
+    const todayStr = new Date().toISOString().split('T')[0];
     const selectedCount = boletos.filter((b) => b.selected).length;
     setBoletos((prev) =>
-      prev.map((b) => (b.selected ? { ...b, dataPagamento: newDate } : b))
+      prev.map((b) => {
+        if (b.selected) {
+          const clamped = validateAndClampPaymentDate(newDate, b.dataVencimento, todayStr);
+          return { ...b, dataPagamento: clamped };
+        }
+        return b;
+      })
     );
     showToast(`Data de pagamento alterada para ${selectedCount} boleto(s)!`);
   };

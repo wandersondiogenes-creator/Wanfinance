@@ -513,6 +513,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
               <input
                 type="date"
                 value={batchPayDateInput}
+                min={new Date().toISOString().split('T')[0]}
                 onChange={(e) => setBatchPayDateInput(e.target.value)}
                 className="bg-slate-50 border border-slate-200 text-blue-900 font-mono text-xs px-2 py-1 rounded-lg focus:outline-none focus:border-blue-600"
               />

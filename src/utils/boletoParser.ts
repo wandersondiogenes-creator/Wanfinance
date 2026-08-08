@@ -581,3 +581,34 @@ export function dateToCNAB(dateStr: string): string {
 
   return dateStr.replace(/\D/g, '').padEnd(8, '0').slice(0, 8);
 }
+
+/**
+ * Validates and clamps a proposed payment date so that:
+ * 1. It cannot be retroactive before extraction date / today.
+ * 2. It cannot be after dataVencimento (when dataVencimento is on or after today).
+ */
+export function validateAndClampPaymentDate(
+  proposedDate: string,
+  dataVencimento?: string,
+  extractionDate: string = new Date().toISOString().split('T')[0]
+): string {
+  const todayStr = extractionDate || new Date().toISOString().split('T')[0];
+  if (!proposedDate) {
+    if (dataVencimento && dataVencimento >= todayStr) return dataVencimento;
+    return todayStr;
+  }
+
+  let date = proposedDate;
+
+  // 1. Cannot be before extraction date (today)
+  if (date < todayStr) {
+    date = todayStr;
+  }
+
+  // 2. Cannot be after dataVencimento (if dataVencimento is on or after today)
+  if (dataVencimento && dataVencimento >= todayStr && date > dataVencimento) {
+    date = dataVencimento;
+  }
+
+  return date;
+}

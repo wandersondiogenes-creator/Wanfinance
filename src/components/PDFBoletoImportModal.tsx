@@ -26,9 +26,9 @@ import {
   Copy,
 } from 'lucide-react';
 import { BoletoItem, CNABBatchHistory } from '../types';
-import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers } from '../utils/boletoParser';
+import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
-import { detectBoletoDuplicate } from '../utils/duplicateDetector';
+import { detectBoletoDuplicate, getBoletoCleanKey } from '../utils/duplicateDetector';
 import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
 import { technicalLogger } from '../utils/technicalLogger';
 
@@ -155,12 +155,15 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   const fileMapRef = useRef<Map<string, File>>(new Map());
 
   const handleApplyBatchPaymentDate = (date: string) => {
-    setBatchPaymentDate(date);
-    if (!date) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const clampedBatchDate = date ? validateAndClampPaymentDate(date, undefined, todayStr) : date;
+    setBatchPaymentDate(clampedBatchDate);
+    if (!clampedBatchDate) return;
     setItems((prev) =>
       prev.map((item) => {
         if (item.data) {
-          return { ...item, data: { ...item.data, dataPagamento: date } };
+          const clamped = validateAndClampPaymentDate(clampedBatchDate, item.data.dataVencimento, todayStr);
+          return { ...item, data: { ...item.data, dataPagamento: clamped } };
         }
         return item;
       })
@@ -538,11 +541,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               parsedCheck.dataVencimento ||
               new Date().toISOString().split('T')[0],
             dataEmissao: extracted.dataEmissao || extracted.dataDocumento || '',
-            dataPagamento:
-              batchPaymentDate ||
-              extracted.dataVencimento ||
-              parsedCheck.dataVencimento ||
-              new Date().toISOString().split('T')[0],
+            dataPagamento: validateAndClampPaymentDate(
+              batchPaymentDate || extracted.dataVencimento || parsedCheck.dataVencimento || new Date().toISOString().split('T')[0],
+              extracted.dataVencimento || parsedCheck.dataVencimento,
+              new Date().toISOString().split('T')[0]
+            ),
             seuNumero: finalSeuNumero,
             numeroDocumento: extracted.numeroDocumento || finalSeuNumero,
             nossoNumero: extracted.nossoNumero || '',
@@ -707,15 +710,37 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   };
 
   const handleFieldChange = (id: string, field: string, value: any) => {
+    const todayStr = new Date().toISOString().split('T')[0];
     setItems((prev) =>
       prev.map((item) => {
         if (item.id === id && item.data) {
-          const updatedData = { ...item.data, [field]: value };
+          let updatedValue = value;
+          if (field === 'dataPagamento') {
+            updatedValue = validateAndClampPaymentDate(value, item.data.dataVencimento, todayStr);
+          }
+
+          const updatedData = { ...item.data, [field]: updatedValue };
+
+          if (field === 'dataVencimento') {
+            updatedData.dataPagamento = validateAndClampPaymentDate(
+              updatedData.dataPagamento,
+              value,
+              todayStr
+            );
+          }
+
           if (field === 'linhaDigitavel') {
             const parsed = parseLinhaDigitavel(value);
             if (parsed.isValid) {
               if (!updatedData.valor) updatedData.valor = parsed.valor;
-              if (parsed.dataVencimento) updatedData.dataVencimento = parsed.dataVencimento;
+              if (parsed.dataVencimento) {
+                updatedData.dataVencimento = parsed.dataVencimento;
+                updatedData.dataPagamento = validateAndClampPaymentDate(
+                  updatedData.dataPagamento,
+                  parsed.dataVencimento,
+                  todayStr
+                );
+              }
               if (parsed.bancoCodigo) {
                 updatedData.bancoCodigo = parsed.bancoCodigo;
                 updatedData.bancoNome = parsed.bancoNome;
@@ -866,21 +891,22 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
   const handleRemoveDuplicates = () => {
     const seenKeys = new Set<string>();
+    const seenRefs = new Set<string>();
+
     setItems((prev) =>
       prev.filter((item) => {
         if (!item.data) return true;
-        const dup = detectBoletoDuplicate(
-          { ...item.data, id: item.id },
-          allExtractedData,
-          existingBoletos,
-          history
-        );
 
-        if (dup.isSystemDuplicate || dup.isHistoryDuplicate) return false;
+        const key = getBoletoCleanKey(item.data.linhaDigitavel, item.data.codigoBarras);
+        const cnpj = onlyNumbers(item.data.favorecidoCnpjCpf || item.data.beneficiarioCnpjCpf || '');
+        const ref = item.data.seuNumero ? `${item.data.seuNumero.trim().toUpperCase()}_${cnpj}` : '';
 
-        const key = onlyNumbers(item.data.linhaDigitavel || item.data.codigoBarras);
         if (key && seenKeys.has(key)) return false;
+        if (ref && seenRefs.has(ref)) return false;
+
         if (key) seenKeys.add(key);
+        if (ref) seenRefs.add(ref);
+
         return true;
       })
     );
@@ -1097,6 +1123,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                     <input
                       type="date"
                       value={batchPaymentDate}
+                      min={new Date().toISOString().split('T')[0]}
                       onChange={(e) => handleApplyBatchPaymentDate(e.target.value)}
                       className="bg-white border border-slate-300 text-blue-900 font-mono text-xs px-3 py-1.5 rounded-xl focus:outline-none focus:border-blue-600 font-bold"
                     />
@@ -1686,6 +1713,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                 <input
                                   type="date"
                                   value={item.data.dataPagamento || item.data.dataVencimento}
+                                  min={new Date().toISOString().split('T')[0]}
+                                  max={item.data.dataVencimento && item.data.dataVencimento >= new Date().toISOString().split('T')[0] ? item.data.dataVencimento : undefined}
                                   onChange={(e) => handleFieldChange(item.id, 'dataPagamento', e.target.value)}
                                   className="w-full bg-slate-50 border border-slate-200 text-blue-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
                                 />

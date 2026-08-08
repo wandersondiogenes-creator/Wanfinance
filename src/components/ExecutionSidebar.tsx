@@ -270,6 +270,7 @@ export const ExecutionSidebar: React.FC<ExecutionSidebarProps> = ({
               <input
                 type="date"
                 value={batchDate}
+                min={new Date().toISOString().split('T')[0]}
                 onChange={(e) => setBatchDate(e.target.value)}
                 className="flex-1 bg-[#0a0e16] border border-slate-700 text-amber-300 font-mono text-xs px-2 py-1.5 rounded-xl focus:outline-none focus:border-amber-500"
               />

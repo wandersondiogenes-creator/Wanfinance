@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BoletoItem, CNABBatchHistory, BoletoType } from '../types';
-import { parseLinhaDigitavel, formatLinhaDigitavelDisplay, formatCurrencyBRL, onlyNumbers } from '../utils/boletoParser';
+import { parseLinhaDigitavel, formatLinhaDigitavelDisplay, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate } from '../utils/boletoParser';
 import { getBankInfo, BRAZILIAN_BANKS } from '../utils/banks';
 import { X, CheckCircle, AlertCircle, Sparkles, Building2, Calendar, DollarSign, Tag, FileText, AlertTriangle, Percent, Clock, TrendingUp, TrendingDown } from 'lucide-react';
 import { detectBoletoDuplicate } from '../utils/duplicateDetector';
@@ -419,7 +419,12 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
               <input
                 type="date"
                 value={dataVencimento}
-                onChange={(e) => setDataVencimento(e.target.value)}
+                onChange={(e) => {
+                  const newVenc = e.target.value;
+                  setDataVencimento(newVenc);
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  setDataPagamento((prev) => validateAndClampPaymentDate(prev, newVenc, todayStr));
+                }}
                 className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm font-mono rounded-xl px-3 py-2 focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
                 required
               />
@@ -433,8 +438,11 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
                 <div className="flex items-center space-x-1">
                   <button
                     type="button"
-                    onClick={() => setDataPagamento(dataVencimento)}
-                    className="text-[10px] text-blue-600 hover:underline font-bold"
+                    onClick={() => {
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      setDataPagamento(validateAndClampPaymentDate(dataVencimento, dataVencimento, todayStr));
+                    }}
+                    className="text-[10px] text-blue-600 hover:underline font-bold cursor-pointer"
                     title="Usar a mesma data de vencimento"
                   >
                     = Vencimento
@@ -442,8 +450,11 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
                   <span className="text-slate-300 text-[10px]">•</span>
                   <button
                     type="button"
-                    onClick={() => setDataPagamento(new Date().toISOString().split('T')[0])}
-                    className="text-[10px] text-blue-600 hover:underline font-bold"
+                    onClick={() => {
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      setDataPagamento(validateAndClampPaymentDate(todayStr, dataVencimento, todayStr));
+                    }}
+                    className="text-[10px] text-blue-600 hover:underline font-bold cursor-pointer"
                   >
                     Hoje
                   </button>
@@ -452,7 +463,12 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
               <input
                 type="date"
                 value={dataPagamento}
-                onChange={(e) => setDataPagamento(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                max={dataVencimento && dataVencimento >= new Date().toISOString().split('T')[0] ? dataVencimento : undefined}
+                onChange={(e) => {
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  setDataPagamento(validateAndClampPaymentDate(e.target.value, dataVencimento, todayStr));
+                }}
                 className="w-full bg-slate-50 border border-slate-200 text-blue-900 text-sm font-mono rounded-xl px-3 py-2 focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
                 required
               />
