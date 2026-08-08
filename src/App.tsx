@@ -429,34 +429,11 @@ export default function App() {
       />
 
       {/* Main Body Content */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-[1800px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {(activeTab === 'boletos' || activeTab === 'novo_boleto') && (
-          <div className="flex flex-col lg:flex-row gap-6 items-start">
-            {/* Lateral Execution Panel */}
-            <ExecutionSidebar
-              company={activeCompanySettings}
-              boletos={boletos}
-              history={history}
-              onGenerateCNAB={() => setIsPreviewModalOpen(true)}
-              onOpenPDFModal={() => setIsPDFModalOpen(true)}
-              onOpenBatchModal={() => setIsBatchModalOpen(true)}
-              onOpenNewModal={() => {
-                setEditingBoleto(null);
-                setIsFormModalOpen(true);
-              }}
-              onSelectAll={handleSelectAll}
-              onDeleteSelected={handleDeleteSelected}
-              onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
-              filterType={sidebarFilterType}
-              setFilterType={setSidebarFilterType}
-              duplicateCount={duplicateCount}
-              overdueCount={overdueCount}
-              discountCount={discountCount}
-              interestCount={interestCount}
-            />
-
-            {/* Main Area on the Right: Boletos Table or Insert Boletos Panel */}
-            <div className="flex-1 w-full min-w-0">
+          <div className="w-full">
+            {/* Main Area: Boletos Table or Insert Boletos Panel occupying full width */}
+            <div className="w-full min-w-0">
               {activeTab === 'novo_boleto' ? (
                 <div className="space-y-6">
                   <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs">
