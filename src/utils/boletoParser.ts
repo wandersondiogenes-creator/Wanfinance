@@ -51,7 +51,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   // 1. Placa extraction
   let placa = '';
-  const placaMatch = rawText.match(/(?:PLACA|PLACA\/UF|VEÍCULO|VEICULO)\s*[:\s]*([A-Z]{3}[0-9][A-Z0-9][0-9]{2}|[A-Z]{3}-?[0-9]{4})/i);
+  const placaMatch = rawText.match(/(?:PLACA|PLACA\/UF|VEÍCULO|VEICULO|PLACA\s+VEÍCULO|ORIGEM\/PLACA\s+VEÍCULO)\s*[:\s]*([A-Z]{3}[0-9][A-Z0-9][0-9]{2}|[A-Z]{3}-?[0-9]{4})/i);
   if (placaMatch) {
     placa = placaMatch[1].replace('-', '').toUpperCase();
   } else {
@@ -60,7 +60,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     if (standalonePlaca) {
       for (const cand of standalonePlaca) {
         const cleanCand = cand.replace('-', '').toUpperCase();
-        if (!['BRL', 'BCO', 'CON', 'PDF', 'TXT', 'CPF', 'CNPJ', 'CTTU', 'SEFAZ'].includes(cleanCand)) {
+        if (!['BRL', 'BCO', 'CON', 'PDF', 'TXT', 'CPF', 'CNPJ', 'CTTU', 'SEFAZ', 'REAL', 'AUTO'].includes(cleanCand)) {
           placa = cleanCand;
           break;
         }
@@ -97,7 +97,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   // 5. Extracted Values (Valor Cobrado / Valor com Desconto / Valor Total)
   let valor: number | undefined;
-  const valorCobradoMatch = rawText.match(/(?:VALOR\s+COBRADO|VALOR\s+A\s+PAGAR\s+COM\s+JUROS|VALOR\s+COM\s+DESCONTO|VALOR\s+TOTAL|TOTAL\s+A\s+RECOLHER)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+  const valorCobradoMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|VALOR\s+A\s+PAGAR\s+COM\s+JUROS|VALOR\s+COM\s+DESCONTO|VALOR\s+TOTAL|VALOR\s+PRINCIPAL)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
   if (valorCobradoMatch) {
     const valStr = valorCobradoMatch[1].replace(/\./g, '').replace(',', '.');
     const parsedVal = parseFloat(valStr);
@@ -112,6 +112,8 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   let bancoCodigo = '800';
   let bancoNome = 'Concessionária / Tributo';
 
+  const isDAEBahia = textUpper.includes('GOVERNO DO ESTADO DA BAHIA') || textUpper.includes('DAE ÚNICO') || textUpper.includes('DAE UNICO') || textUpper.includes('SERVICOS.DETRAN.BA.GOV.BR');
+  const isDARParaiba = textUpper.includes('GOVERNO DO ESTADO DA PARAÍBA') || textUpper.includes('SEFAZ-PB') || textUpper.includes('DAR - MOD 2') || textUpper.includes('AUTO LANÇAMENTO DO IPVA');
   const isIPVA = textUpper.includes('IPVA') || textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ') || textUpper.includes('DISCRIMINAÇÃO DOS DÉBITOS');
   const isLicenciamento = textUpper.includes('LICENCIAMENTO') || (textUpper.includes('DETRAN') && !textUpper.includes('MULTA') && !textUpper.includes('INFRAÇ') && !textUpper.includes('INFRAC'));
   const isMulta = textUpper.includes('MULTA') || textUpper.includes('INFRAÇ') || textUpper.includes('INFRAC') || textUpper.includes('CTTU') || textUpper.includes('AMC') || textUpper.includes('PRF') || textUpper.includes('AUTARQUIA DE TRÂNSITO') || textUpper.includes('NOTIFICAÇÃO DA PENALIDADE') || textUpper.includes('PENALIDADE');
@@ -130,6 +132,16 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     favorecidoNome = 'BYD DO BRASIL LTDA';
     bancoCodigo = '033';
     bancoNome = 'Banco Santander Brasil S.A.';
+  } else if (isDAEBahia) {
+    tipoBoleto = textUpper.includes('LICENCIAMENTO') ? 'taxa_detran' : 'ipva_sefaz';
+    favorecidoNome = 'SEFAZ BA - Governo do Estado da Bahia';
+    bancoCodigo = '858';
+    bancoNome = 'SEFAZ-BA / DAE Único';
+  } else if (isDARParaiba) {
+    tipoBoleto = 'ipva_sefaz';
+    favorecidoNome = 'SEFAZ PB - Secretaria da Fazenda da Paraíba';
+    bancoCodigo = '856';
+    bancoNome = 'SEFAZ-PB / DAR MOD 2';
   } else if (isIPVA) {
     tipoBoleto = 'ipva_sefaz';
     favorecidoNome = 'SECRETARIA DA FAZENDA - IPVA';

@@ -319,11 +319,16 @@ REGRA DE SCHEMA JSON:
 NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
 
         const callGeminiWithRetryAndFallback = async () => {
-          const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+          const modelsToTry = [
+            "gemini-3.6-flash",
+            "gemini-flash-latest",
+            "gemini-3.1-flash-lite",
+          ];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
             try {
+              console.log(`[Gemini API] Executando análise com modelo ${modelName}...`);
               const response = await ai.models.generateContent({
                 model: modelName,
                 contents: [
@@ -385,12 +390,14 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
             } catch (err: any) {
               lastError = err;
               const errMsg = String(err?.message || err);
-              if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota exceeded")) {
-                console.warn(`[Gemini API] Cota excedida (429) no modelo ${modelName}. Alternando para fallback...`);
-                // Break out on rate limit to trigger instant local regex/PDF extraction
-                break;
+              if (errMsg.includes("503") || errMsg.includes("high demand") || errMsg.includes("UNAVAILABLE")) {
+                console.info(`[Gemini API] Modelo ${modelName} em alta demanda (503). Alternando automaticamente para o próximo modelo de reserva...`);
+                await new Promise((res) => setTimeout(res, 200));
+              } else if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota exceeded")) {
+                console.info(`[Gemini API] Modelo ${modelName} com limite de requisições (429). Alternando para modelo de reserva...`);
+                await new Promise((res) => setTimeout(res, 200));
               } else {
-                console.warn(`[Gemini API] Erro ao tentar modelo ${modelName}: ${errMsg.substring(0, 150)}`);
+                console.warn(`[Gemini API] Modelo ${modelName} indisponível: ${errMsg.substring(0, 100)}`);
               }
             }
           }

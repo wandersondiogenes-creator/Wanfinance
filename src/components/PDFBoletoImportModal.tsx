@@ -8,19 +8,23 @@ import {
   AlertCircle,
   Loader2,
   Trash2,
-  Edit3,
-  Check,
-  Building2,
   Calendar,
-  DollarSign,
-  ShieldCheck,
-  ArrowRight,
   AlertTriangle,
   Plus,
   RefreshCw,
+  Brain,
+  Zap,
+  Table,
+  List,
+  Layers,
+  Check,
+  User,
+  Hash,
+  Barcode,
+  Info,
 } from 'lucide-react';
 import { BoletoItem, CNABBatchHistory } from '../types';
-import { parseLinhaDigitavel, formatCurrencyBRL, formatDateBR, onlyNumbers } from '../utils/boletoParser';
+import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate } from '../utils/duplicateDetector';
 import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
@@ -31,20 +35,47 @@ import {
   recordFastPathSuccess,
 } from '../utils/layoutLearningEngine';
 
-interface PDFExtractedItem {
+export interface DetailedErrorInfo {
+  errorType: string;
+  stepWhereOccurred: string;
+  unidentifiedFields: string[];
+  probableCause: string;
+  partialExtracted: {
+    banco: boolean;
+    beneficiario: boolean;
+    vencimento: boolean;
+    valor: boolean;
+    codigoBarras: boolean;
+    linhaDigitavel: boolean;
+  };
+  recommendedAction: string;
+}
+
+export interface PDFExtractedItem {
   id: string;
   fileName: string;
+  fileSize?: number;
   boletoIndex?: number;
   totalInFile?: number;
-  status: 'pending' | 'loading' | 'success' | 'error';
+  status: 'pending' | 'loading' | 'success' | 'error' | 'partial';
+  progress: number; // 0 to 100
+  stepMessage: string;
+  layoutRecognized?: boolean;
+  layoutName?: string;
+  isFastPath?: boolean;
   errorMessage?: string;
+  detailedError?: DetailedErrorInfo;
+  processingTimeMs?: number;
   data?: {
     linhaDigitavel: string;
     codigoBarras: string;
     favorecidoNome: string;
     favorecidoCnpjCpf: string;
+    pagadorNome?: string;
+    pagadorCnpjCpf?: string;
     valor: number;
     dataVencimento: string;
+    dataEmissao?: string;
     dataPagamento?: string;
     seuNumero: string;
     nossoNumero: string;
@@ -54,6 +85,10 @@ interface PDFExtractedItem {
     desconto?: number;
     jurosMulta?: number;
     confidence: number;
+    tipoBoleto?: string;
+    placa?: string;
+    renavam?: string;
+    autoInfracao?: string;
   };
 }
 
@@ -94,6 +129,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   const [batchPaymentDate, setBatchPaymentDate] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [learnedCountInSession, setLearnedCountInSession] = useState(0);
+  const [reusedCountInSession, setReusedCountInSession] = useState(0);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileMapRef = useRef<Map<string, File>>(new Map());
 
@@ -110,8 +150,45 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     );
   };
 
-  const processFile = async (file: File): Promise<PDFExtractedItem[]> => {
+  const updateItemState = (
+    itemId: string,
+    updates: Partial<PDFExtractedItem>
+  ) => {
+    setItems((prev) =>
+      prev.map((it) => (it.id === itemId ? { ...it, ...updates } : it))
+    );
+  };
+
+  const processFile = async (
+    file: File,
+    fileIndex: number,
+    totalFiles: number
+  ): Promise<PDFExtractedItem[]> => {
+    const startTime = performance.now();
+    const itemId = `pdf-item-${Date.now()}-${fileIndex}-${Math.random().toString(36).substring(2, 7)}`;
+
+    // 0% — Arquivo recebido (Mostra nome do arquivo IMEDIATAMENTE)
+    const initialItem: PDFExtractedItem = {
+      id: itemId,
+      fileName: file.name,
+      fileSize: file.size,
+      status: 'loading',
+      progress: 0,
+      stepMessage: '0% — Arquivo recebido',
+    };
+
+    setItems((prev) => [...prev, initialItem]);
+
+    const delay = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
     try {
+      // 10% — Identificando e lendo documento
+      updateItemState(itemId, {
+        progress: 10,
+        stepMessage: '10% — Identificando e lendo documento PDF',
+      });
+      await delay(120);
+
       // Convert file to Base64
       const fileBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -120,75 +197,153 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         reader.readAsDataURL(file);
       });
 
+      // 25% — Identificando banco e layout (Consultando memória)
+      updateItemState(itemId, {
+        progress: 25,
+        stepMessage: '25% — Identificando banco e layout na memória',
+      });
+      await delay(150);
+
+      // Check Layout Engine Memory First
+      const memoryMatch = matchLayoutPattern(`${file.name} ${fileBase64.substring(0, 1000)}`);
+      let isFastPathUsed = false;
+      let layoutRecognized = false;
+      let layoutName = 'Layout Desconhecido';
+
+      if (memoryMatch.pattern && memoryMatch.confidence >= 0.60) {
+        layoutRecognized = true;
+        layoutName = memoryMatch.pattern.layoutName;
+        updateItemState(itemId, {
+          progress: 35,
+          stepMessage: `25% — 🧠 Layout reconhecido: ${layoutName}`,
+          layoutRecognized: true,
+          layoutName: layoutName,
+        });
+        await delay(100);
+      } else {
+        updateItemState(itemId, {
+          progress: 35,
+          stepMessage: '25% — 🆕 Novo layout identificado (Padrão será aprendido)',
+          layoutRecognized: false,
+          layoutName: 'Novo Padrão a Aprender',
+        });
+        await delay(100);
+      }
+
+      // 40% — Localizando campos
+      updateItemState(itemId, {
+        progress: 40,
+        stepMessage: '40% — Localizando campos do documento',
+      });
+      await delay(150);
+
       let rawBoletos: any[] = [];
       let serverSuccess = false;
       let serverErrorMsg = '';
 
-      // 1. Attempt Server API Extraction
-      try {
-        const response = await fetch('/api/extract-boleto-pdf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileBase64,
-            mimeType: file.type || 'application/pdf',
-            fileName: file.name,
-          }),
+      // Try Fast-Path via learned layout first if memory matched
+      if (layoutRecognized && memoryMatch.pattern) {
+        const fastRes = extractViaLearnedLayout(fileBase64, memoryMatch.pattern);
+        if (fastRes.success && fastRes.boletos.length > 0) {
+          rawBoletos = fastRes.boletos;
+          isFastPathUsed = true;
+          setReusedCountInSession((c) => c + 1);
+          recordFastPathSuccess(1200);
+        }
+      }
+
+      // 60% — Extraindo informações via IA se FastPath não rodou
+      if (rawBoletos.length === 0) {
+        updateItemState(itemId, {
+          progress: 60,
+          stepMessage: '60% — Extraindo informações e linhas digitáveis',
         });
 
-        const contentType = response.headers.get('content-type') || '';
-        if (response.ok && contentType.includes('application/json')) {
-          const result = await response.json();
-          if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
-            rawBoletos = result.boletos;
-            serverSuccess = true;
-          } else if (result && result.geminiApiError) {
-            const errRaw = String(result.geminiApiError);
-            if (errRaw.includes('429') || errRaw.includes('Quota exceeded') || errRaw.includes('RESOURCE_EXHAUSTED')) {
-              serverErrorMsg = 'A cota gratuita da API Gemini foi temporariamente excedida (Limite 429). Aguarde alguns segundos e tente novamente.';
-            } else if (errRaw.startsWith('{') && errRaw.includes('"message"')) {
-              try {
-                const parsed = JSON.parse(errRaw);
-                serverErrorMsg = parsed?.error?.message || errRaw;
-              } catch {
-                serverErrorMsg = errRaw;
-              }
-            } else {
-              serverErrorMsg = errRaw;
+        try {
+          const response = await fetch('/api/extract-boleto-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileBase64,
+              mimeType: file.type || 'application/pdf',
+              fileName: file.name,
+            }),
+          });
+
+          const contentType = response.headers.get('content-type') || '';
+          if (response.ok && contentType.includes('application/json')) {
+            const result = await response.json();
+            if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
+              rawBoletos = result.boletos;
+              serverSuccess = true;
+            } else if (result && result.geminiApiError) {
+              serverErrorMsg = String(result.geminiApiError);
             }
+          } else {
+            serverErrorMsg = `Servidor respondeu com status ${response.status}`;
           }
-        } else {
-          serverErrorMsg = `Servidor respondeu com status ${response.status}`;
-          console.warn('[PDF Import] Server endpoint returned non-JSON/error status:', response.status, contentType);
+        } catch (fetchErr: any) {
+          serverErrorMsg = `Falha na requisição ao servidor: ${fetchErr?.message || fetchErr}`;
         }
-      } catch (fetchErr: any) {
-        serverErrorMsg = `Falha na requisição ao servidor: ${fetchErr?.message || fetchErr}`;
-        console.warn('[PDF Import] Server fetch failed, falling back to browser extractor:', fetchErr);
-      }
 
-      // 2. Client-Side Fallback Extractor if Server API failed or returned 0 boletos
-      if (!serverSuccess || rawBoletos.length === 0) {
-        console.log('[PDF Import] Executando leitor de PDF local no navegador...');
-        const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
-        if (localExtracted.length > 0) {
-          rawBoletos = localExtracted;
+        // Client-Side Fallback Extractor if server didn't find boletos
+        if (!serverSuccess || rawBoletos.length === 0) {
+          const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
+          if (localExtracted.length > 0) {
+            rawBoletos = localExtracted;
+          }
         }
       }
 
+      // 75% — Validando dados
+      updateItemState(itemId, {
+        progress: 75,
+        stepMessage: '75% — Validando campos, vencimento e valores',
+      });
+      await delay(120);
+
+      // Handle Case where 0 boletos found or extraction failed
       if (rawBoletos.length === 0) {
-        const detailMsg = serverErrorMsg ? ` (${serverErrorMsg})` : '';
-        return [
-          {
-            id: `pdf-item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            fileName: file.name,
-            status: 'error',
-            errorMessage: `Nenhum boleto válido com linha digitável/código de barras foi identificado neste arquivo${detailMsg}. Se o arquivo for uma imagem digitalizada sem texto, cole a linha digitável abaixo.`,
+        const endTime = performance.now();
+        const duration = Math.round(endTime - startTime);
+
+        const detailedError: DetailedErrorInfo = {
+          errorType: 'Linha Digitável / Código de Barras Não Identificado',
+          stepWhereOccurred: 'Localizando campos (Etapa 40%-60%)',
+          unidentifiedFields: ['Linha Digitável', 'Código de Barras'],
+          probableCause: serverErrorMsg.includes('429')
+            ? 'Cota temporária da API Gemini atingida. O leitor local não encontrou texto em formato digital.'
+            : 'PDF digitalizado como imagem sem camada de texto ou arquivo corrompido.',
+          partialExtracted: {
+            banco: false,
+            beneficiario: false,
+            vencimento: false,
+            valor: false,
+            codigoBarras: false,
+            linhaDigitavel: false,
           },
-        ];
+          recommendedAction:
+            'Cole a linha digitável (47 ou 48 dígitos) no campo de conversão manual abaixo para cadastrar este boleto mantendo o arquivo no lote.',
+        };
+
+        const errorItem: PDFExtractedItem = {
+          id: itemId,
+          fileName: file.name,
+          fileSize: file.size,
+          status: 'error',
+          progress: 100,
+          stepMessage: '100% — Erro na extração automática',
+          errorMessage: `Não foi possível extrair a linha digitável do arquivo '${file.name}'.`,
+          detailedError,
+          processingTimeMs: duration,
+        };
+
+        updateItemState(itemId, errorItem);
+        return [errorItem];
       }
 
-      return rawBoletos.map((extracted, idx) => {
-        const itemId = `pdf-item-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+      // Process raw extracted boletos
+      const processedItems: PDFExtractedItem[] = rawBoletos.map((extracted, idx) => {
         const rawDigits = extracted.linhaDigitavel || extracted.codigoBarras || '';
         const cleanLinha = onlyNumbers(rawDigits);
         const parsedCheck = parseLinhaDigitavel(cleanLinha);
@@ -197,14 +352,22 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         const bankInfo = getBankInfo(finalBancoCodigo);
         const finalValor = parseExtractedValor(extracted.valor, parsedCheck.valor);
 
-        const finalFavorecido = extracted.favorecidoNome || extracted.beneficiario || extracted.cedente || 'Favorecido Não Identificado';
+        const finalFavorecido =
+          extracted.favorecidoNome ||
+          extracted.beneficiario ||
+          extracted.cedente ||
+          'Favorecido Não Identificado';
         const finalCnpj = extracted.favorecidoCnpjCpf || extracted.CNPJ || '';
-        const finalSeuNumero = extracted.numeroDocumento || extracted.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`;
-        const finalBancoNome = bankInfo.shortName || extracted.bancoNome || extracted.banco || 'Banco Não Identificado';
+        const finalSeuNumero =
+          extracted.numeroDocumento ||
+          extracted.seuNumero ||
+          `DOC-${Math.floor(Math.random() * 89999 + 10000)}`;
+        const finalBancoNome =
+          bankInfo.shortName || extracted.bancoNome || extracted.banco || 'Banco Não Identificado';
 
-        // Alimentar Motor de Aprendizado Contínuo com o layout reconhecido
+        // 90% — Armazenando aprendizado na memória
         try {
-          learnNewLayoutPattern(
+          const learnRes = learnNewLayoutPattern(
             `${finalFavorecido} ${finalBancoNome} ${cleanLinha} ${file.name}`,
             {
               linhaDigitavel: cleanLinha,
@@ -214,25 +377,75 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               dataVencimento: extracted.dataVencimento || parsedCheck.dataVencimento,
             }
           );
+          if (learnRes.isNew) {
+            setLearnedCountInSession((c) => c + 1);
+          }
         } catch (learnErr) {
           console.warn('[Continuous Learning] Notificação de aprendizado:', learnErr);
         }
 
-        return {
-          id: itemId,
+        const endTime = performance.now();
+        const duration = Math.round(endTime - startTime);
 
+        const isLinhaValid = cleanLinha.length === 47 || cleanLinha.length === 48;
+
+        const partialExtracted = {
+          banco: !!finalBancoCodigo && finalBancoCodigo !== '000',
+          beneficiario: !!finalFavorecido && finalFavorecido !== 'Favorecido Não Identificado',
+          vencimento: !!extracted.dataVencimento || !!parsedCheck.dataVencimento,
+          valor: finalValor > 0,
+          codigoBarras: !!extracted.codigoBarras || !!parsedCheck.codigoBarras,
+          linhaDigitavel: isLinhaValid,
+        };
+
+        const unidentifiedFields: string[] = [];
+        if (!partialExtracted.linhaDigitavel) unidentifiedFields.push('Linha Digitável Válida');
+        if (!partialExtracted.valor) unidentifiedFields.push('Valor');
+        if (!partialExtracted.vencimento) unidentifiedFields.push('Vencimento');
+
+        const isPartial = !isLinhaValid || unidentifiedFields.length > 0;
+
+        return {
+          id: idx === 0 ? itemId : `${itemId}-${idx}`,
           fileName: file.name,
+          fileSize: file.size,
           boletoIndex: idx + 1,
           totalInFile: rawBoletos.length,
-          status: 'success',
+          status: isPartial ? 'partial' : 'success',
+          progress: 100,
+          stepMessage: isPartial ? '100% — Concluído com pendências' : '100% — Extração concluída com sucesso',
+          layoutRecognized: layoutRecognized,
+          layoutName: layoutName,
+          isFastPath: isFastPathUsed,
+          processingTimeMs: duration,
+          detailedError: isPartial
+            ? {
+                errorType: 'Campos Parcialmente Identificados',
+                stepWhereOccurred: 'Validando dados (Etapa 75%)',
+                unidentifiedFields,
+                probableCause: 'Alguns campos não atingiram o nível de confiança exigido ou a linha digitável possui dígitos faltando.',
+                partialExtracted,
+                recommendedAction: 'Verifique e complete os campos destacados em amarelo/vermelho abaixo.',
+              }
+            : undefined,
           data: {
             linhaDigitavel: cleanLinha || extracted.linhaDigitavel || '',
             codigoBarras: extracted.codigoBarras || parsedCheck.codigoBarras || '',
             favorecidoNome: finalFavorecido,
             favorecidoCnpjCpf: finalCnpj,
+            pagadorNome: extracted.pagadorNome || extracted.pagador || '',
+            pagadorCnpjCpf: extracted.pagadorCnpjCpf || '',
             valor: finalValor,
-            dataVencimento: extracted.dataVencimento || parsedCheck.dataVencimento || new Date().toISOString().split('T')[0],
-            dataPagamento: batchPaymentDate || extracted.dataVencimento || parsedCheck.dataVencimento || new Date().toISOString().split('T')[0],
+            dataVencimento:
+              extracted.dataVencimento ||
+              parsedCheck.dataVencimento ||
+              new Date().toISOString().split('T')[0],
+            dataEmissao: extracted.dataEmissao || extracted.dataDocumento || '',
+            dataPagamento:
+              batchPaymentDate ||
+              extracted.dataVencimento ||
+              parsedCheck.dataVencimento ||
+              new Date().toISOString().split('T')[0],
             seuNumero: finalSeuNumero,
             nossoNumero: extracted.nossoNumero || '',
             bancoCodigo: finalBancoCodigo,
@@ -241,34 +454,69 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             placa: extracted.placa || '',
             renavam: extracted.renavam || '',
             autoInfracao: extracted.autoInfracao || '',
-            observacoes: extracted.observacoes || (rawBoletos.length > 1 ? `Boleto ${idx + 1}/${rawBoletos.length} de ${file.name}` : `Extraído de ${file.name}`),
-            confidence: extracted.confidence || 0.9,
+            observacoes:
+              extracted.observacoes ||
+              (rawBoletos.length > 1
+                ? `Boleto ${idx + 1}/${rawBoletos.length} de ${file.name}`
+                : `Extraído de ${file.name}`),
+            confidence: extracted.confidence || (isFastPathUsed ? 0.99 : 0.92),
           },
         };
       });
+
+      // Update the first item in state with processed result
+      if (processedItems.length > 0) {
+        updateItemState(itemId, processedItems[0]);
+
+        // If multi-boletos in same PDF page, append additional items
+        if (processedItems.length > 1) {
+          setItems((prev) => [...prev, ...processedItems.slice(1)]);
+        }
+      }
+
+      return processedItems;
     } catch (err: any) {
-      return [
-        {
-          id: `pdf-item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          fileName: file.name,
-          status: 'error',
-          errorMessage: err.message || 'Erro desconhecido ao processar arquivo.',
+      const endTime = performance.now();
+      const duration = Math.round(endTime - startTime);
+
+      const errorItem: PDFExtractedItem = {
+        id: itemId,
+        fileName: file.name,
+        fileSize: file.size,
+        status: 'error',
+        progress: 100,
+        stepMessage: '100% — Erro na extração',
+        errorMessage: err.message || 'Erro inesperado ao processar arquivo.',
+        processingTimeMs: duration,
+        detailedError: {
+          errorType: 'Falha de Leitura no Arquivo',
+          stepWhereOccurred: 'Identificando documento (Etapa 10%)',
+          unidentifiedFields: ['Todos os campos'],
+          probableCause: 'O arquivo PDF está corrompido, protegido por senha ou não suportado.',
+          partialExtracted: {
+            banco: false,
+            beneficiario: false,
+            vencimento: false,
+            valor: false,
+            codigoBarras: false,
+            linhaDigitavel: false,
+          },
+          recommendedAction: 'Verifique a integridade do PDF ou envie novamente o arquivo.',
         },
-      ];
+      };
+
+      updateItemState(itemId, errorItem);
+      return [errorItem];
     }
   };
 
   const handleManualConvert = (itemId: string, fileName: string, rawInput: string) => {
     if (!rawInput.trim()) return;
 
-    // Extract all digits or search for 47/48 digit sequence in input
     let finalLinha = onlyNumbers(rawInput);
-
     if (finalLinha.length !== 47 && finalLinha.length !== 48) {
       const match = rawInput.match(/\d{47,48}/);
-      if (match) {
-        finalLinha = match[0];
-      }
+      if (match) finalLinha = match[0];
     }
 
     const parsed = parseLinhaDigitavel(finalLinha);
@@ -276,23 +524,32 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     setItems((prev) =>
       prev.map((it) => {
         if (it.id === itemId) {
+          const currentData = it.data;
           return {
             ...it,
             status: 'success',
+            progress: 100,
+            stepMessage: '100% — Convertido e validado manualmente',
             errorMessage: undefined,
+            detailedError: undefined,
             data: {
               linhaDigitavel: finalLinha,
               codigoBarras: parsed.codigoBarras || finalLinha,
-              favorecidoNome: 'Favorecido Preenchido Manualmente',
-              favorecidoCnpjCpf: '',
-              valor: parsed.valor || 0,
-              dataVencimento: parsed.dataVencimento || new Date().toISOString().split('T')[0],
-              dataPagamento: batchPaymentDate || parsed.dataVencimento || new Date().toISOString().split('T')[0],
-              seuNumero: `MANUAL-${Math.floor(Math.random() * 8999 + 1000)}`,
-              nossoNumero: '',
-              bancoCodigo: parsed.bancoCodigo || '000',
-              bancoNome: parsed.bancoNome || 'Banco Não Identificado',
-              observacoes: `Manual do arquivo ${fileName}`,
+              favorecidoNome: currentData?.favorecidoNome || 'Favorecido Preenchido Manualmente',
+              favorecidoCnpjCpf: currentData?.favorecidoCnpjCpf || '',
+              valor: parsed.valor || currentData?.valor || 0,
+              dataVencimento:
+                parsed.dataVencimento || currentData?.dataVencimento || new Date().toISOString().split('T')[0],
+              dataPagamento:
+                batchPaymentDate ||
+                parsed.dataVencimento ||
+                currentData?.dataVencimento ||
+                new Date().toISOString().split('T')[0],
+              seuNumero: currentData?.seuNumero || `MANUAL-${Math.floor(Math.random() * 8999 + 1000)}`,
+              nossoNumero: currentData?.nossoNumero || '',
+              bancoCodigo: parsed.bancoCodigo || currentData?.bancoCodigo || '000',
+              bancoNome: parsed.bancoNome || currentData?.bancoNome || 'Banco Não Identificado',
+              observacoes: `Convertido manualmente do arquivo ${fileName}`,
               confidence: 1.0,
             },
           };
@@ -305,19 +562,12 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   const handleRetryFile = async (fileName: string, itemId: string) => {
     const file = fileMapRef.current.get(fileName);
     if (!file) {
-      alert("Arquivo original não encontrado. Por favor, envie o arquivo novamente.");
+      alert('Arquivo original não encontrado. Por favor, envie o arquivo novamente.');
       return;
     }
 
-    setItems((prev) =>
-      prev.map((it) => (it.id === itemId ? { ...it, status: 'loading', errorMessage: undefined } : it))
-    );
-
-    const processedItems = await processFile(file);
-    setItems((prev) => {
-      const filtered = prev.filter((it) => it.id !== itemId);
-      return [...filtered, ...processedItems];
-    });
+    setItems((prev) => prev.filter((it) => it.id !== itemId));
+    await processFile(file, 0, 1);
   };
 
   const handleFilesAdded = async (filesList: FileList | File[]) => {
@@ -328,57 +578,17 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     if (files.length === 0) return;
 
     files.forEach((f) => fileMapRef.current.set(f.name, f));
-
     setIsProcessingAll(true);
+    setOverallProgress(5);
 
-    // Placeholders while reading
-    const loadingPlaceholders: PDFExtractedItem[] = files.map((f, i) => ({
-      id: `loading-${f.name}-${Date.now()}-${i}`,
-      fileName: f.name,
-      status: 'loading',
-    }));
-
-    setItems((prev) => [...prev, ...loadingPlaceholders]);
-
-    for (const file of files) {
-      const processedItems = await processFile(file);
-
-      setItems((prev) => {
-        const filtered = prev.filter(
-          (item) => !(item.fileName === file.name && item.status === 'loading')
-        );
-
-        // Deduplicate processedItems against filtered existing items by linhaDigitavel/codigoBarras
-        const existingKeys = new Set<string>();
-        filtered.forEach((it) => {
-          if (it.data) {
-            const key = onlyNumbers(it.data.linhaDigitavel || it.data.codigoBarras || '');
-            if (key.length >= 10) existingKeys.add(key);
-          }
-        });
-
-        const uniqueNew: PDFExtractedItem[] = [];
-        for (const newIt of processedItems) {
-          if (newIt.data) {
-            const newKey = onlyNumbers(newIt.data.linhaDigitavel || newIt.data.codigoBarras || '');
-            if (newKey.length >= 10) {
-              if (!existingKeys.has(newKey)) {
-                existingKeys.add(newKey);
-                uniqueNew.push(newIt);
-              }
-            } else {
-              uniqueNew.push(newIt);
-            }
-          } else {
-            uniqueNew.push(newIt);
-          }
-        }
-
-        return [...filtered, ...uniqueNew];
-      });
+    const total = files.length;
+    for (let i = 0; i < total; i++) {
+      await processFile(files[i], i, total);
+      setOverallProgress(Math.round(((i + 1) / total) * 100));
     }
 
     setIsProcessingAll(false);
+    setOverallProgress(100);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -398,7 +608,6 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       prev.map((item) => {
         if (item.id === id && item.data) {
           const updatedData = { ...item.data, [field]: value };
-          // If linha digitavel changed, re-parse bank / value / due date if valid
           if (field === 'linhaDigitavel') {
             const parsed = parseLinhaDigitavel(value);
             if (parsed.isValid) {
@@ -445,12 +654,13 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     };
 
     onImportBoletos([newBoleto]);
-    // Automatically delete from extraction queue
     setItems((prev) => prev.filter((i) => i.id !== item.id));
   };
 
   const handleConfirmImport = () => {
-    const validItems = items.filter((item) => item.status === 'success' && item.data);
+    const validItems = items.filter(
+      (item) => (item.status === 'success' || item.status === 'partial') && item.data
+    );
     if (validItems.length === 0) return;
 
     const newBoletos: BoletoItem[] = validItems.map((item) => {
@@ -468,7 +678,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         favorecidoCnpjCpf: d.favorecidoCnpjCpf,
         valor: d.valor,
         dataVencimento: d.dataVencimento,
-        dataPagamento: d.dataPagamento || d.dataVencimento, // Custom selected payment date
+        dataPagamento: d.dataPagamento || d.dataVencimento,
         seuNumero: d.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`,
         nossoNumero: d.nossoNumero,
         desconto: d.desconto || 0,
@@ -482,25 +692,45 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
     onImportBoletos(newBoletos);
 
-    // Auto-remove imported items from extraction queue
     const importedIds = new Set(validItems.map((i) => i.id));
     setItems((prev) => prev.filter((item) => !importedIds.has(item.id)));
-
     onClose();
   };
 
-  const successfulCount = items.filter((i) => i.status === 'success').length;
+  const successfulCount = items.filter((i) => i.status === 'success' || i.status === 'partial').length;
+  const errorCount = items.filter((i) => i.status === 'error').length;
+  const totalFiles = items.length;
 
-  // Extract candidate items data for batch duplicate check
+  const totalExtractedFields = useMemo(() => {
+    return items.reduce((acc, item) => {
+      if (item.data) {
+        let count = 0;
+        if (item.data.linhaDigitavel) count++;
+        if (item.data.valor > 0) count++;
+        if (item.data.dataVencimento) count++;
+        if (item.data.favorecidoNome) count++;
+        if (item.data.bancoCodigo) count++;
+        if (item.data.seuNumero) count++;
+        return acc + count;
+      }
+      return acc;
+    }, 0);
+  }, [items]);
+
+  const totalProcessingTimeSec = useMemo(() => {
+    const totalMs = items.reduce((acc, item) => acc + (item.processingTimeMs || 0), 0);
+    return (totalMs / 1000).toFixed(1);
+  }, [items]);
+
   const allExtractedData = useMemo(() => {
     return items
-      .filter((item) => item.status === 'success' && item.data)
+      .filter((item) => (item.status === 'success' || item.status === 'partial') && item.data)
       .map((item) => ({ ...item.data!, id: item.id }));
   }, [items]);
 
   const duplicateCount = useMemo(() => {
     return items.filter((item) => {
-      if (item.status !== 'success' || !item.data) return false;
+      if (!item.data) return false;
       const dup = detectBoletoDuplicate(
         { ...item.data, id: item.id },
         allExtractedData,
@@ -515,7 +745,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     const seenKeys = new Set<string>();
     setItems((prev) =>
       prev.filter((item) => {
-        if (item.status !== 'success' || !item.data) return true;
+        if (!item.data) return true;
         const dup = detectBoletoDuplicate(
           { ...item.data, id: item.id },
           allExtractedData,
@@ -523,14 +753,10 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           history
         );
 
-        if (dup.isSystemDuplicate || dup.isHistoryDuplicate) {
-          return false;
-        }
+        if (dup.isSystemDuplicate || dup.isHistoryDuplicate) return false;
 
         const key = onlyNumbers(item.data.linhaDigitavel || item.data.codigoBarras);
-        if (key && seenKeys.has(key)) {
-          return false;
-        }
+        if (key && seenKeys.has(key)) return false;
         if (key) seenKeys.add(key);
         return true;
       })
@@ -540,20 +766,23 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto animate-fade-in">
-      <div className="bg-white border border-slate-200 rounded-2xl max-w-4xl w-full my-8 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-md overflow-y-auto animate-fade-in">
+      <div className="bg-white border border-slate-200 rounded-2xl max-w-5xl w-full my-4 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
-        <div className="p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-xs">
-              <Sparkles className="w-5 h-5 animate-pulse" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-sm">
+              <Brain className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                Extrair Boletos via PDF (IA Gemini)
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                Sistema Inteligente de Extração e Memória de Boletos
+                <span className="text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  OneFinance AI
+                </span>
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                Envie um ou mais arquivos PDF/Imagens de boletos para extração automática da linha digitável, valor e dados.
+                Aprendizado contínuo de layouts, reconhecimento automático de padrões e extração acelerada.
               </p>
             </div>
           </div>
@@ -566,7 +795,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-6 overflow-y-auto flex-1">
+        <div className="p-5 space-y-5 overflow-y-auto flex-1">
           {/* Upload Dropzone */}
           <div
             onDragOver={(e) => {
@@ -576,7 +805,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+            className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
               isDragOver
                 ? 'border-blue-600 bg-blue-50 scale-[0.99]'
                 : 'border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/30'
@@ -592,68 +821,128 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                 if (e.target.files) handleFilesAdded(e.target.files);
               }}
             />
-            <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-3 font-bold">
+            <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-2 font-bold">
               <Upload className="w-6 h-6" />
             </div>
-            <p className="text-sm font-bold text-slate-800">
+            <p className="text-sm font-extrabold text-slate-800">
               Arraste e solte seus boletos em PDF aqui ou clique para selecionar
             </p>
             <p className="text-xs text-slate-500 mt-1 font-medium">
-              Suporta PDF individual, faturas de concessionárias, tributos e imagens (PNG, JPG)
+              Suporta múltiplos PDFs, boletos de concessionárias, tributos (SEFAZ/DAR) e faturas de veículos
             </p>
           </div>
+
+          {/* Overall Batch Progress Banner */}
+          {isProcessingAll && (
+            <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-2xl p-4 shadow-md space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-300" />
+                  <span>Processando Lote de Arquivos... ({overallProgress}%)</span>
+                </span>
+                <span className="bg-blue-800/80 px-2.5 py-1 rounded-lg border border-blue-700">
+                  Progresso geral: {overallProgress}%
+                </span>
+              </div>
+              <div className="w-full bg-blue-950/80 rounded-full h-2.5 overflow-hidden p-0.5 border border-blue-700/50">
+                <div
+                  className="bg-gradient-to-r from-blue-400 to-emerald-400 h-1.5 rounded-full transition-all duration-300 shadow-sm"
+                  style={{ width: `${overallProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* List of Processed Files */}
           {items.length > 0 && (
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center space-x-2">
-                  <span>Boletos Processados ({items.length})</span>
-                </h3>
-                <div className="flex items-center gap-2">
+              {/* Batch Action Toolbar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-100/80 p-3 rounded-2xl border border-slate-200">
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-blue-600" />
+                    <span>Fila de Processamento ({items.length})</span>
+                  </span>
+
+                  {/* View Mode Switch */}
+                  <div className="flex items-center bg-white border border-slate-300 rounded-lg p-0.5 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('cards')}
+                      className={`px-2 py-1 text-xs rounded-md font-bold flex items-center gap-1 transition-colors ${
+                        viewMode === 'cards'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Visualização em Cartões Detalhados"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      <span>Cartões</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('table')}
+                      className={`px-2 py-1 text-xs rounded-md font-bold flex items-center gap-1 transition-colors ${
+                        viewMode === 'table'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="Painel de Tabela Sintético"
+                    >
+                      <Table className="w-3.5 h-3.5" />
+                      <span>Painel Tabela</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setItems([])}
-                    className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer"
-                    title="Esvaziar todos os itens da fila de extração"
+                    className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Limpar todos os itens da fila"
                   >
                     <Trash2 className="w-3.5 h-3.5 text-slate-500" />
                     <span>Limpar Fila</span>
                   </button>
+
                   {duplicateCount > 0 && (
                     <button
                       type="button"
                       onClick={handleRemoveDuplicates}
-                      className="text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-full border border-amber-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-xl border border-amber-300 transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
-                      <span>Remover {duplicateCount} Duplicado(s)</span>
+                      <span>Remover {duplicateCount} Repetidos</span>
                     </button>
                   )}
+
                   {successfulCount > 0 && (
                     <button
                       type="button"
                       onClick={handleConfirmImport}
                       disabled={isProcessingAll}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-full shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-4 py-1.5 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
-                      <span>Adicionar {successfulCount} Boleto{successfulCount !== 1 ? 's' : ''} Pronto{successfulCount !== 1 ? 's' : ''}</span>
+                      <span>
+                        Adicionar {successfulCount} Boleto{successfulCount !== 1 ? 's' : ''} Prontos
+                      </span>
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Duplicate summary warning banner */}
+              {/* Duplicate Summary Alert */}
               {duplicateCount > 0 && (
                 <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-start gap-3 text-amber-900 text-xs shadow-xs">
                   <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="font-extrabold text-amber-900">
-                      Atenção: {duplicateCount} boleto(s) repetido(s) identificado(s)!
+                      Atenção: {duplicateCount} boleto(s) repetido(s) identificado(s) no lote!
                     </p>
                     <p className="text-amber-800 font-medium mt-0.5">
-                      Foi detectada duplicação de linha digitável/código de barras no mesmo arquivo ou em relação a boletos já cadastrados no sistema.
+                      Linhas digitáveis duplicadas foram identificadas em relação a outros boletos do arquivo ou do sistema.
                     </p>
                   </div>
                   <button
@@ -665,7 +954,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                 </div>
               )}
 
-              {/* Batch Payment Date Selector Control */}
+              {/* Batch Payment Date Selector */}
               {successfulCount > 0 && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
                   <div className="flex items-center space-x-2.5 text-slate-800">
@@ -673,8 +962,12 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                       <Calendar className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="font-extrabold block text-slate-900 text-xs">Data de Pagamento para os Boletos do Lote</span>
-                      <span className="text-[11px] text-slate-500 font-medium">Agende a data de débito para todos os boletos extraídos de uma só vez</span>
+                      <span className="font-black block text-slate-900 text-xs">
+                        Agendar Data de Pagamento para os Boletos
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        Aplica a data de débito para todos os boletos extraídos de uma só vez
+                      </span>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -698,7 +991,10 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                         setItems((prev) =>
                           prev.map((item) => {
                             if (item.data) {
-                              return { ...item, data: { ...item.data, dataPagamento: item.data.dataVencimento } };
+                              return {
+                                ...item,
+                                data: { ...item.data, dataPagamento: item.data.dataVencimento },
+                              };
                             }
                             return item;
                           })
@@ -712,323 +1008,577 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                 </div>
               )}
 
-              <div className="space-y-3">
-                {items.map((item) => {
-                  const dupInfo = item.data
-                    ? detectBoletoDuplicate(
-                        { ...item.data, id: item.id },
-                        allExtractedData,
-                        existingBoletos,
-                        history
-                      )
-                    : null;
+              {/* View Mode 1: Synthetic Processing Table (Painel de Processamento) */}
+              {viewMode === 'table' ? (
+                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs bg-white">
+                  <div className="p-3 bg-slate-900 text-white text-xs font-black flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <Table className="w-4 h-4 text-blue-400" />
+                      <span>Painel Geral de Processamento dos Arquivos</span>
+                    </span>
+                    <span className="text-[11px] font-normal text-slate-300">
+                      {successfulCount} Sucessos | {errorCount} Erros
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-black uppercase tracking-wider text-[10px]">
+                          <th className="p-3">Arquivo</th>
+                          <th className="p-3">Banco / Emissor</th>
+                          <th className="p-3">Status</th>
+                          <th className="p-3 text-center">Progresso</th>
+                          <th className="p-3">Layout Memória</th>
+                          <th className="p-3 text-right">Valor Extraído</th>
+                          <th className="p-3 text-center">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
+                        {items.map((item, idx) => {
+                          const bankCode = item.data?.bancoCodigo || '000';
+                          const bankInfo = getBankInfo(bankCode);
 
-                  return (
-                    <div
-                      key={item.id}
-                      className={`bg-white border rounded-xl p-4 transition-all ${
-                        dupInfo?.isDuplicate
-                          ? 'border-amber-300 bg-amber-50/40 shadow-xs'
-                          : 'border-slate-200 hover:border-slate-300 shadow-xs'
-                      }`}
-                    >
-                      {/* Item Header */}
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center space-x-2 overflow-hidden flex-wrap gap-y-1">
-                          <FileText className="w-5 h-5 text-blue-600 shrink-0" />
-                          <span className="text-xs font-bold text-slate-800 truncate max-w-xs">
-                            {item.fileName}
-                          </span>
-                          {item.totalInFile && item.totalInFile > 1 && item.boletoIndex && (
-                            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md shrink-0">
-                              Boleto {item.boletoIndex} de {item.totalInFile}
-                            </span>
-                          )}
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="p-3 font-mono font-bold text-slate-900 flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                                <span className="truncate max-w-[180px]" title={item.fileName}>
+                                  {item.fileName}
+                                </span>
+                              </td>
+                              <td className="p-3 font-semibold">
+                                {item.data ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="bg-blue-100 text-blue-900 font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
+                                      {item.data.bancoCodigo}
+                                    </span>
+                                    <span>{item.data.bancoNome}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 italic">Identificando...</span>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                {item.status === 'loading' && (
+                                  <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 font-bold text-[11px]">
+                                    <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                    <span>{item.stepMessage.split('—')[1] || 'Processando'}</span>
+                                  </span>
+                                )}
+                                {item.status === 'success' && (
+                                  <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-[11px]">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    <span>Concluído</span>
+                                  </span>
+                                )}
+                                {item.status === 'partial' && (
+                                  <span className="inline-flex items-center gap-1 text-amber-900 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-bold text-[11px]">
+                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                    <span>Parcial</span>
+                                  </span>
+                                )}
+                                {item.status === 'error' && (
+                                  <span className="inline-flex items-center gap-1 text-red-800 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 font-bold text-[11px]">
+                                    <AlertCircle className="w-3 h-3 text-red-600" />
+                                    <span>Erro</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center">
+                                <div className="flex flex-col items-center">
+                                  <span className="font-mono text-[11px] font-bold text-slate-800">
+                                    Arquivo {idx + 1} de {totalFiles} — {item.progress}%
+                                  </span>
+                                  <div className="w-20 bg-slate-200 rounded-full h-1.5 mt-1 overflow-hidden">
+                                    <div
+                                      className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                                      style={{ width: `${item.progress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3">
+                                {item.layoutRecognized ? (
+                                  <span className="text-[10px] font-extrabold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 w-fit">
+                                    <Zap className="w-3 h-3 text-indigo-600 fill-indigo-100" />
+                                    <span>Conhecido</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-extrabold text-blue-900 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md flex items-center gap-1 w-fit">
+                                    <Brain className="w-3 h-3 text-blue-600" />
+                                    <span>Novo Aprendido</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right font-mono font-black text-slate-900">
+                                {item.data?.valor ? formatCurrencyBRL(item.data.valor) : '—'}
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItem(item.id)}
+                                  className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100"
+                                  title="Remover este boleto"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                /* View Mode 2: Detailed Cards (Modo Cartões com Progresso em Tempo Real) */
+                <div className="space-y-4">
+                  {items.map((item, idx) => {
+                    const dupInfo = item.data
+                      ? detectBoletoDuplicate(
+                          { ...item.data, id: item.id },
+                          allExtractedData,
+                          existingBoletos,
+                          history
+                        )
+                      : null;
 
-                          {dupInfo?.isSameBatchDuplicate && (
-                            <span className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3 text-amber-600" />
-                              <span>Repetido no mesmo arquivo</span>
-                            </span>
-                          )}
-
-                          {(dupInfo?.isSystemDuplicate || dupInfo?.isHistoryDuplicate) && (
-                            <span className="text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300 px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3 text-rose-600" />
-                              <span>{dupInfo.duplicateReason}</span>
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          {item.status === 'loading' && (
-                            <span className="text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200 flex items-center space-x-1.5 font-bold">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                              <span>Extraindo dados com IA...</span>
-                            </span>
-                          )}
-
-                          {item.status === 'success' && !dupInfo?.isDuplicate && (
-                            <div className="flex items-center space-x-2">
-                              <span className="text-xs text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center space-x-1 font-bold">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Extraído com Sucesso</span>
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleImportSingleItem(item)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-xs"
-                                title="Importar este boleto e excluí-lo da fila de extração"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>Importar & Remover</span>
-                              </button>
+                    return (
+                      <div
+                        key={item.id}
+                        className={`bg-white border rounded-2xl p-4 transition-all shadow-xs ${
+                          dupInfo?.isDuplicate
+                            ? 'border-amber-300 bg-amber-50/30'
+                            : item.status === 'error'
+                            ? 'border-red-300 bg-red-50/20'
+                            : item.status === 'partial'
+                            ? 'border-amber-200 bg-amber-50/10'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Header com Nome do Arquivo Mostrado IMEDIATAMENTE */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                          <div className="flex items-center space-x-2.5 overflow-hidden flex-wrap gap-y-1">
+                            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shrink-0">
+                              <FileText className="w-4 h-4" />
                             </div>
-                          )}
-
-                          {item.status === 'error' && (
-                            <span className="text-xs text-red-800 bg-red-50 px-2.5 py-1 rounded-full border border-red-200 flex items-center space-x-1 font-bold">
-                              <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                              <span>Erro na extração</span>
-                            </span>
-                          )}
-
-                          <button
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="Remover este item"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                    {/* Error Message with Manual Digitation Fallback */}
-                    {item.status === 'error' && (
-                      <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 text-xs text-red-900 space-y-2.5">
-                        <div>
-                          <p className="font-extrabold text-red-900 flex items-center gap-1.5">
-                            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                            <span>{item.errorMessage || 'Não foi possível extrair os dados do boleto automaticamente.'}</span>
-                          </p>
-                          <p className="text-[11px] text-slate-600 mt-1 font-medium">
-                            Seu arquivo PDF pode ser uma imagem digitalizada sem camada de texto. Cole ou digite a linha digitável (47 ou 48 dígitos) abaixo para cadastrar este boleto:
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                          <input
-                            type="text"
-                            placeholder="Cole a linha digitável (ex: 23793.38128 60000.123456...)"
-                            className="flex-1 min-w-[200px] bg-white border border-slate-300 text-slate-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-semibold"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                const val = (e.target as HTMLInputElement).value;
-                                if (val) handleManualConvert(item.id, item.fileName, val);
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              const inputEl = (e.currentTarget.previousElementSibling as HTMLInputElement);
-                              const val = inputEl ? inputEl.value : '';
-                              if (val) handleManualConvert(item.id, item.fileName, val);
-                            }}
-                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
-                          >
-                            Converter
-                          </button>
-                          {fileMapRef.current.has(item.fileName) && (
-                            <button
-                              type="button"
-                              onClick={() => handleRetryFile(item.fileName, item.id)}
-                              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs shrink-0 flex items-center gap-1.5 cursor-pointer"
-                              title="Tentar extração com IA novamente"
-                            >
-                              <RefreshCw className="w-3.5 h-3.5" />
-                              <span>Tentar Novamente</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Success Data Form Fields */}
-                    {item.status === 'success' && item.data && (
-                      <div className="space-y-3 pt-2 border-t border-slate-100">
-                        {/* Linha digitavel */}
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                            Linha Digitável (47 ou 48 dígitos)
-                          </label>
-                          <input
-                            type="text"
-                            value={item.data.linhaDigitavel}
-                            onChange={(e) => handleFieldChange(item.id, 'linhaDigitavel', e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                          {/* Favorecido */}
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                              Favorecido / Beneficiário
-                            </label>
-                            <input
-                              type="text"
-                              value={item.data.favorecidoNome}
-                              onChange={(e) => handleFieldChange(item.id, 'favorecidoNome', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                            />
-                          </div>
-
-                          {/* Valor */}
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                              Valor (R$)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.data.valor}
-                              onChange={(e) => handleFieldChange(item.id, 'valor', parseFloat(e.target.value) || 0)}
-                              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
-                            />
-                          </div>
-
-                          {/* Data Vencimento */}
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                              Vencimento
-                            </label>
-                            <input
-                              type="date"
-                              value={item.data.dataVencimento}
-                              onChange={(e) => handleFieldChange(item.id, 'dataVencimento', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                            />
-                          </div>
-
-                          {/* Data Pagamento */}
-                          <div>
-                            <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block mb-1">
-                              Data de Pagamento
-                            </label>
-                            <input
-                              type="date"
-                              value={item.data.dataPagamento || item.data.dataVencimento}
-                              onChange={(e) => handleFieldChange(item.id, 'dataPagamento', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 text-blue-900 font-mono text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
-                            />
-                          </div>
-
-                          {/* Banco */}
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                              Banco / Emissor
-                            </label>
-                            <div className="flex items-center space-x-2">
-                              <span className="bg-blue-100 text-blue-900 font-mono text-[10px] px-2 py-1 rounded font-bold">
-                                {item.data.bancoCodigo}
+                            <div>
+                              <div className="flex items-center space-x-2 flex-wrap">
+                                <span className="text-xs font-black text-slate-900 truncate max-w-sm">
+                                  📄 "{item.fileName}"
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                  Arquivo {idx + 1} de {totalFiles}
+                                </span>
+                              </div>
+                              <span className="text-[11px] font-bold text-blue-700 block mt-0.5">
+                                Status: {item.stepMessage}
                               </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2 shrink-0">
+                            {item.status === 'loading' && (
+                              <span className="text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 flex items-center space-x-1.5 font-bold">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                                <span>Processando ({item.progress}%)</span>
+                              </span>
+                            )}
+
+                            {(item.status === 'success' || item.status === 'partial') && (
+                              <div className="flex items-center space-x-2">
+                                <span
+                                  className={`text-xs px-2.5 py-1 rounded-full border flex items-center space-x-1 font-bold ${
+                                    item.status === 'success'
+                                      ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                                      : 'text-amber-800 bg-amber-50 border-amber-200'
+                                  }`}
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>
+                                    {item.status === 'success' ? 'Extraído 100%' : 'Extraído com Pendências'}
+                                  </span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleImportSingleItem(item)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                                  title="Importar apenas este boleto"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Importar</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {item.status === 'error' && (
+                              <span className="text-xs text-red-800 bg-red-50 px-2.5 py-1 rounded-full border border-red-200 flex items-center space-x-1 font-bold">
+                                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                                <span>Erro na extração</span>
+                              </span>
+                            )}
+
+                            <button
+                              onClick={() => handleRemoveItem(item.id)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                              title="Remover da fila"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Barra de Progresso Real por Arquivo (0% a 100%) */}
+                        <div className="py-2">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                              <span>Etapa do Processamento: {item.stepMessage}</span>
+                            </span>
+                            <span className="font-mono text-blue-800 font-extrabold">
+                              {item.progress}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200 p-0.5">
+                            <div
+                              className={`h-1 rounded-full transition-all duration-300 ${
+                                item.status === 'error'
+                                  ? 'bg-red-500'
+                                  : item.status === 'partial'
+                                  ? 'bg-amber-500'
+                                  : 'bg-gradient-to-r from-blue-600 to-indigo-600'
+                              }`}
+                              style={{ width: `${item.progress}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Indicador de Memória / Reconhecimento de Layout */}
+                        {item.status !== 'loading' && (
+                          <div className="my-2">
+                            {item.layoutRecognized ? (
+                              <div className="bg-indigo-50/90 border border-indigo-200 rounded-xl p-2.5 text-xs text-indigo-900 flex items-center justify-between gap-2">
+                                <div className="flex items-center space-x-2">
+                                  <Brain className="w-4 h-4 text-indigo-600 shrink-0" />
+                                  <div>
+                                    <span className="font-black text-indigo-950 block">
+                                      🧠 Layout reconhecido na memória: {item.layoutName}
+                                    </span>
+                                    <span className="text-[11px] text-indigo-700 font-medium">
+                                      Este boleto possui características semelhantes a um modelo já aprendido.
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="bg-indigo-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1 shadow-xs">
+                                  <Zap className="w-3 h-3 fill-white" />
+                                  <span>Fast-Path</span>
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-2.5 text-xs text-blue-900 flex items-center justify-between gap-2">
+                                <div className="flex items-center space-x-2">
+                                  <Brain className="w-4 h-4 text-blue-600 shrink-0" />
+                                  <div>
+                                    <span className="font-black text-blue-950 block">
+                                      🆕 Novo layout identificado
+                                    </span>
+                                    <span className="text-[11px] text-blue-700 font-medium">
+                                      Este padrão foi analisado e armazenado na memória para acelerar processamentos futuros.
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="bg-blue-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1 shadow-xs">
+                                  <Sparkles className="w-3 h-3" />
+                                  <span>Novo Aprendizado</span>
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* TRATAMENTO DETALHADO DE ERROS (Não descarta dados parciais) */}
+                        {(item.status === 'error' || item.status === 'partial') && item.detailedError && (
+                          <div className="bg-red-50/90 border border-red-200 rounded-xl p-3.5 my-3 text-xs text-red-900 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-black text-red-950 flex items-center gap-1.5 text-sm">
+                                <AlertCircle className="w-4 h-4 text-red-600" />
+                                <span>❌ {item.detailedError.errorType}</span>
+                              </span>
+                              <span className="text-[10px] font-bold bg-red-100 text-red-800 border border-red-300 px-2 py-0.5 rounded-md">
+                                Etapa: {item.detailedError.stepWhereOccurred}
+                              </span>
+                            </div>
+
+                            <p className="text-[11px] text-slate-700 font-medium">
+                              <strong>Motivo provável:</strong> {item.detailedError.probableCause}
+                            </p>
+
+                            {/* Status de Campos Extraídos Parcialmente */}
+                            <div className="bg-white border border-red-200 rounded-lg p-2 text-[11px]">
+                              <span className="font-bold text-slate-800 block mb-1">
+                                Status da Extração Parcial dos Campos:
+                              </span>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                                <span className={item.detailedError.partialExtracted.banco ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+                                  {item.detailedError.partialExtracted.banco ? '✅ Banco' : '❌ Banco'}
+                                </span>
+                                <span className={item.detailedError.partialExtracted.beneficiario ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+                                  {item.detailedError.partialExtracted.beneficiario ? '✅ Beneficiário' : '❌ Beneficiário'}
+                                </span>
+                                <span className={item.detailedError.partialExtracted.valor ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+                                  {item.detailedError.partialExtracted.valor ? '✅ Valor' : '❌ Valor'}
+                                </span>
+                                <span className={item.detailedError.partialExtracted.vencimento ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+                                  {item.detailedError.partialExtracted.vencimento ? '✅ Vencimento' : '❌ Vencimento'}
+                                </span>
+                                <span className={item.detailedError.partialExtracted.linhaDigitavel ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+                                  {item.detailedError.partialExtracted.linhaDigitavel ? '✅ Linha Digitável' : '❌ Linha Digitável'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <p className="text-[11px] text-red-950 font-extrabold bg-red-100/80 p-2 rounded-lg border border-red-200">
+                              💡 <strong>Ação Recomendada:</strong> {item.detailedError.recommendedAction}
+                            </p>
+
+                            {/* Input para digitação ou colagem rápida da linha digitável */}
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
                               <input
                                 type="text"
-                                value={item.data.bancoNome}
-                                onChange={(e) => handleFieldChange(item.id, 'bancoNome', e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                placeholder="Cole a linha digitável (ex: 03399.01241 85810.000001...)"
+                                className="flex-1 min-w-[200px] bg-white border border-slate-300 text-slate-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-bold"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    const val = (e.target as HTMLInputElement).value;
+                                    if (val) handleManualConvert(item.id, item.fileName, val);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  const inputEl = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                  const val = inputEl ? inputEl.value : '';
+                                  if (val) handleManualConvert(item.id, item.fileName, val);
+                                }}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+                              >
+                                Processar Código
+                              </button>
+                              {fileMapRef.current.has(item.fileName) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRetryFile(item.fileName, item.id)}
+                                  className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  <span>Reanalisar</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Formulação dos Campos de Sucesso e Edição Completa */}
+                        {item.data && (
+                          <div className="space-y-3 pt-3 border-t border-slate-100">
+                            {/* Linha Digitavel */}
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                Linha Digitável (47 ou 48 dígitos)
+                              </label>
+                              <input
+                                type="text"
+                                value={item.data.linhaDigitavel}
+                                onChange={(e) => handleFieldChange(item.id, 'linhaDigitavel', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
                               />
                             </div>
-                          </div>
 
-                          {/* Seu Numero */}
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                              Seu Número / NF
-                            </label>
-                            <input
-                              type="text"
-                              value={item.data.seuNumero}
-                              onChange={(e) => handleFieldChange(item.id, 'seuNumero', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                            />
-                          </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                              {/* Favorecido / Beneficiario */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Beneficiário / Favorecido
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.data.favorecidoNome}
+                                  onChange={(e) => handleFieldChange(item.id, 'favorecidoNome', e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-semibold"
+                                />
+                              </div>
 
-                          {/* CNPJ Favorecido */}
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                              CNPJ/CPF Favorecido
-                            </label>
-                            <input
-                              type="text"
-                              value={item.data.favorecidoCnpjCpf}
-                              placeholder="Opcional"
-                              onChange={(e) => handleFieldChange(item.id, 'favorecidoCnpjCpf', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                            />
-                          </div>
+                              {/* Valor */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Valor (R$)
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.data.valor}
+                                  onChange={(e) => handleFieldChange(item.id, 'valor', parseFloat(e.target.value) || 0)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-black"
+                                />
+                              </div>
 
-                          {/* Desconto */}
-                          <div>
-                            <label className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block mb-1">
-                              Desconto (R$)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.data.desconto || 0}
-                              onChange={(e) => handleFieldChange(item.id, 'desconto', parseFloat(e.target.value) || 0)}
-                              className="w-full bg-slate-50 border border-slate-200 text-emerald-800 font-mono text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-600 focus:bg-white font-bold"
-                            />
-                          </div>
+                              {/* Vencimento */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Data de Vencimento
+                                </label>
+                                <input
+                                  type="date"
+                                  value={item.data.dataVencimento}
+                                  onChange={(e) => handleFieldChange(item.id, 'dataVencimento', e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-semibold"
+                                />
+                              </div>
 
-                          {/* Juros e Multa */}
-                          <div>
-                            <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block mb-1">
-                              Juros / Multa (R$)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.data.jurosMulta || 0}
-                              onChange={(e) => handleFieldChange(item.id, 'jurosMulta', parseFloat(e.target.value) || 0)}
-                              className="w-full bg-slate-50 border border-slate-200 text-amber-800 font-mono text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-amber-600 focus:bg-white font-bold"
-                            />
-                          </div>
-                        </div>
+                              {/* Banco */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Banco Emissor
+                                </label>
+                                <div className="flex items-center space-x-2">
+                                  <span className="bg-blue-100 text-blue-900 font-mono text-[10px] px-2 py-1.5 rounded-lg font-black">
+                                    {item.data.bancoCodigo}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={item.data.bancoNome}
+                                    onChange={(e) => handleFieldChange(item.id, 'bancoNome', e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                  />
+                                </div>
+                              </div>
 
-                        {/* Adjustments Alert Banner if discount or interest present */}
-                        {((item.data.desconto && item.data.desconto > 0) || (item.data.jurosMulta && item.data.jurosMulta > 0)) && (
-                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-xs flex flex-wrap items-center justify-between gap-2 shadow-xs">
-                            <div className="flex items-center space-x-2">
-                              {item.data.desconto && item.data.desconto > 0 && (
-                                <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                                  🎁 Desconto: -{formatCurrencyBRL(item.data.desconto)}
-                                </span>
-                              )}
-                              {item.data.jurosMulta && item.data.jurosMulta > 0 && (
-                                <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                                  ⚡ Juros/Multa: +{formatCurrencyBRL(item.data.jurosMulta)}
-                                </span>
-                              )}
+                              {/* Seu Numero / Doc */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Número do Documento (Seu Nº)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.data.seuNumero}
+                                  onChange={(e) => handleFieldChange(item.id, 'seuNumero', e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                />
+                              </div>
+
+                              {/* Nosso Numero */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Nosso Número
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.data.nossoNumero || ''}
+                                  placeholder="Não informado"
+                                  onChange={(e) => handleFieldChange(item.id, 'nossoNumero', e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                />
+                              </div>
+
+                              {/* CNPJ Beneficiario */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  CNPJ/CPF Beneficiário
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.data.favorecidoCnpjCpf || ''}
+                                  placeholder="Opcional"
+                                  onChange={(e) => handleFieldChange(item.id, 'favorecidoCnpjCpf', e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                />
+                              </div>
+
+                              {/* Pagador Nome */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Pagador
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.data.pagadorNome || ''}
+                                  placeholder="Opcional"
+                                  onChange={(e) => handleFieldChange(item.id, 'pagadorNome', e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                />
+                              </div>
+
+                              {/* Data de Pagamento */}
+                              <div>
+                                <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block mb-1">
+                                  Data de Agendamento
+                                </label>
+                                <input
+                                  type="date"
+                                  value={item.data.dataPagamento || item.data.dataVencimento}
+                                  onChange={(e) => handleFieldChange(item.id, 'dataPagamento', e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-blue-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
+                                />
+                              </div>
                             </div>
-                            <span className="font-mono font-black text-slate-900">
-                              Valor Líquido: {formatCurrencyBRL((item.data.valor || 0) - (item.data.desconto || 0) + (item.data.jurosMulta || 0))}
-                            </span>
                           </div>
                         )}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* RESUMO FINAL DE EXTRAÇÃO & APRENDIZADO DA SESSÃO */}
+              <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-lg space-y-3 mt-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <span className="text-xs font-black uppercase tracking-wider flex items-center gap-2 text-blue-400">
+                    <Brain className="w-4 h-4 text-blue-400" />
+                    <span>Resumo Final de Processamento & Aprendizado</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    Tempo total: {totalProcessingTimeSec}s
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 text-center text-xs">
+                  <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-2">
+                    <span className="text-[10px] text-slate-400 font-semibold block">Total Arquivos</span>
+                    <span className="text-sm font-black text-white">{totalFiles}</span>
                   </div>
-                );
-              })}
+                  <div className="bg-emerald-950/60 border border-emerald-800 rounded-xl p-2">
+                    <span className="text-[10px] text-emerald-300 font-semibold block">Sucesso</span>
+                    <span className="text-sm font-black text-emerald-400">{successfulCount}</span>
+                  </div>
+                  <div className="bg-red-950/60 border border-red-800 rounded-xl p-2">
+                    <span className="text-[10px] text-red-300 font-semibold block">Com Erro</span>
+                    <span className="text-sm font-black text-red-400">{errorCount}</span>
+                  </div>
+                  <div className="bg-indigo-950/60 border border-indigo-800 rounded-xl p-2">
+                    <span className="text-[10px] text-indigo-300 font-semibold block">Layouts Conhecidos</span>
+                    <span className="text-sm font-black text-indigo-300">{reusedCountInSession}</span>
+                  </div>
+                  <div className="bg-blue-950/60 border border-blue-800 rounded-xl p-2">
+                    <span className="text-[10px] text-blue-300 font-semibold block">Novos Aprendidos</span>
+                    <span className="text-sm font-black text-blue-300">{learnedCountInSession}</span>
+                  </div>
+                  <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-2">
+                    <span className="text-[10px] text-slate-400 font-semibold block">Campos Extraídos</span>
+                    <span className="text-sm font-black text-amber-300">{totalExtractedFields}</span>
+                  </div>
+                  <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-2">
+                    <span className="text-[10px] text-slate-400 font-semibold block">Inconsistências</span>
+                    <span className="text-sm font-black text-red-300">{errorCount}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
         </div>
 
         {/* Modal Footer */}
-        <div className="p-6 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <div className="p-5 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
@@ -1039,11 +1589,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           <button
             onClick={handleConfirmImport}
             disabled={successfulCount === 0 || isProcessingAll}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-xs transition-all flex items-center space-x-2 cursor-pointer"
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black px-6 py-2.5 rounded-xl shadow-md transition-all flex items-center space-x-2 cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
             <span>
-              Importar {successfulCount} Boleto{successfulCount !== 1 ? 's' : ''} Extraído{successfulCount !== 1 ? 's' : ''}
+              Importar {successfulCount} Boleto{successfulCount !== 1 ? 's' : ''} Pronto{successfulCount !== 1 ? 's' : ''}
             </span>
           </button>
         </div>

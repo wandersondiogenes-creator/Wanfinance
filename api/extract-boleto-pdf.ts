@@ -247,7 +247,11 @@ REGRAS OBRIGATÓRIAS PARA CARNÊS E MÚLTIPLOS BOLETOS (EX: SEGUROS SUHAI, FINAN
 REGRA DE SCHEMA JSON:
 NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para strings.`;
 
-      const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+      const modelsToTry = [
+        "gemini-3.6-flash",
+        "gemini-flash-latest",
+        "gemini-3.1-flash-lite",
+      ];
       for (const modelName of modelsToTry) {
         try {
           const response = await ai.models.generateContent({
@@ -320,10 +324,13 @@ NUNCA retorne null ou undefined para nenhum campo! Use 0 para números e '' para
           }
         } catch (err: any) {
           const errRaw = String(err?.message || err);
-          if (errRaw.includes("429") || errRaw.includes("RESOURCE_EXHAUSTED") || errRaw.includes("Quota exceeded")) {
+          if (errRaw.includes("503") || errRaw.includes("high demand") || errRaw.includes("UNAVAILABLE")) {
+            console.info(`[Vercel API] Model ${modelName} high demand (503), trying next model...`);
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          } else if (errRaw.includes("429") || errRaw.includes("RESOURCE_EXHAUSTED") || errRaw.includes("Quota exceeded")) {
             geminiApiError = "A cota gratuita da API Gemini foi temporariamente excedida (Limite 429). Aguarde alguns segundos e clique em 'Tentar Novamente'.";
-            console.warn(`[Vercel API] Model ${modelName} hit rate limit, waiting 2s...`);
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            console.info(`[Vercel API] Model ${modelName} hit rate limit, trying next model...`);
+            await new Promise((resolve) => setTimeout(resolve, 500));
           } else {
             geminiApiError = errRaw;
             console.warn(`[Vercel API] Model ${modelName} failed:`, geminiApiError);
