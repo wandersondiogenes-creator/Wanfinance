@@ -175,6 +175,65 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
   return boletosFound;
 }
 
+function repairAndParseJson(rawText: string): any {
+  if (!rawText || !rawText.trim()) return {};
+
+  let clean = rawText.trim();
+  if (clean.startsWith("```json")) {
+    clean = clean.replace(/^```json\s*/i, "").replace(/\s*```$/, "");
+  } else if (clean.startsWith("```")) {
+    clean = clean.replace(/^```\s*/, "").replace(/\s*```$/, "");
+  }
+
+  try {
+    return JSON.parse(clean);
+  } catch (e1) {
+    try {
+      // Fix unescaped control characters/newlines inside double-quoted string values
+      const sanitized = clean.replace(/("(?:[^"\\]|\\.)*")/g, (match) => {
+        return match.replace(/\r?\n/g, "\\n");
+      });
+      return JSON.parse(sanitized);
+    } catch (e2) {
+      try {
+        let repaired = clean;
+        const openQuotes = (repaired.match(/"/g) || []).length;
+        if (openQuotes % 2 !== 0) {
+          repaired += '"';
+        }
+        const openBrackets = (repaired.match(/\[/g) || []).length;
+        const closeBrackets = (repaired.match(/\]/g) || []).length;
+        for (let i = 0; i < openBrackets - closeBrackets; i++) {
+          repaired += "]";
+        }
+        const openBraces = (repaired.match(/\{/g) || []).length;
+        const closeBraces = (repaired.match(/\}/g) || []).length;
+        for (let i = 0; i < openBraces - closeBraces; i++) {
+          repaired += "}";
+        }
+        return JSON.parse(repaired);
+      } catch (e3) {
+        const boletos: any[] = [];
+        const itemRegex = /\{[^{}]*"linhaDigitavel"[^{}]*\}/g;
+        const matches = clean.match(itemRegex);
+        if (matches) {
+          for (const m of matches) {
+            try {
+              boletos.push(JSON.parse(m));
+            } catch {
+              // Ignore single item parse fail
+            }
+          }
+        }
+        if (boletos.length > 0) {
+          return { boletos };
+        }
+      }
+    }
+  }
+  return {};
+}
+
 export default async function handler(req: any, res: any) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -275,16 +334,12 @@ export default async function handler(req: any, res: any) {
           });
 
           const rawText = response?.text || "{}";
-          let jsonText = rawText.trim();
-          if (jsonText.startsWith("```json")) {
-            jsonText = jsonText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-          } else if (jsonText.startsWith("```")) {
-            jsonText = jsonText.replace(/^```\s*/, "").replace(/\s*```$/, "");
-          }
-
-          const parsedData = JSON.parse(jsonText);
-          if (Array.isArray(parsedData.boletos)) {
+          const parsedData = repairAndParseJson(rawText);
+          if (Array.isArray(parsedData.boletos) && parsedData.boletos.length > 0) {
             boletosExtracted = parsedData.boletos;
+            break;
+          } else if (parsedData && (parsedData.linhaDigitavel || parsedData.favorecidoNome)) {
+            boletosExtracted = [parsedData];
             break;
           }
         } catch (err: any) {

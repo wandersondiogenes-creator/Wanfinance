@@ -106,9 +106,9 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     }
   }
 
-  // GNRE / Control Number extraction
+  // GNRE / Control Number / Nosso Numero extraction
   let gnomeNum = '';
-  const gnreCtrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
+  const gnreCtrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nosso\s+Número|NOSSO\s+NÚMERO|Nosso\s+Numero|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
   if (gnreCtrlMatch) {
     gnomeNum = gnreCtrlMatch[1].trim();
   }
@@ -119,10 +119,12 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   let bancoCodigo = '800';
   let bancoNome = 'Concessionária / Tributo';
 
-  const isGNRE = textUpper.includes('GNRE') || textUpper.includes('GUIA NACIONAL DE RECOLHIMENTO') || textUpper.includes('TRIBUTOS ESTADUAIS');
-  const isDAEBahia = textUpper.includes('GOVERNO DO ESTADO DA BAHIA') || textUpper.includes('DAE ÚNICO') || textUpper.includes('DAE UNICO') || textUpper.includes('SERVICOS.DETRAN.BA.GOV.BR');
+  const isGNRE = textUpper.includes('GNRE') || textUpper.includes('GUIA NACIONAL DE RECOLHIMENTO');
+  const isDAEBahia = textUpper.includes('GOVERNO DO ESTADO DA BAHIA') || textUpper.includes('DAE ÚNICO') || textUpper.includes('DAE UNICO') || textUpper.includes('SERVICOS.DETRAN.BA.GOV.BR') || textUpper.includes('DETRAN-BA') || textUpper.includes('DETRAN BA');
+  const isDETRANPE = textUpper.includes('DETRAN-PE') || textUpper.includes('DETRAN PE') || (textUpper.includes('DETRAN') && textUpper.includes('PERNAMBUCO'));
+  const isSEFAZPE = textUpper.includes('SEFAZ - IPVA') || textUpper.includes('SEFAZ-IPVA') || textUpper.includes('SEFAZ-PE') || (textUpper.includes('SECRETARIA DA FAZENDA') && textUpper.includes('IPVA') && (textUpper.includes('PE') || textUpper.includes('PERNAMBUCO') || textUpper.includes('UIB0C33')));
   const isDARParaiba = textUpper.includes('GOVERNO DO ESTADO DA PARAÍBA') || textUpper.includes('SEFAZ-PB') || textUpper.includes('DAR - MOD 2') || textUpper.includes('AUTO LANÇAMENTO DO IPVA');
-  const isIPVA = !isGNRE && (textUpper.includes('IPVA') || textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ') || textUpper.includes('DISCRIMINAÇÃO DOS DÉBITO'));
+  const isIPVA = !isGNRE && !isDETRANPE && !isDAEBahia && (textUpper.includes('IPVA') || textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ'));
   const isLicenciamento = textUpper.includes('LICENCIAMENTO') || (textUpper.includes('DETRAN') && !textUpper.includes('MULTA') && !textUpper.includes('INFRAÇ') && !textUpper.includes('INFRAC'));
   const isMulta = textUpper.includes('MULTA') || textUpper.includes('INFRAÇ') || textUpper.includes('INFRAC') || textUpper.includes('CTTU') || textUpper.includes('AMC') || textUpper.includes('PRF') || textUpper.includes('AUTARQUIA DE TRÂNSITO') || textUpper.includes('NOTIFICAÇÃO DA PENALIDADE') || textUpper.includes('PENALIDADE');
   const isTributoFederal = textUpper.includes('DARF') || textUpper.includes('RECEITA FEDERAL') || textUpper.includes('SIMPLES NACIONAL');
@@ -153,10 +155,21 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     bancoCodigo = '033';
     bancoNome = 'Banco Santander Brasil S.A.';
   } else if (isDAEBahia) {
-    tipoBoleto = textUpper.includes('LICENCIAMENTO') ? 'taxa_detran' : 'ipva_sefaz';
-    favorecidoNome = 'SEFAZ BA - Governo do Estado da Bahia';
+    const isEmplacamentoTaxa = textUpper.includes('EMPLACAMENTO') || textUpper.includes('SOLICITAÇÃO DE SERVIÇOS') || textUpper.includes('SOLICITACAO DE SERVICOS') || textUpper.includes('DETRAN') || textUpper.includes('LICENCIAMENTO');
+    tipoBoleto = isEmplacamentoTaxa ? 'taxa_detran' : 'ipva_sefaz';
+    favorecidoNome = 'DETRAN-BA - Governo do Estado da Bahia';
     bancoCodigo = '858';
-    bancoNome = 'SEFAZ-BA / DAE Único';
+    bancoNome = 'DETRAN-BA / DAE Único Bahia';
+  } else if (isDETRANPE) {
+    tipoBoleto = 'taxa_detran';
+    favorecidoNome = 'DETRAN-PE - Departamento Estadual de Trânsito de Pernambuco';
+    bancoCodigo = '858';
+    bancoNome = 'DETRAN-PE / DAE FEBRABAN';
+  } else if (isSEFAZPE) {
+    tipoBoleto = 'ipva_sefaz';
+    favorecidoNome = 'SEFAZ-PE - Secretaria da Fazenda de Pernambuco (IPVA)';
+    bancoCodigo = '858';
+    bancoNome = 'SEFAZ-PE / DAE FEBRABAN';
   } else if (isDARParaiba) {
     tipoBoleto = 'ipva_sefaz';
     favorecidoNome = 'SEFAZ PB - Secretaria da Fazenda da Paraíba';
