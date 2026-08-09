@@ -260,7 +260,7 @@ export default function App() {
 
     for (const item of imported) {
       const cleanKey = item.linhaDigitavel ? item.linhaDigitavel.replace(/\D/g, '') : '';
-      if (cleanKey && cleanKey.length >= 10) {
+      if (cleanKey && cleanKey.length >= 40) {
         if (!seenKeys.has(cleanKey)) {
           seenKeys.add(cleanKey);
           uniqueImported.push(item);
@@ -277,12 +277,12 @@ export default function App() {
       const existingKeys = new Set(
         prev
           .map((b) => (b.linhaDigitavel ? b.linhaDigitavel.replace(/\D/g, '') : ''))
-          .filter((k) => k.length >= 10)
+          .filter((k) => k.length >= 40)
       );
 
       const nonDuplicateImported = importedWithSelection.filter((b) => {
         const key = b.linhaDigitavel ? b.linhaDigitavel.replace(/\D/g, '') : '';
-        if (key && key.length >= 10) {
+        if (key && key.length >= 40) {
           return !existingKeys.has(key);
         }
         return true;

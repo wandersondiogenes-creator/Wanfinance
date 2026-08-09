@@ -28,7 +28,7 @@ import {
 import { BoletoItem, CNABBatchHistory } from '../types';
 import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
-import { detectBoletoDuplicate, getBoletoCleanKey } from '../utils/duplicateDetector';
+import { detectBoletoDuplicate, getBoletoCleanKey, isGenericRef } from '../utils/duplicateDetector';
 import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
 import { technicalLogger } from '../utils/technicalLogger';
 
@@ -927,7 +927,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
       const key = getBoletoCleanKey(item.data.linhaDigitavel, item.data.codigoBarras);
       const cnpj = onlyNumbers(item.data.favorecidoCnpjCpf || item.data.beneficiarioCnpjCpf || '');
-      const ref = item.data.seuNumero ? `${item.data.seuNumero.trim().toUpperCase()}_${cnpj}` : '';
+      const rawRef = item.data.seuNumero?.trim().toUpperCase();
+      const hasValidRef = !isGenericRef(rawRef) && cnpj.length >= 11;
+      const ref = hasValidRef ? `${rawRef}_${cnpj}` : '';
 
       if (key && seenKeys.has(key)) {
         ids.add(item.id);
@@ -1289,9 +1291,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                     </span>
                                   )}
                                   {dupInfo?.isDuplicate && (
-                                    <span className="inline-flex items-center gap-1 text-white bg-orange-500 font-black px-2 py-0.5 rounded-full text-[10px] shadow-xs">
+                                    <span className="inline-flex items-center gap-1 text-white bg-orange-500 font-black px-2 py-0.5 rounded-full text-[10px] shadow-xs" title={dupInfo.duplicateReason}>
                                       <AlertTriangle className="w-3 h-3 text-white" />
-                                      <span>Duplicado ({dupInfo.matchedBatchFilename || 'Já enviado'})</span>
+                                      <span>{dupInfo.duplicateSourceLabel || 'Duplicado'}</span>
                                     </span>
                                   )}
                                 </div>
@@ -1391,9 +1393,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
                           <div className="flex items-center space-x-2 shrink-0">
                             {dupInfo?.isDuplicate && (
-                              <span className="text-xs text-white bg-orange-500 px-3 py-1 rounded-full border border-orange-600 flex items-center space-x-1 font-black shadow-xs">
+                              <span className="text-xs text-white bg-orange-500 px-3 py-1 rounded-full border border-orange-600 flex items-center space-x-1 font-black shadow-xs" title={dupInfo.duplicateReason}>
                                 <AlertTriangle className="w-3.5 h-3.5 text-white" />
-                                <span>Boleto Repetido</span>
+                                <span>{dupInfo.duplicateSourceLabel || 'Boleto Repetido'}</span>
                               </span>
                             )}
 
@@ -1483,14 +1485,10 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                             <AlertTriangle className="w-4.5 h-4.5 text-white shrink-0 mt-0.5" />
                             <div>
                               <p className="font-black text-sm text-white">
-                                Atenção: Boleto Duplicado ou Já Enviado Anteriormente!
+                                Atenção: Boleto Duplicado Detectado!
                               </p>
                               <p className="text-orange-100 text-xs mt-0.5 font-medium">
-                                {dupInfo.isHistoryDuplicate
-                                  ? `Este boleto já foi enviado em remessa CNAB anterior (${dupInfo.matchedBatchFilename || 'Remessa cadastrada'}).`
-                                  : dupInfo.isSameBatchDuplicate
-                                  ? 'Este boleto está duplicado nesta mesma lista de extração.'
-                                  : 'Este boleto já está cadastrado no sistema.'}
+                                {dupInfo.duplicateReason}
                               </p>
                             </div>
                           </div>

@@ -997,13 +997,12 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                             )}
 
                             {dupInfo?.isDuplicate && (
-                              <span className="inline-flex items-center gap-1 bg-orange-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shrink-0 shadow-xs">
+                              <span
+                                className="inline-flex items-center gap-1 bg-orange-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shrink-0 shadow-xs"
+                                title={dupInfo.duplicateReason}
+                              >
                                 <AlertTriangle className="w-3 h-3 text-white fill-orange-600" />
-                                {dupInfo.isSameBatchDuplicate
-                                  ? 'Boleto duplicado na lista'
-                                  : dupInfo.isHistoryDuplicate
-                                  ? `Boleto duplicado ou já enviado (${dupInfo.matchedBatchFilename || 'Remessa CNAB'})`
-                                  : 'Boleto duplicado ou já cadastrado'}
+                                {dupInfo.duplicateSourceLabel || 'Boleto Duplicado'}
                               </span>
                             )}
                           </div>
@@ -1011,13 +1010,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                           {dupInfo?.isDuplicate && (
                             <div className="bg-orange-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-xs my-1 border border-orange-600">
                               <AlertTriangle className="w-4 h-4 text-white shrink-0" />
-                              <span>
-                                {dupInfo.isHistoryDuplicate
-                                  ? `Atenção: Boleto duplicado ou já enviado anteriormente em remessa (${dupInfo.matchedBatchFilename || 'CNAB'}).`
-                                  : dupInfo.isSameBatchDuplicate
-                                  ? 'Atenção: Boleto duplicado nesta mesma lista.'
-                                  : 'Atenção: Boleto duplicado ou já cadastrado no sistema.'}
-                              </span>
+                              <span>{dupInfo.duplicateReason}</span>
                             </div>
                           )}
 

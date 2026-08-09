@@ -296,15 +296,12 @@ export const BatchPasteModal: React.FC<BatchPasteModalProps> = ({
                         <span className="font-mono text-slate-500 font-bold">[{item.bancoCodigo}]</span>
                         <span className="font-mono text-slate-800 truncate max-w-xs font-semibold">{item.linhaDigitavel}</span>
 
-                        {dup?.isSameBatchDuplicate && (
-                          <span className="text-[10px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-full shrink-0 shadow-xs">
-                            Repetido no lote
-                          </span>
-                        )}
-
-                        {(dup?.isSystemDuplicate || dup?.isHistoryDuplicate) && (
-                          <span className="text-[10px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-full shrink-0 shadow-xs">
-                            Já cadastrado / enviado
+                        {dup?.isDuplicate && (
+                          <span
+                            className="text-[10px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-full shrink-0 shadow-xs"
+                            title={dup.duplicateReason}
+                          >
+                            {dup.duplicateSourceLabel || 'Duplicado'}
                           </span>
                         )}
                       </div>
