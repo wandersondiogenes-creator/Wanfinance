@@ -1,12 +1,12 @@
 import zlib from "zlib";
 import { GoogleGenAI } from "@google/genai";
-import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from "../src/utils/boletoParser";
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from "../src/utils/boletoParser.js";
 import {
   SYSTEM_INSTRUCTION_BOLETO,
   PROMPT_BOLETO_EXTRACTION,
   GEMINI_BOLETO_SCHEMA,
   validateAndCrossCheckBoleto,
-} from "../src/utils/boletoExtractorEngine";
+} from "../src/utils/boletoExtractorEngine.js";
 
 export const config = {
   api: {

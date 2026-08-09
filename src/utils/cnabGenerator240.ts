@@ -1,5 +1,5 @@
 import { BoletoItem, CompanySettings, CNABLineHighlight } from '../types';
-import { dateToCNAB, onlyNumbers } from './boletoParser';
+import { dateToCNAB, onlyNumbers } from './boletoParser.js';
 
 /**
  * Normalizes text to uppercase ASCII without accents or special characters

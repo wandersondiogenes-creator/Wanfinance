@@ -1,6 +1,6 @@
 import { BoletoItem, CompanySettings, CNABLineHighlight } from '../types';
-import { dateToCNAB, onlyNumbers } from './boletoParser';
-import { formatValueCNAB, padLeftZeros, padRightSpaces } from './cnabGenerator240';
+import { dateToCNAB, onlyNumbers } from './boletoParser.js';
+import { formatValueCNAB, padLeftZeros, padRightSpaces } from './cnabGenerator240.js';
 
 export interface GeneratedCNAB400Result {
   fileContent: string;

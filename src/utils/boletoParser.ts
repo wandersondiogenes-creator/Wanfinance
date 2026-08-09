@@ -1,4 +1,4 @@
-import { getBankInfo } from './banks';
+import { getBankInfo } from './banks.js';
 import { BoletoType } from '../types';
 
 export interface ParsedBoletoInfo {

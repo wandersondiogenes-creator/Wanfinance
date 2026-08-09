@@ -1,5 +1,5 @@
 import { BoletoItem, CNABBatchHistory } from '../types';
-import { onlyNumbers } from './boletoParser';
+import { onlyNumbers } from './boletoParser.js';
 
 export interface DuplicateInfo {
   isDuplicate: boolean;

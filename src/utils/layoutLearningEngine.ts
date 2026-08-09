@@ -1,6 +1,6 @@
 import { LearnedLayoutPattern, LayoutLearningMetrics, BoletoItem } from '../types';
-import { parseLinhaDigitavel, onlyNumbers } from './boletoParser';
-import { getBankInfo } from './banks';
+import { parseLinhaDigitavel, onlyNumbers } from './boletoParser.js';
+import { getBankInfo } from './banks.js';
 
 const STORAGE_KEY_LAYOUTS = 'cnab_learned_layouts_v2';
 const STORAGE_KEY_METRICS = 'cnab_layout_learning_metrics_v2';

@@ -1,5 +1,5 @@
-import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from './boletoParser';
-import { technicalLogger } from './technicalLogger';
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from './boletoParser.js';
+import { technicalLogger } from './technicalLogger.js';
 
 /**
  * Client-Side Browser Fallback for PDF & Image Boleto Data Extraction.

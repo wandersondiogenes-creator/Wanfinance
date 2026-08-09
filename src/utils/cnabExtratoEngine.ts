@@ -6,7 +6,7 @@ import {
   ExtratoConversionRecord,
   CompanySettings,
 } from '../types';
-import { getBankInfo } from './banks';
+import { getBankInfo } from './banks.js';
 
 const STORAGE_KEY_EXTRATO_LAYOUTS = 'cnab_learned_extrato_layouts_v1';
 const STORAGE_KEY_EXTRATO_HISTORY = 'cnab_extrato_conversion_history_v1';
