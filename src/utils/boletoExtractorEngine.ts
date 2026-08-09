@@ -62,7 +62,10 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
    - Retorne APENAS 1 (UM) ÚNICO item no array "boletos" com o VALOR TOTAL (ex: 283.55). NUNCA crie múltiplos boletos para as vias ou para os sub-itens da tabela!
 7. EXCEÇÃO CRÍTICA PARA GUIAS GNRE, TRIBUTOS E ARRECADAÇÃO (DOCUMENTO VÁLIDO PARA PAGAMENTO):
    - Em guias de arrecadação GNRE, DARF, DAE, Tributos Estaduais/Federais e Concessionárias: se o documento contiver o campo "Documento Válido para pagamento", "Válido para pagamento até" ou similar especificando uma data (exemplo: "Documento Válido para pagamento 07/08/2026"), CONSIDERE OBRIGATORIAMENTE ESTA DATA FINAL (ex: 2026-08-07) como a "dataVencimento" oficial do boleto.
-   - Esta data limite de pagamento/validade TEM PRECEDÊNCIA ABSOLUTA sobre qualquer outra data presente no campo "Data de Vencimento" ou codificada no código de barras.`;
+   - Esta data limite de pagamento/validade TEM PRECEDÊNCIA ABSOLUTA sobre qualquer outra data presente no campo "Data de Vencimento" ou codificada no código de barras.
+8. TAXAS E SERVIÇOS DETRAN / DAE / TRIBUTOS (VALOR TOTAL DO BOLETO):
+   - Em documentos do DETRAN, DAE, SEFAZ ou Prefeituras com tabelas discriminando sub-serviços (ex: "6.2.13 INCLUSAO DE GRAVAME R$ 90,58", "6.2.1 1o. EMPLACAMENTO R$ 323,16", "7.1.9 CONSUMO DE DADOS R$ 7,90"), NUNCA extraia o valor de um item de serviço individual (ex: 323,16).
+   - O VALOR OFICIAL DO BOLETO é SEMPRE o VALOR TOTAL A PAGAR impresso nos campos "Valor a Pagar", "Valor Total" ou "Total a Recolher" (ex: R$ 421,64) e que deve corresponder exatamente ao valor codificado no código de barras.`;
 
 export const PROMPT_BOLETO_EXTRACTION = (fileName: string) => `Extraia todas as informações financeiras e cadastrais do arquivo "${fileName}" respeitando rigorosamente o schema JSON solicitado.
 Certifique-se de preencher com 100% de exatidão:
@@ -151,11 +154,21 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
   // 2. Validate Linha Digitavel
   if (linhaDigitavel.length >= 44) {
     const parsed = parseLinhaDigitavel(linhaDigitavel);
-    if (parsed.isValid) {
-      if (!codigoBarras || codigoBarras.length !== 44) {
-        codigoBarras = parsed.codigoBarras || "";
-      }
+    if (!codigoBarras || codigoBarras.length !== 44) {
+      codigoBarras = parsed.codigoBarras || "";
+    }
 
+    // ALWAYS enforce value from barcode if valid and > 0
+    if (parsed.valor && parsed.valor > 0) {
+      if (valor === 0 || Math.abs(valor - parsed.valor) > 0.01) {
+        if (valor > 0) {
+          alertas.push(`⚠️ Valor de R$ ${valor.toFixed(2)} ajustado para R$ ${parsed.valor.toFixed(2)} conforme valor exato codificado na linha digitável/código de barras.`);
+        }
+        valor = parsed.valor;
+      }
+    }
+
+    if (parsed.isValid) {
       // Check bank code match
       if (parsed.bancoCodigo && parsed.bancoCodigo !== "000") {
         if (bancoCodigo && bancoCodigo !== parsed.bancoCodigo && !["858", "856", "800"].includes(bancoCodigo)) {
@@ -165,16 +178,6 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
         }
         bancoCodigo = parsed.bancoCodigo;
         bancoNome = parsed.bancoNome || bancoNome;
-      }
-
-      // Check value match & enforce barcode encoded value accuracy
-      if (parsed.valor && parsed.valor > 0) {
-        if (valor === 0 || Math.abs(valor - parsed.valor) > 0.01) {
-          if (valor > 0) {
-            alertas.push(`⚠️ Valor de R$ ${valor.toFixed(2)} ajustado para R$ ${parsed.valor.toFixed(2)} conforme valor exato codificado na linha digitável/código de barras.`);
-          }
-          valor = parsed.valor;
-        }
       }
 
       // Check due date match (skip false divergence alerts for GNRE / Tributos / Concessionárias starting with 8)

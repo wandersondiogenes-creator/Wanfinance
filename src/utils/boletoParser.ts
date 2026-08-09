@@ -643,7 +643,9 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       }
     }
 
-    const isConcessionariaValid = validateConcessionaria48(limpa);
+    const isConcessionariaValid = limpa.length === 48
+      ? validateConcessionaria48(limpa)
+      : (limpa.length === 44 && limpa.startsWith('8'));
 
     return {
       linhaDigitavelLimpa: limpa,
