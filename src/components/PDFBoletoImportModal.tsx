@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { BoletoItem, CNABBatchHistory } from '../types';
 import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate } from '../utils/boletoParser';
+import { getApiUrl } from '../config/apiConfig';
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate, getBoletoCleanKey, isGenericRef } from '../utils/duplicateDetector';
 import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
@@ -302,11 +303,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               step: 'Chamada API Servidor (/api/extract-boleto-pdf)',
               fileName: file.name,
               fileSize: file.size,
-              endpoint: '/api/extract-boleto-pdf',
+              endpoint: getApiUrl('/api/extract-boleto-pdf'),
               severity: 'info',
             });
 
-            const response = await fetch('/api/extract-boleto-pdf', {
+            const response = await fetch(getApiUrl('/api/extract-boleto-pdf'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

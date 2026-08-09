@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CompanySettings, BoletoItem, BankPaymentApiConfig, BankApiTestResult, PaymentApiTransaction, BankApiLog } from '../types';
+import { getApiUrl } from '../config/apiConfig';
 import { formatCurrencyBRL, formatDateBR } from '../utils/boletoParser';
 import { getBankInfo, BRAZILIAN_BANKS } from '../utils/banks';
 import {
@@ -194,7 +195,7 @@ export const BankPaymentApiPanel: React.FC<BankPaymentApiPanelProps> = ({ compan
     };
 
     try {
-      const response = await fetch('/api/bank-payment/test-connection', {
+      const response = await fetch(getApiUrl('/api/bank-payment/test-connection'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(configPayload)
@@ -280,7 +281,7 @@ export const BankPaymentApiPanel: React.FC<BankPaymentApiPanelProps> = ({ compan
     };
 
     try {
-      const response = await fetch('/api/bank-payment/send', {
+      const response = await fetch(getApiUrl('/api/bank-payment/send'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -307,7 +308,7 @@ export const BankPaymentApiPanel: React.FC<BankPaymentApiPanelProps> = ({ compan
   const handleQueryStatus = async (protocolo: string) => {
     setActionMessage(null);
     try {
-      const res = await fetch('/api/bank-payment/query-status', {
+      const res = await fetch(getApiUrl('/api/bank-payment/query-status'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ protocolo, config: { bancoNome, apiUrl } })
@@ -331,7 +332,7 @@ export const BankPaymentApiPanel: React.FC<BankPaymentApiPanelProps> = ({ compan
 
     setActionMessage(null);
     try {
-      const res = await fetch('/api/bank-payment/cancel', {
+      const res = await fetch(getApiUrl('/api/bank-payment/cancel'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ protocolo, config: { bancoNome, apiUrl } })
@@ -352,7 +353,7 @@ export const BankPaymentApiPanel: React.FC<BankPaymentApiPanelProps> = ({ compan
   // Fetch Logs from Backend
   const fetchLogs = async () => {
     try {
-      const res = await fetch('/api/bank-payment/logs');
+      const res = await fetch(getApiUrl('/api/bank-payment/logs'));
       const data = await res.json();
       if (data.success) {
         if (Array.isArray(data.logs)) setLogs(data.logs);
