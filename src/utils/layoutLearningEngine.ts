@@ -669,8 +669,14 @@ export function matchLayoutPattern(
     return { pattern: null, confidence: 0, matchReason: 'Texto do arquivo em branco' };
   }
 
-  const normalizedText = rawText.toLowerCase();
-  const digitsOnly = onlyNumbers(rawText);
+  // Guard against raw Base64 strings being passed as document text
+  let textToMatch = rawText;
+  if (textToMatch.startsWith('data:') || textToMatch.includes(';base64,') || (textToMatch.length > 5000 && !textToMatch.includes(' '))) {
+    textToMatch = textToMatch.substring(0, 300).replace(/[^a-zA-Z0-9_\.-]/g, ' ');
+  }
+
+  const normalizedText = textToMatch.toLowerCase();
+  const digitsOnly = onlyNumbers(textToMatch);
 
   let bestMatch: LearnedLayoutPattern | null = null;
   let highestScore = 0;

@@ -110,10 +110,12 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
     if (matches) {
       for (const matchStr of matches) {
         const clean = onlyNumbers(matchStr);
-        if ((clean.length === 47 || clean.length === 48 || clean.length === 44) && !seenLines.has(clean)) {
+        if (clean.length === 47 || clean.length === 48 || clean.length === 44) {
           const parsed = parseLinhaDigitavel(clean);
-          if (parsed.isValid) {
+          const key44 = parsed.codigoBarras || clean;
+          if (parsed.isValid && !seenLines.has(clean) && !seenLines.has(key44)) {
             seenLines.add(clean);
+            seenLines.add(key44);
             let extractedValue = parsed.valor || 0;
 
             const valorMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
@@ -386,20 +388,30 @@ export default async function handler(req: any, res: any) {
     for (const b of boletosExtracted) {
       const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
       const cleanDigits = onlyNumbers(rawDigits);
-      const nosso = String(b.nossoNumero || "").trim();
+      
+      // Normalize to 44-digit código de barras key to unify 47, 48, and 44 digit formats
+      let cleanKey = cleanDigits;
+      if (cleanDigits.length === 47 || cleanDigits.length === 48) {
+        const parsed = parseLinhaDigitavel(cleanDigits);
+        if (parsed.codigoBarras) cleanKey = parsed.codigoBarras;
+      }
+
+      const nosso = String(b.nossoNumero || "").replace(/\D/g, "");
       const venc = String(b.dataVencimento || "").trim();
 
-      let uniqueKey = "";
-      if (cleanDigits && cleanDigits.length >= 44) {
-        uniqueKey = cleanDigits;
-      } else if (nosso || venc) {
-        uniqueKey = `${nosso}_${venc}_${b.valor || 0}`;
+      let uniqueKey = cleanKey;
+      if (!uniqueKey || uniqueKey.length < 20) {
+        if (nosso || venc) {
+          uniqueKey = `${nosso}_${venc}_${b.valor || 0}`;
+        }
       }
 
       if (uniqueKey) {
         if (!seenKeys.has(uniqueKey)) {
           seenKeys.add(uniqueKey);
           uniqueBoletos.push(b);
+        } else {
+          console.log(`[OCR API] Ignorando via/boleto duplicado com chave: ${uniqueKey}`);
         }
       } else {
         uniqueBoletos.push(b);

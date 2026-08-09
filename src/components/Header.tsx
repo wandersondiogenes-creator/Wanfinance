@@ -204,19 +204,6 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* Inserir / Colar Boletos Tab */}
-          <button
-            onClick={() => setActiveTab('novo_boleto')}
-            className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'novo_boleto'
-                ? 'bg-emerald-950/60 text-emerald-400 border-b-2 border-emerald-500 shadow-xs'
-                : 'text-slate-400 hover:text-emerald-400 hover:bg-[#131a27]'
-            }`}
-          >
-            <PlusCircle className="w-4 h-4 text-emerald-400" />
-            <span>Inserir / Colar Boletos</span>
-          </button>
-
           {/* Extrair PDF (IA) Button */}
           <button
             onClick={onOpenPDFModal}
@@ -263,19 +250,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <ShieldCheck className="w-4 h-4 text-teal-400" />
             <span>Validador CNAB</span>
-          </button>
-
-          {/* Google Sheets Tab */}
-          <button
-            onClick={() => setActiveTab('sheets')}
-            className={`flex items-center space-x-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'sheets'
-                ? 'bg-emerald-950/60 text-emerald-300 border-b-2 border-emerald-500 shadow-xs'
-                : 'text-slate-400 hover:text-emerald-400 hover:bg-[#131a27]'
-            }`}
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            <span>Google Sheets</span>
           </button>
 
           {/* API de Pagamentos (Direct Bank) Tab */}

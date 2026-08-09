@@ -144,18 +144,27 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
         if (matches) {
           for (const matchStr of matches) {
             const clean = onlyNumbers(matchStr);
-            if ((clean.length === 47 || clean.length === 48 || clean.length === 44) && !seenLines.has(clean)) {
+            if (clean.length === 47 || clean.length === 48 || clean.length === 44) {
               const parsed = parseLinhaDigitavel(clean);
               if (parsed.isValid) {
+                const key44 = parsed.codigoBarras || clean;
+                if (seenLines.has(clean) || seenLines.has(key44)) {
+                  continue;
+                }
                 seenLines.add(clean);
-                let extractedValue = detected.valor || parsed.valor || 0;
+                seenLines.add(key44);
 
-                const valorMatch = textBlock.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+DO\s+DOCUMENTO|VALOR\s+COBRADO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
-                if (valorMatch) {
-                  const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
-                  const parsedVal = parseFloat(valStr);
-                  if (!isNaN(parsedVal) && parsedVal > 0) {
-                    extractedValue = parsedVal;
+                // Priority: Value decoded directly from barcode
+                let extractedValue = parsed.valor > 0 ? parsed.valor : (detected.valor || 0);
+
+                if (extractedValue <= 0) {
+                  const valorMatch = textBlock.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+COBRADO|TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+DO\s+DOCUMENTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+                  if (valorMatch) {
+                    const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
+                    const parsedVal = parseFloat(valStr);
+                    if (!isNaN(parsedVal) && parsedVal > 0) {
+                      extractedValue = parsedVal;
+                    }
                   }
                 }
 
@@ -206,44 +215,51 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
           for (let i = 0; i <= textDigitsOnly.length - 47; i++) {
             if (i <= textDigitsOnly.length - 48) {
               const chunk48 = textDigitsOnly.substring(i, i + 48);
-              if (chunk48.startsWith('8') && !seenLines.has(chunk48)) {
+              if (chunk48.startsWith('8')) {
                 const parsed48 = parseLinhaDigitavel(chunk48);
-                if (parsed48.isValid && parsed48.valor >= 0) {
-                  seenLines.add(chunk48);
-                  boletosFound.push({
-                    linhaDigitavel: chunk48,
-                    codigoBarras: parsed48.codigoBarras || chunk48,
-                    favorecidoNome: detected.favorecidoNome || extractFavorecidoFromText(textBlock || fullDocText, parsed48.bancoNome),
-                    favorecidoCnpjCpf: '',
-                    valor: detected.valor || parsed48.valor,
-                    dataVencimento: detected.dataVencimento || parsed48.dataVencimento || new Date().toISOString().split('T')[0],
-                    seuNumero: detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
-                    nossoNumero: '',
-                    bancoCodigo: detected.bancoCodigo || parsed48.bancoCodigo,
-                    bancoNome: detected.bancoNome || parsed48.bancoNome,
-                    tipoBoleto: detected.tipoBoleto,
-                    placa: detected.placa,
-                    renavam: detected.renavam,
-                    autoInfracao: detected.autoInfracao,
-                    observacoes: detected.observacoes || 'Extraído via varredura de texto local (GNRE/Tributo)',
-                    confidence: 0.85,
-                  });
+                if (parsed48.isValid) {
+                  const key44 = parsed48.codigoBarras || chunk48;
+                  if (!seenLines.has(chunk48) && !seenLines.has(key44)) {
+                    seenLines.add(chunk48);
+                    seenLines.add(key44);
+                    boletosFound.push({
+                      linhaDigitavel: chunk48,
+                      codigoBarras: parsed48.codigoBarras || chunk48,
+                      favorecidoNome: detected.favorecidoNome || extractFavorecidoFromText(textBlock || fullDocText, parsed48.bancoNome),
+                      favorecidoCnpjCpf: '',
+                      valor: parsed48.valor > 0 ? parsed48.valor : (detected.valor || 0),
+                      dataVencimento: detected.dataVencimento || parsed48.dataVencimento || new Date().toISOString().split('T')[0],
+                      seuNumero: detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
+                      nossoNumero: '',
+                      bancoCodigo: detected.bancoCodigo || parsed48.bancoCodigo,
+                      bancoNome: detected.bancoNome || parsed48.bancoNome,
+                      tipoBoleto: detected.tipoBoleto,
+                      placa: detected.placa,
+                      renavam: detected.renavam,
+                      autoInfracao: detected.autoInfracao,
+                      observacoes: detected.observacoes || 'Extraído via varredura de texto local (GNRE/Tributo)',
+                      confidence: 0.85,
+                    });
+                  }
+                  i += 47; // Skip past this 48-digit block
                   continue;
                 }
               }
             }
 
             const chunk = textDigitsOnly.substring(i, i + 47);
-            if (!seenLines.has(chunk)) {
-              const parsed = parseLinhaDigitavel(chunk);
-              if (parsed.isValid && parsed.valor > 0 && parsed.bancoCodigo !== '000') {
+            const parsed = parseLinhaDigitavel(chunk);
+            if (parsed.isValid && parsed.valor > 0 && parsed.bancoCodigo !== '000') {
+              const key44 = parsed.codigoBarras || chunk;
+              if (!seenLines.has(chunk) && !seenLines.has(key44)) {
                 seenLines.add(chunk);
+                seenLines.add(key44);
                 boletosFound.push({
                   linhaDigitavel: chunk,
                   codigoBarras: parsed.codigoBarras || chunk,
                   favorecidoNome: detected.favorecidoNome || extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome),
                   favorecidoCnpjCpf: '',
-                  valor: detected.valor || parsed.valor,
+                  valor: parsed.valor > 0 ? parsed.valor : (detected.valor || 0),
                   dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
                   seuNumero: detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
                   nossoNumero: '',
@@ -257,6 +273,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   confidence: 0.85,
                 });
               }
+              i += 46; // Skip past this 47-digit block
             }
           }
         }

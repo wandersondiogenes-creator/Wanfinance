@@ -97,7 +97,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   // 5. Extracted Values (Valor Cobrado / Valor com Desconto / Valor Total / Total a Recolher)
   let valor: number | undefined;
-  const valorCobradoMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+COBRADO|VALOR\s+A\s+PAGAR\s+COM\s+JUROS|VALOR\s+COM\s+DESCONTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+  const valorCobradoMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
   if (valorCobradoMatch) {
     const valStr = valorCobradoMatch[1].replace(/\./g, '').replace(',', '.');
     const parsedVal = parseFloat(valStr);
@@ -412,6 +412,55 @@ export function modulo10(digits: string): number {
 }
 
 /**
+ * Modulo 11 check for Concessionaria / Tributos FEBRABAN
+ */
+export function modulo11Concessionaria(digits: string): number {
+  let sum = 0;
+  let weight = 2;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    sum += parseInt(digits[i], 10) * weight;
+    weight++;
+    if (weight > 9) weight = 2;
+  }
+  const remainder = sum % 11;
+  if (remainder === 0 || remainder === 1) return 0;
+  if (remainder === 10) return 1;
+  return 11 - remainder;
+}
+
+/**
+ * Validates Modulo 10 or Modulo 11 for a 48-digit Linha Digitável (Concessionária / Tributos)
+ */
+export function validateConcessionaria48(limpa48: string): boolean {
+  if (!limpa48 || limpa48.length !== 48) return false;
+
+  const modType = limpa48.charAt(2);
+  const useMod10 = modType === '6' || modType === '7';
+
+  const block1Data = limpa48.substring(0, 11);
+  const block1DV = parseInt(limpa48.substring(11, 12), 10);
+  const dv1 = useMod10 ? modulo10(block1Data) : modulo11Concessionaria(block1Data);
+  if (block1DV !== dv1) return false;
+
+  const block2Data = limpa48.substring(12, 23);
+  const block2DV = parseInt(limpa48.substring(23, 24), 10);
+  const dv2 = useMod10 ? modulo10(block2Data) : modulo11Concessionaria(block2Data);
+  if (block2DV !== dv2) return false;
+
+  const block3Data = limpa48.substring(24, 35);
+  const block3DV = parseInt(limpa48.substring(35, 36), 10);
+  const dv3 = useMod10 ? modulo10(block3Data) : modulo11Concessionaria(block3Data);
+  if (block3DV !== dv3) return false;
+
+  const block4Data = limpa48.substring(36, 47);
+  const block4DV = parseInt(limpa48.substring(47, 48), 10);
+  const dv4 = useMod10 ? modulo10(block4Data) : modulo11Concessionaria(block4Data);
+  if (block4DV !== dv4) return false;
+
+  return true;
+}
+
+/**
  * Validates Modulo 10 for a 47-digit Linha Digitável
  */
 export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
@@ -529,6 +578,8 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       }
     }
 
+    const isConcessionariaValid = validateConcessionaria48(limpa);
+
     return {
       linhaDigitavelLimpa: limpa,
       codigoBarras,
@@ -536,7 +587,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       bancoNome,
       valor,
       dataVencimento: dataVencimento || new Date().toISOString().split('T')[0],
-      isValid: true,
+      isValid: isConcessionariaValid,
       tipo,
     };
   }

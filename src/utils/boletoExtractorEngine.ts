@@ -41,22 +41,25 @@ export const SYSTEM_INSTRUCTION_BOLETO = `Você é uma Inteligência Artificial 
 DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
 1. LEITURA MULTIMODAL COMPLETA: Analise visualmente e semanticamente TODO O CONTEÚDO DE TODAS AS PÁGINAS do PDF/Imagem enviada.
 2. DIFERENCIAÇÃO CRÍTICA ENTRE BENEFICIÁRIO E PAGADOR:
-   - "beneficiario": Quem RECEBE O DINHEIRO / Emissor / Cedente / Favorecido (Ex: "SUHAI SEGURADORA S.A.", "CLARO S.A.", "COMPESA"). NUNCA COLOQUE O NOME DO BANCO ARRECADADOR (como "Bradesco", "Banco Itaú") COMO BENEFICIÁRIO.
+   - "beneficiario": Quem RECEBE O DINHEIRO / Emissor / Cedente / Favorecido (Ex: "SUHAI SEGURADORA S.A.", "CLARO S.A.", "COMPESA", "DETRAN-PE", "DETRAN-BA", "SEFAZ-PE"). NUNCA COLOQUE O NOME DO BANCO ARRECADADOR (como "Bradesco", "Banco Itaú") COMO BENEFICIÁRIO.
    - "beneficiarioCnpjCpf": CNPJ ou CPF do Beneficiário/Cedente.
    - "pagador": Quem DEVE PAGAR O BOLETO / Sacado / Cliente / Devedor (Ex: "JOAO DA SILVA", "EMPRESA ABC LTDA"). NUNCA confunda o Pagador com o Beneficiário!
    - "pagadorCnpjCpf": CPF ou CNPJ do Pagador.
 3. DADOS FINANCEIROS E CÓDIGOS DE BARRAS:
-   - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos/DARF/GNRE).
+   - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos/DARF/GNRE/DAE/IPVA/DETRAN).
    - "codigoBarras": Código de barras numérico de 44 dígitos sem espaços.
-   - "valor": Valor numérico exato em Reais (R$).
+   - "valor": Valor numérico exato em Reais (R$). ATENÇÃO: Retorne O VALOR TOTAL FINAL COBRADO / VALOR DO DOCUMENTO que está codificado na linha digitável/código de barras. NUNCA retorne sub-totais ou itens individuais de tabelas de discriminação de débitos.
    - "dataVencimento": Data de Vencimento no formato YYYY-MM-DD.
-   - "numeroDocumento": Número impresso no campo "Nº do Documento" ou Nota Fiscal.
+   - "numeroDocumento": Número impresso no campo "Nº do Documento", "Nº de Controle" ou Nota Fiscal.
    - "nossoNumero": Código impresso no campo "Nosso Número".
    - "agenciaConta": Agência e Conta do Beneficiário se visível.
 4. REGRA DE MÁXIMA SEGURANÇA E NÃO-INVENÇÃO:
    - SE UM CAMPO NÃO ESTIVER PRESENTE NO BOLETO OU SE HOUVER DÚVIDA, RETORNE EXATAMENTE A STRING "Não identificado com segurança" PARA CAMPOS DE TEXTO E 0 PARA NÚMEROS. NUNCA CHUTE, NUNCA INVENTE E NUNCA ADIVINHE DADOS.
 5. CARNÊS COM MÚLTIPLAS PARCELAS:
-   - Se o documento for um carnê com N parcelas, retorne CADA PARCELA como um item individual no array "boletos" com sua própria data de vencimento e valor.`;
+   - Apenas se o documento for um carnê físico com cupons/parcelas em páginas diferentes com vencimentos e valores mensais distintos, retorne cada parcela distinta.
+6. DOCUMENTOS COM VÁRIAS VIAS OU DISCRIMINAÇÃO DE DÉBITOS DO MESMO BOLETO (REGRA DE MÁXIMA IMPORTÂNCIA):
+   - Se o documento contiver vias repetidas da mesma guia (ex: "1ª via - Banco", "2ª via - Contribuinte", "3ª via - Fisco") ou tabelas detalhando itens de débitos (ex: "Primeiro Emplacamento R$ 234,25", "Ordem R$ 49,30", "Total R$ 283,55"), TRATA-SE DE UM ÚNICO BOLETO.
+   - Retorne APENAS 1 (UM) ÚNICO item no array "boletos" com o VALOR TOTAL (ex: 283.55). NUNCA crie múltiplos boletos para as vias ou para os sub-itens da tabela!`;
 
 export const PROMPT_BOLETO_EXTRACTION = (fileName: string) => `Extraia todas as informações financeiras e cadastrais do arquivo "${fileName}" respeitando rigorosamente o schema JSON solicitado.
 Certifique-se de preencher com 100% de exatidão:
@@ -161,13 +164,12 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
         bancoNome = parsed.bancoNome || bancoNome;
       }
 
-      // Check value match
+      // Check value match & enforce barcode encoded value accuracy
       if (parsed.valor && parsed.valor > 0) {
-        if (valor > 0 && Math.abs(valor - parsed.valor) > 0.05 && !["858", "856", "800"].includes(bancoCodigo)) {
-          alertas.push(`⚠️ Divergência de valor: Impresso R$ ${valor.toFixed(2)} vs Linha Digitável R$ ${parsed.valor.toFixed(2)}`);
-          camposDivergentes.push("valor");
-          score -= 15;
-        } else if (valor === 0) {
+        if (valor === 0 || Math.abs(valor - parsed.valor) > 0.01) {
+          if (valor > 0) {
+            alertas.push(`⚠️ Valor de R$ ${valor.toFixed(2)} ajustado para R$ ${parsed.valor.toFixed(2)} conforme valor exato codificado na linha digitável/código de barras.`);
+          }
           valor = parsed.valor;
         }
       }

@@ -224,8 +224,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       });
       await delay(150);
 
-      // Check Layout Engine Memory First
-      const memoryMatch = matchLayoutPattern(`${file.name} ${fileBase64.substring(0, 1000)}`);
+      // Check Layout Engine Memory First (using file name and metadata, never raw base64 data)
+      const memoryMatch = matchLayoutPattern(file.name);
       let isFastPathUsed = false;
       let layoutRecognized = false;
       let layoutName = 'Layout Desconhecido';
@@ -439,6 +439,33 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         return [errorItem];
       }
 
+      // Deduplicate rawBoletos by clean 44-digit barcode key to prevent false multi-boleto records
+      const seenRawKeys = new Set<string>();
+      const uniqueRawBoletos: any[] = [];
+
+      for (const b of rawBoletos) {
+        const rawDigits = onlyNumbers(b.linhaDigitavel || b.codigoBarras || '');
+        let key44 = rawDigits;
+        if (rawDigits.length === 47 || rawDigits.length === 48) {
+          const parsed = parseLinhaDigitavel(rawDigits);
+          if (parsed.codigoBarras) key44 = parsed.codigoBarras;
+        }
+        const nos = onlyNumbers(b.nossoNumero || b.seuNumero || '');
+        const venc = String(b.dataVencimento || '').trim();
+
+        const finalKey = key44.length >= 44 ? key44 : (nos || venc ? `${nos}_${venc}` : '');
+
+        if (finalKey) {
+          if (!seenRawKeys.has(finalKey)) {
+            seenRawKeys.add(finalKey);
+            uniqueRawBoletos.push(b);
+          }
+        } else {
+          uniqueRawBoletos.push(b);
+        }
+      }
+      rawBoletos = uniqueRawBoletos;
+
       // Process raw extracted boletos
       const processedItems: PDFExtractedItem[] = rawBoletos.map((extracted, idx) => {
         const rawDigits = extracted.linhaDigitavel || extracted.codigoBarras || '';
@@ -447,7 +474,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
         const finalBancoCodigo = extracted.bancoCodigo || parsedCheck.bancoCodigo || '000';
         const bankInfo = getBankInfo(finalBancoCodigo);
-        const finalValor = parseExtractedValor(extracted.valor, parsedCheck.valor);
+        
+        // Prioritize barcode-decoded value when present for 100% precision
+        const finalValor = parsedCheck.valor > 0 ? parsedCheck.valor : parseExtractedValor(extracted.valor, 0);
 
         const finalFavorecido =
           extracted.favorecidoNome ||
