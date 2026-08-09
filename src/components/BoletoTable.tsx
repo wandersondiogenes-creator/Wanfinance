@@ -80,6 +80,35 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
     return count;
   }, [duplicatesMap]);
 
+  const duplicateBoletosList = useMemo(() => {
+    const list: Array<{
+      boleto: BoletoItem;
+      reason: string;
+      filename?: string;
+    }> = [];
+
+    boletos.forEach((b) => {
+      const dupInfo = duplicatesMap.get(b.id);
+      if (dupInfo && dupInfo.isDuplicate) {
+        let reason = '';
+        if (dupInfo.isHistoryDuplicate) {
+          reason = 'Já enviado em remessa CNAB anterior';
+        } else if (dupInfo.isSameBatchDuplicate) {
+          reason = 'Duplicado na mesma lista (mesmo lote)';
+        } else {
+          reason = 'Duplicado no sistema';
+        }
+        list.push({
+          boleto: b,
+          reason,
+          filename: dupInfo.matchedBatchFilename,
+        });
+      }
+    });
+
+    return list;
+  }, [boletos, duplicatesMap]);
+
   // Discount & Interest Statistics
   const discountBoletos = useMemo(() => boletos.filter((b) => (b.desconto || 0) > 0), [boletos]);
   const totalDiscountVal = useMemo(
@@ -319,31 +348,96 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
 
       {/* Duplicate Alert Banner */}
       {duplicateCount > 0 && (
-        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-900 text-xs shadow-xs">
-          <div className="flex items-start sm:items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-5 h-5" />
+        <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 flex flex-col gap-3 text-orange-950 text-xs shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <AlertTriangle className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="font-black text-orange-950 text-base">
+                  Atenção: {duplicateCount} boleto(s) repetido(s) ou já enviado(s)
+                </p>
+                <p className="text-orange-900 text-xs mt-0.5 font-medium">
+                  Lista detalhada de boletos duplicados, motivo da duplicidade e nome do arquivo de remessa original:
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-bold text-rose-800 text-sm">
-                Atenção: {duplicateCount} boleto(s) repetido(s) detectado(s) na lista!
-              </p>
-              <p className="text-slate-600 mt-0.5">
-                Existem boletos com a mesma linha digitável cadastrados no sistema ou já enviados em remessas anteriores.
-              </p>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                onClick={() => setFilterType(filterType === 'DUPLICATE' ? 'ALL' : 'DUPLICATE')}
+                className={`px-3.5 py-1.5 rounded-xl font-bold transition-all border text-xs cursor-pointer ${
+                  filterType === 'DUPLICATE'
+                    ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                    : 'bg-white text-orange-900 border-orange-300 hover:bg-orange-100'
+                }`}
+              >
+                {filterType === 'DUPLICATE' ? 'Ver Todos os Boletos' : `Filtrar Apenas Repetidos (${duplicateCount})`}
+              </button>
             </div>
           </div>
-          <div className="flex items-center space-x-2 shrink-0">
-            <button
-              onClick={() => setFilterType(filterType === 'DUPLICATE' ? 'ALL' : 'DUPLICATE')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all border text-xs cursor-pointer ${
-                filterType === 'DUPLICATE'
-                  ? 'bg-rose-600 text-white border-rose-600'
-                  : 'bg-white text-rose-800 border-rose-200 hover:bg-rose-100'
-              }`}
-            >
-              {filterType === 'DUPLICATE' ? 'Ver Todos os Boletos' : `Ver Apenas os ${duplicateCount} Repetidos`}
-            </button>
+
+          {/* Breakdown List of Repeated Boletos */}
+          <div className="mt-1 pt-3 border-t border-orange-200 space-y-2">
+            <p className="font-bold text-orange-950 text-xs flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 text-orange-600" />
+              <span>Detalhamento dos Boletos Repetidos e Origem:</span>
+            </p>
+            <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-1">
+              {duplicateBoletosList.map(({ boleto, reason, filename }, idx) => (
+                <div
+                  key={boleto.id || idx}
+                  className="bg-white/95 border-2 border-orange-300 rounded-xl p-2.5 text-xs text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs hover:border-orange-400 transition-all"
+                >
+                  <div className="flex items-start space-x-2.5 min-w-0">
+                    <span className="font-mono text-[11px] bg-orange-500 text-white font-bold px-2 py-0.5 rounded-lg shrink-0">
+                      #{idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                        <span className="font-extrabold text-slate-900 truncate max-w-[260px]">
+                          {boleto.favorecidoNome || 'Beneficiário'}
+                        </span>
+                        {boleto.seuNumero && (
+                          <span className="text-[11px] text-slate-500 font-mono font-medium">
+                            Doc: {boleto.seuNumero}
+                          </span>
+                        )}
+                        <span className="font-black text-orange-700 font-mono text-sm">
+                          {formatCurrencyBRL(boleto.valor - (boleto.desconto || 0) + (boleto.jurosMulta || 0))}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] text-slate-600 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="flex items-center gap-1">
+                          <strong className="text-slate-800">Motivo:</strong>{' '}
+                          <span className="text-orange-950 font-semibold">{reason}</span>
+                        </span>
+                        {filename ? (
+                          <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-950 border border-orange-300 font-mono font-bold px-2 py-0.5 rounded-md text-[10px]">
+                            📄 Arquivo: {filename}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 font-mono font-bold px-2 py-0.5 rounded-md text-[10px]">
+                            Lote Atual (Lista)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setSearchTerm(boleto.seuNumero || boleto.favorecidoNome || boleto.linhaDigitavel);
+                      setFilterType('DUPLICATE');
+                    }}
+                    className="text-[11px] font-bold text-orange-800 hover:text-orange-950 hover:underline shrink-0 self-end sm:self-center cursor-pointer bg-orange-100 hover:bg-orange-200 px-2.5 py-1 rounded-lg border border-orange-300 transition-all"
+                  >
+                    Localizar Boleto →
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -835,7 +929,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                       key={boleto.id}
                       className={`hover:bg-slate-50/80 transition-colors ${
                         dupInfo?.isDuplicate
-                          ? 'bg-amber-50 hover:bg-amber-100/70 border-l-4 border-l-amber-500'
+                          ? 'bg-orange-100/80 hover:bg-orange-200/80 border-l-4 border-l-orange-500 font-medium'
                           : boleto.selected
                           ? 'bg-blue-50/60 hover:bg-blue-50'
                           : ''
@@ -903,16 +997,29 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                             )}
 
                             {dupInfo?.isDuplicate && (
-                              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
-                                <AlertTriangle className="w-3 h-3 text-amber-600" />
+                              <span className="inline-flex items-center gap-1 bg-orange-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shrink-0 shadow-xs">
+                                <AlertTriangle className="w-3 h-3 text-white fill-orange-600" />
                                 {dupInfo.isSameBatchDuplicate
-                                  ? 'Repetido na lista'
+                                  ? 'Boleto duplicado na lista'
                                   : dupInfo.isHistoryDuplicate
-                                  ? `Remessa ${dupInfo.matchedBatchFilename || 'anterior'}`
-                                  : 'Boleto cadastrado'}
+                                  ? `Boleto duplicado ou já enviado (${dupInfo.matchedBatchFilename || 'Remessa CNAB'})`
+                                  : 'Boleto duplicado ou já cadastrado'}
                               </span>
                             )}
                           </div>
+
+                          {dupInfo?.isDuplicate && (
+                            <div className="bg-orange-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-xs my-1 border border-orange-600">
+                              <AlertTriangle className="w-4 h-4 text-white shrink-0" />
+                              <span>
+                                {dupInfo.isHistoryDuplicate
+                                  ? `Atenção: Boleto duplicado ou já enviado anteriormente em remessa (${dupInfo.matchedBatchFilename || 'CNAB'}).`
+                                  : dupInfo.isSameBatchDuplicate
+                                  ? 'Atenção: Boleto duplicado nesta mesma lista.'
+                                  : 'Atenção: Boleto duplicado ou já cadastrado no sistema.'}
+                              </span>
+                            </div>
+                          )}
 
                           {/* Vehicle Details (Placa, RENAVAM, Auto de Infração) */}
                           {(boleto.placa || boleto.renavam || boleto.autoInfracao) && (

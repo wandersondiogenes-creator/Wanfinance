@@ -259,17 +259,17 @@ export const BatchPasteModal: React.FC<BatchPasteModalProps> = ({
               </div>
 
               {duplicateCount > 0 && (
-                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between text-amber-900 text-xs shadow-xs">
+                <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-3 flex items-center justify-between text-orange-950 text-xs shadow-xs">
                   <div className="flex items-center space-x-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>
+                    <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />
+                    <span className="font-medium">
                       Foram detectadas <strong>{duplicateCount} linha(s) repetida(s)</strong> no lote ou já cadastradas no sistema.
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={handleRemoveDuplicates}
-                    className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1 rounded-lg transition-colors cursor-pointer"
+                    className="text-xs bg-orange-600 hover:bg-orange-700 text-white font-bold px-3 py-1 rounded-lg transition-colors cursor-pointer shadow-xs"
                   >
                     Excluir Repetidos
                   </button>
@@ -284,7 +284,7 @@ export const BatchPasteModal: React.FC<BatchPasteModalProps> = ({
                     <div
                       key={item.id || idx}
                       className={`p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                        dup?.isDuplicate ? 'bg-amber-50' : ''
+                        dup?.isDuplicate ? 'bg-orange-100/80 font-bold border-l-4 border-l-orange-500' : ''
                       }`}
                     >
                       <div className="flex items-center space-x-2 truncate">
@@ -297,14 +297,14 @@ export const BatchPasteModal: React.FC<BatchPasteModalProps> = ({
                         <span className="font-mono text-slate-800 truncate max-w-xs font-semibold">{item.linhaDigitavel}</span>
 
                         {dup?.isSameBatchDuplicate && (
-                          <span className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded shrink-0">
+                          <span className="text-[10px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-full shrink-0 shadow-xs">
                             Repetido no lote
                           </span>
                         )}
 
                         {(dup?.isSystemDuplicate || dup?.isHistoryDuplicate) && (
-                          <span className="text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300 px-1.5 py-0.5 rounded shrink-0">
-                            Já cadastrado
+                          <span className="text-[10px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-full shrink-0 shadow-xs">
+                            Já cadastrado / enviado
                           </span>
                         )}
                       </div>

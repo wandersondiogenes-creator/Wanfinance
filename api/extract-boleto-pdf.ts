@@ -1,6 +1,6 @@
 import zlib from "zlib";
 import { GoogleGenAI } from "@google/genai";
-import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText } from "../src/utils/boletoParser";
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from "../src/utils/boletoParser";
 import {
   SYSTEM_INSTRUCTION_BOLETO,
   PROMPT_BOLETO_EXTRACTION,
@@ -129,11 +129,19 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               }
             }
 
-            let extractedDueDate = parsed.dataVencimento || '';
-            const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|DOCUMENTO\s+VÁLIDO\s+PARA\s+PAGAMENTO|VÁLIDO\s+PARA\s+PAGAMENTO|VALIDO\s+PARA\s+PAGAMENTO)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
-            if (vencMatch) {
-              const [d, m, y] = vencMatch[1].split(/[/-]/);
+            let extractedDueDate = '';
+            const validoPagamentoMatch = rawText.match(/(?:DOCUMENTO\s+VÁLIDO\s+PARA\s+PAGAMENTO|DOCUMENTO\s+VALIDO\s+PARA\s+PAGAMENTO|VÁLIDO\s+PARA\s+PAGAMENTO\s+ATÉ|VALIDO\s+PARA\s+PAGAMENTO\s+ATE|VÁLIDO\s+PARA\s+PAGAMENTO|VALIDO\s+PARA\s+PAGAMENTO)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+            if (validoPagamentoMatch) {
+              const [d, m, y] = validoPagamentoMatch[1].split(/[/-]/);
               extractedDueDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+            } else {
+              const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+              if (vencMatch) {
+                const [d, m, y] = vencMatch[1].split(/[/-]/);
+                extractedDueDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+              } else if (parsed.dataVencimento) {
+                extractedDueDate = parsed.dataVencimento;
+              }
             }
 
             const detected = detectBoletoDetailsFromText(rawText, parsed.bancoNome);

@@ -59,7 +59,10 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
    - Apenas se o documento for um carnê físico com cupons/parcelas em páginas diferentes com vencimentos e valores mensais distintos, retorne cada parcela distinta.
 6. DOCUMENTOS COM VÁRIAS VIAS OU DISCRIMINAÇÃO DE DÉBITOS DO MESMO BOLETO (REGRA DE MÁXIMA IMPORTÂNCIA):
    - Se o documento contiver vias repetidas da mesma guia (ex: "1ª via - Banco", "2ª via - Contribuinte", "3ª via - Fisco") ou tabelas detalhando itens de débitos (ex: "Primeiro Emplacamento R$ 234,25", "Ordem R$ 49,30", "Total R$ 283,55"), TRATA-SE DE UM ÚNICO BOLETO.
-   - Retorne APENAS 1 (UM) ÚNICO item no array "boletos" com o VALOR TOTAL (ex: 283.55). NUNCA crie múltiplos boletos para as vias ou para os sub-itens da tabela!`;
+   - Retorne APENAS 1 (UM) ÚNICO item no array "boletos" com o VALOR TOTAL (ex: 283.55). NUNCA crie múltiplos boletos para as vias ou para os sub-itens da tabela!
+7. EXCEÇÃO CRÍTICA PARA GUIAS GNRE, TRIBUTOS E ARRECADAÇÃO (DOCUMENTO VÁLIDO PARA PAGAMENTO):
+   - Em guias de arrecadação GNRE, DARF, DAE, Tributos Estaduais/Federais e Concessionárias: se o documento contiver o campo "Documento Válido para pagamento", "Válido para pagamento até" ou similar especificando uma data (exemplo: "Documento Válido para pagamento 07/08/2026"), CONSIDERE OBRIGATORIAMENTE ESTA DATA FINAL (ex: 2026-08-07) como a "dataVencimento" oficial do boleto.
+   - Esta data limite de pagamento/validade TEM PRECEDÊNCIA ABSOLUTA sobre qualquer outra data presente no campo "Data de Vencimento" ou codificada no código de barras.`;
 
 export const PROMPT_BOLETO_EXTRACTION = (fileName: string) => `Extraia todas as informações financeiras e cadastrais do arquivo "${fileName}" respeitando rigorosamente o schema JSON solicitado.
 Certifique-se de preencher com 100% de exatidão:
@@ -174,11 +177,14 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
         }
       }
 
-      // Check due date match
+      // Check due date match (skip false divergence alerts for GNRE / Tributos / Concessionárias starting with 8)
+      const isTaxOrConcessionaire = ["858", "856", "800"].includes(bancoCodigo) || linhaDigitavel.startsWith("8");
       if (parsed.dataVencimento && parsed.dataVencimento !== dataVencimento && dataVencimento !== "") {
-        alertas.push(`⚠️ Divergência na data de vencimento: Impresso ${dataVencimento} vs Código de Barras ${parsed.dataVencimento}`);
-        camposDivergentes.push("dataVencimento");
-        score -= 10;
+        if (!isTaxOrConcessionaire) {
+          alertas.push(`⚠️ Divergência na data de vencimento: Impresso ${dataVencimento} vs Código de Barras ${parsed.dataVencimento}`);
+          camposDivergentes.push("dataVencimento");
+          score -= 10;
+        }
       } else if (!dataVencimento && parsed.dataVencimento) {
         dataVencimento = parsed.dataVencimento;
       }

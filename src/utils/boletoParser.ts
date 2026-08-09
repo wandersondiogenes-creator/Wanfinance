@@ -91,11 +91,20 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   }
 
   // 4. Extracted Due Date (Vencimento)
+  // CRITICAL RULE FOR GNRE / TRIBUTOS / GUIA DE ARRECADAÇÃO:
+  // If "Documento Válido para pagamento", "Válido para pagamento até", or "Valido para pagamento" is present in the text,
+  // THAT limit/validity date takes precedence as the official dataVencimento (due date) over the standard "Data de Vencimento" field.
   let dataVencimento = '';
-  const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|DOCUMENTO\s+VÁLIDO\s+PARA\s+PAGAMENTO|VÁLIDO\s+PARA\s+PAGAMENTO|VALIDO\s+PARA\s+PAGAMENTO|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
-  if (vencMatch) {
-    const [d, m, y] = vencMatch[1].split(/[/-]/);
+  const validoPagamentoMatch = rawText.match(/(?:DOCUMENTO\s+VÁLIDO\s+PARA\s+PAGAMENTO|DOCUMENTO\s+VALIDO\s+PARA\s+PAGAMENTO|VÁLIDO\s+PARA\s+PAGAMENTO\s+ATÉ|VALIDO\s+PARA\s+PAGAMENTO\s+ATE|VÁLIDO\s+PARA\s+PAGAMENTO|VALIDO\s+PARA\s+PAGAMENTO)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+  if (validoPagamentoMatch) {
+    const [d, m, y] = validoPagamentoMatch[1].split(/[/-]/);
     dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  } else {
+    const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+    if (vencMatch) {
+      const [d, m, y] = vencMatch[1].split(/[/-]/);
+      dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
   }
 
   // 5. Extracted Values (Valor Cobrado / Valor com Desconto / Valor Total / Total a Recolher)

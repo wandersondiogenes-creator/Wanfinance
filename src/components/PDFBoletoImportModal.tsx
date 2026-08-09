@@ -1226,9 +1226,24 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                         {items.map((item, idx) => {
                           const bankCode = item.data?.bancoCodigo || '000';
                           const bankInfo = getBankInfo(bankCode);
+                          const dupInfo = item.data
+                            ? detectBoletoDuplicate(
+                                { ...item.data, id: item.id },
+                                allExtractedData,
+                                existingBoletos,
+                                history
+                              )
+                            : null;
 
                           return (
-                            <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                            <tr
+                              key={item.id}
+                              className={`transition-colors ${
+                                dupInfo?.isDuplicate
+                                  ? 'bg-orange-100/90 hover:bg-orange-200/90 border-l-4 border-l-orange-500 font-bold'
+                                  : 'hover:bg-slate-50'
+                              }`}
+                            >
                               <td className="p-3 font-mono font-bold text-slate-900 flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-blue-600 shrink-0" />
                                 <span className="truncate max-w-[180px]" title={item.fileName}>
@@ -1248,30 +1263,38 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                 )}
                               </td>
                               <td className="p-3">
-                                {item.status === 'loading' && (
-                                  <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 font-bold text-[11px]">
-                                    <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
-                                    <span>{item.stepMessage.split('—')[1] || 'Processando'}</span>
-                                  </span>
-                                )}
-                                {item.status === 'success' && (
-                                  <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-[11px]">
-                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                    <span>Concluído</span>
-                                  </span>
-                                )}
-                                {item.status === 'partial' && (
-                                  <span className="inline-flex items-center gap-1 text-amber-900 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-bold text-[11px]">
-                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                    <span>Parcial</span>
-                                  </span>
-                                )}
-                                {item.status === 'error' && (
-                                  <span className="inline-flex items-center gap-1 text-red-800 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 font-bold text-[11px]">
-                                    <AlertCircle className="w-3 h-3 text-red-600" />
-                                    <span>Erro</span>
-                                  </span>
-                                )}
+                                <div className="flex flex-col items-start gap-1">
+                                  {item.status === 'loading' && (
+                                    <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 font-bold text-[11px]">
+                                      <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                      <span>{item.stepMessage.split('—')[1] || 'Processando'}</span>
+                                    </span>
+                                  )}
+                                  {item.status === 'success' && (
+                                    <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-[11px]">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      <span>Concluído</span>
+                                    </span>
+                                  )}
+                                  {item.status === 'partial' && (
+                                    <span className="inline-flex items-center gap-1 text-amber-900 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-bold text-[11px]">
+                                      <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                      <span>Parcial</span>
+                                    </span>
+                                  )}
+                                  {item.status === 'error' && (
+                                    <span className="inline-flex items-center gap-1 text-red-800 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 font-bold text-[11px]">
+                                      <AlertCircle className="w-3 h-3 text-red-600" />
+                                      <span>Erro</span>
+                                    </span>
+                                  )}
+                                  {dupInfo?.isDuplicate && (
+                                    <span className="inline-flex items-center gap-1 text-white bg-orange-500 font-black px-2 py-0.5 rounded-full text-[10px] shadow-xs">
+                                      <AlertTriangle className="w-3 h-3 text-white" />
+                                      <span>Duplicado ({dupInfo.matchedBatchFilename || 'Já enviado'})</span>
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="p-3 text-center">
                                 <div className="flex flex-col items-center">
@@ -1337,7 +1360,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                         key={item.id}
                         className={`bg-white border rounded-2xl p-4 transition-all shadow-xs ${
                           dupInfo?.isDuplicate
-                            ? 'border-amber-300 bg-amber-50/30'
+                            ? 'border-2 border-orange-500 bg-orange-50/80 shadow-md ring-2 ring-orange-400/30'
                             : item.status === 'error'
                             ? 'border-red-300 bg-red-50/20'
                             : item.status === 'partial'
@@ -1367,6 +1390,13 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                           </div>
 
                           <div className="flex items-center space-x-2 shrink-0">
+                            {dupInfo?.isDuplicate && (
+                              <span className="text-xs text-white bg-orange-500 px-3 py-1 rounded-full border border-orange-600 flex items-center space-x-1 font-black shadow-xs">
+                                <AlertTriangle className="w-3.5 h-3.5 text-white" />
+                                <span>Boleto Repetido</span>
+                              </span>
+                            )}
+
                             {item.status === 'loading' && (
                               <span key="status-badge-loading" className="text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 flex items-center space-x-1.5 font-bold">
                                 <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
@@ -1446,6 +1476,25 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                             />
                           </div>
                         </div>
+
+                        {/* Alerta Destacado de Duplicidade (Laranja) */}
+                        {dupInfo?.isDuplicate && (
+                          <div className="my-2 bg-orange-500 text-white p-3 rounded-xl flex items-start gap-2.5 shadow-xs text-xs font-bold border border-orange-600">
+                            <AlertTriangle className="w-4.5 h-4.5 text-white shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-black text-sm text-white">
+                                Atenção: Boleto Duplicado ou Já Enviado Anteriormente!
+                              </p>
+                              <p className="text-orange-100 text-xs mt-0.5 font-medium">
+                                {dupInfo.isHistoryDuplicate
+                                  ? `Este boleto já foi enviado em remessa CNAB anterior (${dupInfo.matchedBatchFilename || 'Remessa cadastrada'}).`
+                                  : dupInfo.isSameBatchDuplicate
+                                  ? 'Este boleto está duplicado nesta mesma lista de extração.'
+                                  : 'Este boleto já está cadastrado no sistema.'}
+                              </p>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Indicador de Memória / Reconhecimento de Layout */}
                         {item.status !== 'loading' && (
