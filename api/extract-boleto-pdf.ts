@@ -328,9 +328,11 @@ export default async function handler(req: any, res: any) {
       });
 
       const modelsToTry = [
+        "gemini-2.5-flash",
         "gemini-3.6-flash",
         "gemini-flash-latest",
         "gemini-3.1-flash-lite",
+        "gemini-2.5-pro",
       ];
       for (const modelName of modelsToTry) {
         try {
