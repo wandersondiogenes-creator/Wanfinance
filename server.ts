@@ -297,7 +297,7 @@ async function startServer() {
   app.post("/api/extract-boleto-pdf", async (req, res) => {
     try {
       const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
-      const { fileBase64, mimeType = "application/pdf", fileName = "boleto.pdf" } = body;
+      const { fileBase64, mimeType = "application/pdf", fileName = "boleto.pdf", fileSize } = body;
 
       if (!fileBase64 || typeof fileBase64 !== "string") {
         return res.status(200).json({
@@ -312,7 +312,7 @@ async function startServer() {
       const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
       // Clean base64 and extract mimeType without running regex capture groups on megabytes of base64 data
-      let cleanBase64 = fileBase64;
+      let cleanBase64 = String(fileBase64);
       let effectiveMimeType = typeof mimeType === "string" ? mimeType : "application/pdf";
 
       if (cleanBase64.startsWith("data:")) {
@@ -339,6 +339,11 @@ async function startServer() {
       } else if (effectiveMimeType.includes("webp")) {
         effectiveMimeType = "image/webp";
       }
+
+      const buffer = Buffer.from(cleanBase64, "base64");
+      const isPdfHeaderValid = buffer.length >= 4 && buffer.subarray(0, 10).toString("ascii").includes("%PDF");
+
+      console.log(`[Express API Audit] File: "${fileName}" | Frontend Size: ${fileSize || 'N/A'} bytes | Base64 Length: ${cleanBase64.length} chars | Decoded Buffer: ${buffer.length} bytes | Header Valid PDF: ${isPdfHeaderValid}`);
 
       let boletosExtracted: any[] = [];
       let geminiApiError: string | null = null;
@@ -503,6 +508,8 @@ async function startServer() {
       return res.json({
         success: true,
         fileName,
+        fileSizeReceivedBytes: buffer.length,
+        isPdfHeaderValid,
         totalEncontrados: boletosExtracted.length,
         geminiApiError,
         boletos: boletosExtracted,

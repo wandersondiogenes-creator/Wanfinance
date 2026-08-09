@@ -313,6 +313,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                 fileBase64,
                 mimeType: file.type || 'application/pdf',
                 fileName: file.name,
+                fileSize: file.size,
               }),
             });
 
@@ -321,6 +322,17 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
             if (response.ok && contentType.includes('application/json')) {
               const result = await response.json();
+              
+              if (result && typeof result.fileSizeReceivedBytes === 'number') {
+                technicalLogger.log({
+                  step: 'Auditoria Arquivo Servidor',
+                  fileName: file.name,
+                  fileSize: file.size,
+                  backendResponse: `Servidor recebeu ${result.fileSizeReceivedBytes} bytes (Original: ${file.size} bytes). Cabeçalho PDF válido: ${result.isPdfHeaderValid}`,
+                  severity: result.isPdfHeaderValid ? 'info' : 'warn',
+                });
+              }
+
               if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
                 rawBoletos = result.boletos;
                 serverSuccess = true;

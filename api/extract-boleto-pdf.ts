@@ -267,7 +267,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    const { fileBase64, mimeType = "application/pdf", fileName = "boleto.pdf" } = body || {};
+    const { fileBase64, mimeType = "application/pdf", fileName = "boleto.pdf", fileSize } = body || {};
 
     if (!fileBase64) {
       return res.status(400).json({ error: "Conteúdo do arquivo em base64 não fornecido." });
@@ -276,7 +276,7 @@ export default async function handler(req: any, res: any) {
     const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
     // Clean Base64 and standardize MIME type without running regex on large base64 strings
-    let cleanBase64 = fileBase64;
+    let cleanBase64 = String(fileBase64);
     let effectiveMimeType = typeof mimeType === "string" ? mimeType : "application/pdf";
 
     if (cleanBase64.startsWith("data:")) {
@@ -304,8 +304,18 @@ export default async function handler(req: any, res: any) {
       effectiveMimeType = "image/webp";
     }
 
+    // Decode base64 to binary Buffer for verification
+    const buffer = Buffer.from(cleanBase64, "base64");
+    const isPdfHeaderValid = buffer.length >= 4 && buffer.subarray(0, 10).toString("ascii").includes("%PDF");
+
+    console.log(`[Vercel API Audit] File: "${fileName}" | Frontend Size: ${fileSize || 'N/A'} bytes | Base64 Length: ${cleanBase64.length} chars | Decoded Buffer: ${buffer.length} bytes | Header Valid PDF: ${isPdfHeaderValid}`);
+
     let boletosExtracted: any[] = [];
     let geminiApiError: string | null = null;
+
+    if (effectiveMimeType === "application/pdf" && !isPdfHeaderValid) {
+      console.warn(`[Vercel API Warning] PDF Header '%PDF-' não encontrado nos primeiros 10 bytes de "${fileName}". O arquivo pode ter sido corrompido durante a transmissão.`);
+    }
 
     if (apiKey) {
       const ai = new GoogleGenAI({
@@ -437,6 +447,8 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       success: true,
       fileName,
+      fileSizeReceivedBytes: buffer.length,
+      isPdfHeaderValid,
       totalEncontrados: boletosExtracted.length,
       geminiApiError,
       boletos: boletosExtracted,
