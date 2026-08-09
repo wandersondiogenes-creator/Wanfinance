@@ -163,37 +163,44 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             seenLines.add(key44);
             let extractedValue = parsed.valor || 0;
 
-            // Try to extract "VALOR TOTAL A RECOLHER" / "TOTAL A RECOLHER" directly from text
-            const valorMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+PRINCIPAL)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
-            if (valorMatch) {
-              const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
-              const parsedVal = parseFloat(valStr);
-              if (!isNaN(parsedVal) && parsedVal > 0) {
-                if (extractedValue === 0 || parsed.bancoCodigo === '858' || parsed.bancoCodigo === '856') {
+            if (extractedValue <= 0) {
+              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+              if (valorMatch) {
+                const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
+                const parsedVal = parseFloat(valStr);
+                if (!isNaN(parsedVal) && parsedVal > 0) {
                   extractedValue = parsedVal;
                 }
               }
             }
 
-            let favorecidoNome = extractFavorecidoFromText(rawText, parsed.bancoNome);
-            if (parsed.bancoCodigo === '858') {
+            const detected = detectBoletoDetailsFromText(rawText, parsed.bancoNome);
+            let favorecidoNome = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
+              ? detected.favorecidoNome
+              : extractFavorecidoFromText(rawText, parsed.bancoNome);
+
+            if (parsed.bancoCodigo === '858' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
               favorecidoNome = 'SEFAZ - Guia GNRE';
-            } else if (parsed.bancoCodigo === '856') {
+            } else if (parsed.bancoCodigo === '856' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
               favorecidoNome = 'Receita Federal - DARF';
             }
+
+            let docNum = detected.seuNumero || detected.autoInfracao || `PDF-TEXT-${boletosFound.length + 1}`;
 
             boletosFound.push({
               linhaDigitavel: clean,
               codigoBarras: parsed.codigoBarras || clean,
               favorecidoNome,
               favorecidoCnpjCpf: "",
+              pagador: detected.pagador || "Não identificado com segurança",
+              pagadorCnpjCpf: detected.pagadorCnpjCpf || "",
               valor: extractedValue,
-              dataVencimento: parsed.dataVencimento || new Date().toISOString().split("T")[0],
-              seuNumero: `PDF-TEXT-${boletosFound.length + 1}`,
+              dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split("T")[0],
+              seuNumero: docNum,
               nossoNumero: "",
-              bancoCodigo: parsed.bancoCodigo,
-              bancoNome: parsed.bancoNome,
-              observacoes: "Extraído do texto do PDF via leitor local",
+              bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
+              bancoNome: detected.bancoNome || parsed.bancoNome,
+              observacoes: detected.observacoes || "Extraído do texto do PDF via leitor local",
               confidence: 0.9,
             });
           }

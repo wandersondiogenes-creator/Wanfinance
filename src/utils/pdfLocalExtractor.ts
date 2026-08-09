@@ -185,6 +185,8 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   codigoBarras: parsed.codigoBarras || clean,
                   favorecidoNome: finalFavorecido,
                   favorecidoCnpjCpf: '',
+                  pagador: detected.pagador || '',
+                  pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
                   valor: extractedValue,
                   dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
                   numeroDocumento: docNumber,

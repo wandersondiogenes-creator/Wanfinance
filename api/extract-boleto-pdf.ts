@@ -118,12 +118,12 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             seenLines.add(key44);
             let extractedValue = parsed.valor || 0;
 
-            const valorMatch = rawText.match(/(?:TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
-            if (valorMatch) {
-              const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
-              const parsedVal = parseFloat(valStr);
-              if (!isNaN(parsedVal) && parsedVal > 0) {
-                if (extractedValue === 0 || parsed.bancoCodigo === '858' || parsed.bancoCodigo === '856') {
+            if (extractedValue <= 0) {
+              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+              if (valorMatch) {
+                const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
+                const parsedVal = parseFloat(valStr);
+                if (!isNaN(parsedVal) && parsedVal > 0) {
                   extractedValue = parsedVal;
                 }
               }
@@ -136,18 +136,22 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               extractedDueDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
             }
 
-            let favorecidoNome = extractFavorecidoFromText(rawText, parsed.bancoNome);
-            if (parsed.bancoCodigo === '858') {
+            const detected = detectBoletoDetailsFromText(rawText, parsed.bancoNome);
+            let favorecidoNome = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
+              ? detected.favorecidoNome
+              : extractFavorecidoFromText(rawText, parsed.bancoNome);
+
+            if (parsed.bancoCodigo === '858' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
               const ufMatch = rawText.match(/(?:UF\s+Favorecida|UF\s+Favorecido)\s*[:\s\r\n]*([A-Z]{2})/i);
               const ufStr = ufMatch ? ` (SEFAZ-${ufMatch[1].toUpperCase()})` : '';
               favorecidoNome = `GNRE - Tributos Estaduais${ufStr}`;
-            } else if (parsed.bancoCodigo === '856') {
+            } else if (parsed.bancoCodigo === '856' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
               favorecidoNome = 'Receita Federal - DARF';
             }
 
-            let docNum = `PDF-TEXT-${boletosFound.length + 1}`;
+            let docNum = detected.seuNumero || detected.autoInfracao || `PDF-TEXT-${boletosFound.length + 1}`;
             const ctrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
-            if (ctrlMatch) docNum = ctrlMatch[1].trim();
+            if (ctrlMatch && docNum.startsWith('PDF-TEXT')) docNum = ctrlMatch[1].trim();
 
             boletosFound.push({
               linhaDigitavel: clean,
@@ -156,16 +160,18 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               cedente: favorecidoNome,
               beneficiario: favorecidoNome,
               favorecidoCnpjCpf: "",
+              pagador: detected.pagador || "Não identificado com segurança",
+              pagadorCnpjCpf: detected.pagadorCnpjCpf || "",
               CNPJ: "",
               valor: extractedValue,
               dataVencimento: extractedDueDate || new Date().toISOString().split("T")[0],
               seuNumero: docNum,
               numeroDocumento: docNum,
               nossoNumero: "",
-              bancoCodigo: parsed.bancoCodigo,
-              bancoNome: parsed.bancoNome,
-              banco: parsed.bancoNome,
-              observacoes: "Extraído do texto do PDF via leitor local",
+              bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
+              bancoNome: detected.bancoNome || parsed.bancoNome,
+              banco: detected.bancoNome || parsed.bancoNome,
+              observacoes: detected.observacoes || "Extraído do texto do PDF via leitor local",
               confidence: 0.9,
             });
           }

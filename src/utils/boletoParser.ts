@@ -22,6 +22,9 @@ export interface ParsedBoletoInfo {
 export interface DetectedBoletoMetadata {
   tipoBoleto: BoletoType;
   favorecidoNome: string;
+  favorecidoCnpjCpf?: string;
+  pagador?: string;
+  pagadorCnpjCpf?: string;
   bancoCodigo: string;
   bancoNome: string;
   placa?: string;
@@ -111,6 +114,21 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   const gnreCtrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nosso\s+Número|NOSSO\s+NÚMERO|Nosso\s+Numero|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
   if (gnreCtrlMatch) {
     gnomeNum = gnreCtrlMatch[1].trim();
+  }
+
+  // Proprietário / Pagador / Sacado extraction
+  let pagador = '';
+  let pagadorCnpjCpf = '';
+  const cpfCnpjMatch = rawText.match(/(?:CPF\/CNPJ|CPF|CNPJ)\s*[:\s]*(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/i);
+  if (cpfCnpjMatch) {
+    pagadorCnpjCpf = cpfCnpjMatch[1].trim();
+  }
+  const pagadorMatch = rawText.match(/(?:PROPRIETÁRIO|PROPRIETARIO|PAGADOR|SACADO|DEVEDOR|CLIENTE)\s*[:\s]*([A-Z\s]{3,50}?)(?=\s*(?:CPF|CNPJ|ENDEREÇO|ENDERECO|BAIRRO|CEP|LOGRADOURO|FINANCEIRA|SANTANDER|RUA|AV|\n|\r|$))/i);
+  if (pagadorMatch) {
+    const cand = pagadorMatch[1].trim();
+    if (cand.length >= 3 && !cand.toUpperCase().includes('DETRAN') && !cand.toUpperCase().includes('GOVERNO')) {
+      pagador = cand;
+    }
   }
 
   // 6. Classification of Boleto Type & Favorecido
@@ -226,6 +244,8 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   return {
     tipoBoleto,
     favorecidoNome,
+    pagador: pagador || undefined,
+    pagadorCnpjCpf: pagadorCnpjCpf || undefined,
     bancoCodigo,
     bancoNome,
     placa: placa || undefined,
@@ -429,12 +449,40 @@ export function modulo11Concessionaria(digits: string): number {
 }
 
 /**
+ * Modulo 11 check for 44-digit Código de Barras (DV Geral - Pos 4)
+ */
+export function validateModulo11CodigoBarras(codigo44: string): boolean {
+  if (!codigo44 || codigo44.length !== 44) return false;
+  const dvGeral = parseInt(codigo44.charAt(4), 10);
+  const codeWithoutDV = codigo44.substring(0, 4) + codigo44.substring(5);
+  
+  let sum = 0;
+  let weight = 2;
+  for (let i = codeWithoutDV.length - 1; i >= 0; i--) {
+    sum += parseInt(codeWithoutDV.charAt(i), 10) * weight;
+    weight++;
+    if (weight > 9) weight = 2;
+  }
+  const remainder = sum % 11;
+  let expectedDV = 11 - remainder;
+  if (expectedDV === 0 || expectedDV === 10 || expectedDV === 11) {
+    expectedDV = 1;
+  }
+  return dvGeral === expectedDV;
+}
+
+/**
  * Validates Modulo 10 or Modulo 11 for a 48-digit Linha Digitável (Concessionária / Tributos)
  */
 export function validateConcessionaria48(limpa48: string): boolean {
   if (!limpa48 || limpa48.length !== 48) return false;
+  // Must start with '8' (Arrecadação / Concessionárias / Tributos / Governamentais)
+  if (limpa48.charAt(0) !== '8') return false;
 
   const modType = limpa48.charAt(2);
+  // FEBRABAN: Módulo de validação do valor (6/7 = Modulo 10, 8/9 = Modulo 11)
+  if (!['6', '7', '8', '9'].includes(modType)) return false;
+
   const useMod10 = modType === '6' || modType === '7';
 
   const block1Data = limpa48.substring(0, 11);
@@ -461,11 +509,19 @@ export function validateConcessionaria48(limpa48: string): boolean {
 }
 
 /**
- * Validates Modulo 10 for a 47-digit Linha Digitável
+ * Validates Modulo 10 and structure for a 47-digit Linha Digitável
  */
 export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
   if (limpa47.length !== 47) return false;
   
+  // Bank code cannot be '000'
+  const banco = limpa47.substring(0, 3);
+  if (banco === '000') return false;
+
+  // Currency code must be '9' (Real) or '8'
+  const moeda = limpa47.charAt(3);
+  if (moeda !== '9' && moeda !== '8') return false;
+
   const campo1Data = limpa47.substring(0, 9);
   const campo1DV = parseInt(limpa47.substring(9, 10), 10);
   if (modulo10(campo1Data) !== campo1DV) return false;

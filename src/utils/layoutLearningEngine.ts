@@ -759,6 +759,18 @@ export function extractViaLearnedLayout(
   pattern: LearnedLayoutPattern
 ): FastExtractionResult {
   const startTime = performance.now();
+
+  if (!rawText || rawText.startsWith('data:') || rawText.includes(';base64,') || (rawText.length > 5000 && !rawText.includes(' '))) {
+    return {
+      success: false,
+      boletos: [],
+      patternUsed: pattern,
+      executionTimeMs: 0,
+      confidence: 0,
+      matchReason: 'Fast Path requer texto do documento, não dados binários Base64.',
+    };
+  }
+
   const boletosFound: any[] = [];
   const digitsOnly = onlyNumbers(rawText);
 
