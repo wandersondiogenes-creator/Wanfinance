@@ -272,21 +272,7 @@ function repairAndParseJson(rawText: string): any {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
-
-  // CORS Middleware for Cloud Run <-> Vercel Front-end cross-origin communication
-  app.use((req, res, next) => {
-    const origin = req.headers.origin || "*";
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
-    res.header("Access-Control-Allow-Credentials", "true");
-    
-    if (req.method === "OPTIONS") {
-      return res.sendStatus(204);
-    }
-    next();
-  });
+  const PORT = 3000;
 
   // Allow larger payload for PDF files uploaded as base64 (e.g. multi-page PDFs)
   app.use(express.json({ limit: "100mb" }));
@@ -375,11 +361,10 @@ async function startServer() {
 
         const callGeminiWithRetryAndFallback = async () => {
           const modelsToTry = [
-            "gemini-2.5-flash",
             "gemini-3.6-flash",
             "gemini-flash-latest",
             "gemini-3.1-flash-lite",
-            "gemini-2.5-pro",
+            "gemini-3.1-pro-preview",
           ];
           let lastError: any = null;
 

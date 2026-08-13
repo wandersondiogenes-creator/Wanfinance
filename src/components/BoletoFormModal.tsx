@@ -5,6 +5,8 @@ import { getBankInfo, BRAZILIAN_BANKS } from '../utils/banks';
 import { X, CheckCircle, AlertCircle, Sparkles, Building2, Calendar, DollarSign, Tag, FileText, AlertTriangle, Percent, Clock, TrendingUp, TrendingDown } from 'lucide-react';
 import { detectBoletoDuplicate } from '../utils/duplicateDetector';
 
+import { recordUserCorrection } from '../utils/correctionsMemoryEngine';
+
 interface BoletoFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -171,6 +173,22 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
       selected: true,
       createdAt: initialData ? initialData.createdAt : new Date().toISOString(),
     };
+
+    // Record corrections in memory if editing existing boleto
+    if (initialData) {
+      if (initialData.favorecidoNome && initialData.favorecidoNome !== favorecidoNome) {
+        recordUserCorrection('favorecidoNome', initialData.favorecidoNome, favorecidoNome, bancoCodigo, favorecidoNome);
+      }
+      if (initialData.valor && initialData.valor !== Number(valor)) {
+        recordUserCorrection('valor', initialData.valor, Number(valor), bancoCodigo, favorecidoNome);
+      }
+      if (initialData.dataVencimento && initialData.dataVencimento !== dataVencimento) {
+        recordUserCorrection('dataVencimento', initialData.dataVencimento, dataVencimento, bancoCodigo, favorecidoNome);
+      }
+      if (initialData.seuNumero && initialData.seuNumero !== seuNumero) {
+        recordUserCorrection('seuNumero', initialData.seuNumero, seuNumero, bancoCodigo, favorecidoNome);
+      }
+    }
 
     onSave(boletoItem);
     onClose();
@@ -340,6 +358,21 @@ export const BoletoFormModal: React.FC<BoletoFormModalProps> = ({
               />
             </div>
           </div>
+
+          {/* High Value Warning Banner */}
+          {Number(valor) >= 250000 && (
+            <div className="bg-purple-50 border-2 border-purple-300 text-purple-950 p-3.5 rounded-2xl text-xs flex items-start space-x-3 shadow-xs">
+              <AlertTriangle className="w-5 h-5 text-purple-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-extrabold text-purple-950 uppercase tracking-tight text-xs flex items-center gap-1.5">
+                  <span>⚡ ALERTA DE ALTA ALÇADA: VALOR ELEVADO (ACIMA DE R$ 250.000,00)</span>
+                </p>
+                <p className="mt-0.5 text-purple-900 font-medium">
+                  Este boleto possui o valor expressivo de <strong>{formatCurrencyBRL(Number(valor))}</strong>. Verifique cuidadosamente a veracidade dos dados e garanta autorização prévia de diretoria/alçada superior antes de processar.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Quick Adjustment Calculator Buttons */}
           {Number(valor) > 0 && (

@@ -55,8 +55,9 @@ export interface BankAccountProfile {
   agenciaDV: string;
   conta: string;
   contaDV: string;
-  convenio: string; // Código do convênio no banco
+  convenio: string; // Código do convênio no banco (Pagfor)
   codigoTransmissao?: string;
+  codigoEstacao?: string; // Código da Estação Santander / Linha de Transmissão
   nsa: number; // Número Sequencial do Arquivo
   padraoCNAB: '240' | '400';
   layoutVersaoLote: string; // ex: '040' ou '046' ou '081'
@@ -92,6 +93,7 @@ export interface CompanySettings {
   contaDV: string;
   convenio: string; // Código do convênio no banco
   codigoTransmissao?: string;
+  codigoEstacao?: string; // Código da Estação Santander
   logradouro: string;
   numero: string;
   complemento: string;

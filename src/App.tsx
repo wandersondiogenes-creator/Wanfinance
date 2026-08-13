@@ -39,6 +39,9 @@ import { getBoletosDuplicateMap } from './utils/duplicateDetector';
 import { validateAndClampPaymentDate } from './utils/boletoParser';
 import { CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
+import { syncLearnedLayoutsFromCloud } from './utils/layoutLearningEngine';
+import { syncLearnedCorrectionsFromCloud } from './utils/correctionsMemoryEngine';
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(loadUserSession);
   const [companies, setCompanies] = useState<CompanyProfile[]>(loadCompanyProfiles);
@@ -48,6 +51,8 @@ export default function App() {
 
   useEffect(() => {
     testFirestoreConnection();
+    syncLearnedLayoutsFromCloud();
+    syncLearnedCorrectionsFromCloud();
 
     // Check and load remote data from Supabase if configured
     async function initSupabaseData() {
@@ -111,7 +116,7 @@ export default function App() {
   };
 
   const [sidebarFilterType, setSidebarFilterType] = useState<
-    'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE'
+    'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE' | 'HIGH_VALUE'
   >('ALL');
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);

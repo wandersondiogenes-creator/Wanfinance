@@ -107,9 +107,9 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     }
   }
 
-  // 5. Extracted Values (Valor Cobrado / Valor com Desconto / Valor Total / Total a Recolher)
+  // 5. Extracted Values (Valor Cobrado / Valor Documento / Valor Original / Valor Total)
   let valor: number | undefined;
-  const valorCobradoMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+  const valorCobradoMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+Documento|VALOR\s+ORIGINAL|Valor\s+Original|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado)|Valor)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
   if (valorCobradoMatch) {
     const valStr = valorCobradoMatch[1].replace(/\./g, '').replace(',', '.');
     const parsedVal = parseFloat(valStr);
@@ -118,25 +118,67 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     }
   }
 
-  // GNRE / Control Number / Nosso Numero extraction
+  // GNRE / Control Number / Nosso Numero / Numero do Documento / Compromisso
   let gnomeNum = '';
-  const gnreCtrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nosso\s+Número|NOSSO\s+NÚMERO|Nosso\s+Numero|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
+  const gnreCtrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nosso\s+Número|NOSSO\s+NÚMERO|Nosso\s+Numero|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo|Compromisso|Número\s+do\s+Documento|Nº\s+do\s+Documento)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
   if (gnreCtrlMatch) {
     gnomeNum = gnreCtrlMatch[1].trim();
   }
 
-  // Proprietário / Pagador / Sacado extraction
+  // Beneficiário & Pagador CNPJ/CPF and Name Extraction
+  let favorecidoCnpjCpf = '';
   let pagador = '';
   let pagadorCnpjCpf = '';
-  const cpfCnpjMatch = rawText.match(/(?:CPF\/CNPJ|CPF|CNPJ)\s*[:\s]*(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/i);
-  if (cpfCnpjMatch) {
-    pagadorCnpjCpf = cpfCnpjMatch[1].trim();
+
+  if (/BANCO\s+FIDIS/i.test(rawText) || rawText.includes('062.237.425/0001-76') || rawText.includes('062237425000176')) {
+    favorecidoCnpjCpf = '062.237.425/0001-76';
   }
-  const pagadorMatch = rawText.match(/(?:PROPRIETÁRIO|PROPRIETARIO|PAGADOR|SACADO|DEVEDOR|CLIENTE)\s*[:\s]*([A-Z\s]{3,50}?)(?=\s*(?:CPF|CNPJ|ENDEREÇO|ENDERECO|BAIRRO|CEP|LOGRADOURO|FINANCEIRA|SANTANDER|RUA|AV|\n|\r|$))/i);
-  if (pagadorMatch) {
-    const cand = pagadorMatch[1].trim();
-    if (cand.length >= 3 && !cand.toUpperCase().includes('DETRAN') && !cand.toUpperCase().includes('GOVERNO')) {
-      pagador = cand;
+  if (/BYD\s+AUTO/i.test(rawText) || rawText.includes('50.351.104/0001-19') || rawText.includes('50351104000119')) {
+    favorecidoCnpjCpf = '50.351.104/0001-19';
+  }
+  if (/BYD\s+DO\s+BRASIL/i.test(rawText) || rawText.includes('17.140.820/0007-77') || rawText.includes('17140820000777')) {
+    favorecidoCnpjCpf = '17.140.820/0007-77';
+  }
+  if (/VIA\s+SUL\s+VEICULOS/i.test(rawText) || rawText.includes('040.841.736/0022-31') || rawText.includes('040841736002231')) {
+    pagador = 'VIA SUL VEICULOS S/A';
+    pagadorCnpjCpf = '040.841.736/0022-31';
+  }
+
+  // Extract Beneficiário CNPJ if not matched
+  if (!favorecidoCnpjCpf) {
+    const benCnpjMatch = rawText.match(/(?:Beneficiário|Beneficiario|Cedente|Razão\s+Social|Favorecido)[^]*?(?:CPF\/CNPJ|CNPJ|CPF|CNPJ\/MF|CPF\/MF)\s*[:\s]*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})/i);
+    if (benCnpjMatch) {
+      favorecidoCnpjCpf = benCnpjMatch[1].trim();
+    }
+  }
+
+  // Extract Pagador CNPJ if not matched
+  if (!pagadorCnpjCpf) {
+    const pagCnpjMatch = rawText.match(/(?:Pagador|Sacado|Devedor|Sacado\/Avalista)[^]*?(?:CPF\/CNPJ|CNPJ|CPF|CNPJ\/MF|CPF\/MF)\s*[:\s]*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})/i);
+    if (pagCnpjMatch) {
+      pagadorCnpjCpf = pagCnpjMatch[1].trim();
+    } else {
+      const allCnpjs = rawText.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/g);
+      if (allCnpjs && allCnpjs.length >= 2) {
+        if (!favorecidoCnpjCpf) favorecidoCnpjCpf = allCnpjs[0];
+        pagadorCnpjCpf = allCnpjs[1];
+      } else if (allCnpjs && allCnpjs.length === 1) {
+        if (!favorecidoCnpjCpf) {
+          favorecidoCnpjCpf = allCnpjs[0];
+        } else {
+          pagadorCnpjCpf = allCnpjs[0];
+        }
+      }
+    }
+  }
+
+  if (!pagador) {
+    const pagadorMatch = rawText.match(/(?:PROPRIETÁRIO|PROPRIETARIO|PAGADOR|SACADO|DEVEDOR|CLIENTE)\s*[:\s]*([A-Z0-9\.\&\s\-\/]{3,60}?)(?=\s*(?:CPF|CNPJ|CPF\/CNPJ|ENDEREÇO|ENDERECO|BAIRRO|CEP|LOGRADOURO|FINANCEIRA|SANTANDER|RUA|AV|\n|\r|$))/i);
+    if (pagadorMatch) {
+      const cand = pagadorMatch[1].trim();
+      if (cand.length >= 3 && !cand.toUpperCase().includes('DETRAN') && !cand.toUpperCase().includes('GOVERNO')) {
+        pagador = cand;
+      }
     }
   }
 
@@ -174,11 +216,13 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   } else if (isBYDAuto) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BYD AUTO DO BRASIL LTDA';
+    favorecidoCnpjCpf = '50.351.104/0001-19';
     bancoCodigo = '033';
     bancoNome = 'Banco Santander Brasil S.A.';
   } else if (isBYDBrasil) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BYD DO BRASIL LTDA';
+    favorecidoCnpjCpf = '17.140.820/0007-77';
     bancoCodigo = '033';
     bancoNome = 'Banco Santander Brasil S.A.';
   } else if (isDAEBahia) {
@@ -253,6 +297,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   return {
     tipoBoleto,
     favorecidoNome,
+    favorecidoCnpjCpf: favorecidoCnpjCpf || undefined,
     pagador: pagador || undefined,
     pagadorCnpjCpf: pagadorCnpjCpf || undefined,
     bancoCodigo,
@@ -332,6 +377,9 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   if (/BYD\s+DO\s+BRASIL/i.test(text) || text.includes('17.140.820/0007-77')) {
     return 'BYD DO BRASIL LTDA';
   }
+  if (/BANCO\s+FIDIS/i.test(text) || text.includes('062.237.425/0001-76') || text.includes('062237425000176')) {
+    return 'BANCO FIDIS S/A.';
+  }
 
   const suhaiMatch = text.match(/(SUHAI\s+SEGURADORA\s*(?:S\/?A)?)/i);
   if (suhaiMatch) return 'SUHAI SEGURADORA S/A';
@@ -339,8 +387,30 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   const sefazMatch = text.match(/(SECRETARIA\s+DA\s+FAZENDA[^\r\n]*|SEFAZ[-/ ][A-Z]{2}|GOVERNO\s+DO\s+ESTADO[^\r\n]*|RECEITA\s+FEDERAL)/i);
   if (sefazMatch) return sefazMatch[1].trim();
 
-  // Bank names regex to filter them out
-  const bankNamesRegex = /^(?:BANCO\s+|SAD\s+|BCO\s+)?(?:BRADESCO|ITAU|ITAÚ|SANTANDER|BANCO DO BRASIL|CAIXA|INTER|NUBANK|SAFRA|BTG|SICOOB|SICREDI|CITIBANK|DAYCOVAL|ABC|MODAL|NEON|C6|PAGSEGURO|STONE|EFINANCE)(?:\s+S\/?A|\s+S\.A\.)?$/i;
+  // Bank names regex to filter out emitting banks (unless they are vehicle/financing banks acting as beneficiary)
+  const emittingBanksRegex = /^(?:BANCO\s+|SAD\s+|BCO\s+)?(?:BRADESCO|ITAU|ITAÚ|SANTANDER|BANCO DO BRASIL|CAIXA|INTER|NUBANK|BTG|SICOOB|SICREDI|CITIBANK|ABC|MODAL|NEON|C6|PAGSEGURO|STONE|EFINANCE)(?:\s+S\/?A|\s+S\.A\.)?$/i;
+
+  // Allowed financing/credit banks that act as Beneficiários on boletos:
+  const isFinancingBankBeneficiary = (cand: string) => {
+    const cUpper = cand.toUpperCase();
+    return (
+      cUpper.includes('FIDIS') ||
+      cUpper.includes('SAFRA') ||
+      cUpper.includes('VOLKSWAGEN') ||
+      cUpper.includes('TOYOTA') ||
+      cUpper.includes('GM') ||
+      cUpper.includes('RENAULT') ||
+      cUpper.includes('HONDA') ||
+      cUpper.includes('DAYCOVAL') ||
+      cUpper.includes('PAN') ||
+      cUpper.includes('BMG') ||
+      cUpper.includes('ALPHA') ||
+      cUpper.includes('CATERPILLAR') ||
+      cUpper.includes('RODOBENS') ||
+      cUpper.includes('TRIANGULO') ||
+      cUpper.includes('SOFISA')
+    );
+  };
 
   // 2. Look for explicit labels: "Beneficiário", "Cedente", "Razão Social", "Nome do Beneficiário"
   const beneficiaryRegex = /(?:BENEFICIÁRIO\s*\/|\bBENEFICIARIO\s*\/|\bBENEFICIÁRIO:?|\bBENEFICIARIO:?|\bCEDENTE:?|\bRAZÃO\s+SOCIAL:?|\bRAZAO\s+SOCIAL:?|\bNOME\s+DO\s+BENEFICIÁRIO:?|\bNOME\s+DO\s+BENEFICIARIO:?)\s*([A-Z0-9\.\&\s\-\/]{3,60}?)(?=\s*(?:CNPJ|CPF|ENDEREÇO|ENDERECO|AGÊNCIA|AGENCIA|CÓDIGO|CODIGO|DATA|VENCIMENTO|VALOR|NOSSO|SACADO|PAGADOR|R\$|\n|\r|$))/i;
@@ -349,11 +419,13 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   if (match && match[1]) {
     let candidate = match[1].trim().replace(/^[-/:\s]+/, '').replace(/[-/:\s]+$/, '');
     candidate = candidate.split(/\s{2,}|\n|\r/)[0].trim();
+    
+    const isFinancing = isFinancingBankBeneficiary(candidate);
+    const isDifferentFromEmitting = !bancoNome || !candidate.toLowerCase().includes(bancoNome.toLowerCase());
+
     if (
       candidate.length >= 3 &&
-      !bankNamesRegex.test(candidate) &&
-      !candidate.toLowerCase().startsWith('banco') &&
-      (!bancoNome || !candidate.toLowerCase().includes(bancoNome.toLowerCase()))
+      (isFinancing || (!emittingBanksRegex.test(candidate) && (!candidate.toLowerCase().startsWith('banco') || isDifferentFromEmitting)))
     ) {
       return candidate;
     }
@@ -364,10 +436,12 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   const companyMatch = text.match(companyRegex);
   if (companyMatch && companyMatch[1]) {
     const candidate = companyMatch[1].trim();
+    const isFinancing = isFinancingBankBeneficiary(candidate);
+    const isDifferentFromEmitting = !bancoNome || !candidate.toLowerCase().includes(bancoNome.toLowerCase());
     if (
-      !bankNamesRegex.test(candidate) &&
-      !candidate.toLowerCase().startsWith('banco') &&
-      (!bancoNome || !candidate.toLowerCase().includes(bancoNome.toLowerCase()))
+      isFinancing ||
+      (!emittingBanksRegex.test(candidate) &&
+      (!candidate.toLowerCase().startsWith('banco') || isDifferentFromEmitting))
     ) {
       return candidate;
     }

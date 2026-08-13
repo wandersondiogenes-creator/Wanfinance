@@ -11,8 +11,8 @@ export type SortOrder = 'asc' | 'desc';
 interface BoletoTableProps {
   boletos: BoletoItem[];
   history?: CNABBatchHistory[];
-  filterType?: 'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE';
-  setFilterType?: (type: 'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE') => void;
+  filterType?: 'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE' | 'HIGH_VALUE';
+  setFilterType?: (type: 'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE' | 'HIGH_VALUE') => void;
   onToggleSelect: (id: string) => void;
   onSelectAll: (select: boolean) => void;
   onDeleteBoleto: (id: string) => void;
@@ -45,7 +45,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [bankFilter, setBankFilter] = useState('ALL');
-  const [internalFilterType, setInternalFilterType] = useState<'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE'>('ALL');
+  const [internalFilterType, setInternalFilterType] = useState<'ALL' | 'DISCOUNT' | 'INTEREST' | 'DUPLICATE' | 'OVERDUE' | 'HIGH_VALUE'>('ALL');
 
   const filterType = propFilterType !== undefined ? propFilterType : internalFilterType;
   const setFilterType = propSetFilterType || setInternalFilterType;
@@ -127,6 +127,16 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
     [boletos, todayStr]
   );
 
+  // High Value (> R$ 250.000,00) Boletos Alert Statistics
+  const highValueBoletos = useMemo(
+    () => boletos.filter((b) => (b.valor - (b.desconto || 0) + (b.jurosMulta || 0)) >= 250000 || b.valor >= 250000),
+    [boletos]
+  );
+  const totalHighValueVal = useMemo(
+    () => highValueBoletos.reduce((acc, b) => acc + (b.valor - (b.desconto || 0) + (b.jurosMulta || 0)), 0),
+    [highValueBoletos]
+  );
+
   // Filter logic
   const filteredBoletos = useMemo(() => {
     return boletos.filter((b) => {
@@ -145,6 +155,8 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
       if (filterType === 'INTEREST') matchFilterType = (b.jurosMulta || 0) > 0;
       if (filterType === 'DUPLICATE') matchFilterType = !!(dupInfo && dupInfo.isDuplicate);
       if (filterType === 'OVERDUE') matchFilterType = b.dataVencimento < todayStr;
+      if (filterType === 'HIGH_VALUE')
+        matchFilterType = (b.valor - (b.desconto || 0) + (b.jurosMulta || 0)) >= 250000 || b.valor >= 250000;
 
       return matchSearch && matchBank && matchFilterType;
     });
@@ -346,6 +358,38 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
         </div>
       )}
 
+      {/* High Value (> R$ 250k) Alert Banner */}
+      {highValueBoletos.length > 0 && (
+        <div className="bg-purple-50 border-2 border-purple-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-purple-950 text-xs shadow-xs">
+          <div className="flex items-start sm:items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-700 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <AlertTriangle className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="font-extrabold text-purple-950 text-sm flex items-center gap-1.5">
+                <span>⚡ ALERTA DE ALTA ALÇADA: {highValueBoletos.length} boleto(s) acima de R$ 250.000,00</span>
+                <span className="bg-purple-200 text-purple-950 border border-purple-300 text-[10px] font-mono font-black px-2 py-0.5 rounded-full">
+                  {formatCurrencyBRL(totalHighValueVal)}
+                </span>
+              </p>
+              <p className="text-purple-900 mt-0.5 font-medium">
+                Boletos com valor igual ou superior a R$ 250.000,00 exigem atenção e autorização prévia de diretoria/alçada antes de gerar a remessa de pagamento.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setFilterType(filterType === 'HIGH_VALUE' ? 'ALL' : 'HIGH_VALUE')}
+            className={`px-3.5 py-1.5 rounded-xl font-bold transition-all border text-xs shrink-0 cursor-pointer ${
+              filterType === 'HIGH_VALUE'
+                ? 'bg-purple-700 text-white border-purple-700 shadow-xs'
+                : 'bg-white text-purple-900 border-purple-300 hover:bg-purple-100'
+            }`}
+          >
+            {filterType === 'HIGH_VALUE' ? 'Ver Todos os Boletos' : `Filtrar os ${highValueBoletos.length} com Valor > R$ 250k`}
+          </button>
+        </div>
+      )}
+
       {/* Duplicate Alert Banner */}
       {duplicateCount > 0 && (
         <div className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 flex flex-col gap-3 text-orange-950 text-xs shadow-sm">
@@ -509,6 +553,20 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
           >
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>Repetidos ({duplicateCount})</span>
+          </button>
+        )}
+
+        {highValueBoletos.length > 0 && (
+          <button
+            onClick={() => setFilterType(filterType === 'HIGH_VALUE' ? 'ALL' : 'HIGH_VALUE')}
+            className={`px-3 py-1.5 rounded-xl font-bold border flex items-center space-x-1.5 transition-all cursor-pointer ${
+              filterType === 'HIGH_VALUE'
+                ? 'bg-purple-700 text-white border-purple-700 shadow-xs'
+                : 'bg-purple-50 text-purple-900 border-purple-300 hover:bg-purple-100'
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Alta Alçada (&gt; R$ 250k) ({highValueBoletos.length})</span>
           </button>
         )}
       </div>
@@ -996,6 +1054,16 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                               </span>
                             )}
 
+                            {(boleto.valor >= 250000 || valorFinal >= 250000) && (
+                              <span
+                                className="inline-flex items-center gap-1 bg-purple-100 text-purple-950 border border-purple-300 text-[10px] font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-2xs animate-pulse"
+                                title="Valor igual ou superior a R$ 250.000,00 - Exige autorização de alta alçada"
+                              >
+                                <AlertTriangle className="w-3 h-3 text-purple-700" />
+                                Alta Alçada (&gt; 250k)
+                              </span>
+                            )}
+
                             {dupInfo?.isDuplicate && (
                               <span
                                 className="inline-flex items-center gap-1 bg-orange-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shrink-0 shadow-xs"
@@ -1038,10 +1106,22 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                           <p className="font-mono text-xs text-slate-500 tracking-tight font-medium">
                             {formatLinhaDigitavelDisplay(boleto.linhaDigitavel)}
                           </p>
-                          {boleto.favorecidoCnpjCpf && (
-                            <p className="text-[11px] text-slate-400">
-                              Doc: {boleto.favorecidoCnpjCpf}
-                            </p>
+                          {boleto.favorecidoCnpjCpf ? (
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                              <span className="bg-slate-100 text-slate-700 font-mono font-bold px-1.5 py-0.5 rounded border border-slate-200">
+                                CNPJ/CPF Beneficiário: {boleto.favorecidoCnpjCpf}
+                              </span>
+                              {boleto.pagadorCnpjCpf && (
+                                <span className="bg-slate-50 text-slate-500 font-mono text-[10px] px-1.5 py-0.5 rounded border border-slate-200">
+                                  Pagador: {boleto.pagadorCnpjCpf}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-[11px] text-amber-700 font-medium">
+                              <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+                              <span>CNPJ/CPF Beneficiário não informado (Obrigatório Santander J-52)</span>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -1130,6 +1210,12 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                               <Clock className="w-3 h-3 text-rose-600" /> Vencido
                             </span>
                           ) : null}
+
+                          {(boleto.valor >= 250000 || valorFinal >= 250000) && (
+                            <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-950 border border-purple-300 text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs">
+                              <AlertTriangle className="w-3 h-3 text-purple-700" /> &gt; R$ 250k
+                            </span>
+                          )}
                         </div>
                       </td>
 

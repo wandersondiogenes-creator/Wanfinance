@@ -7,8 +7,26 @@ import {
   syncBoletosToSupabase,
   syncHistoryToSupabase,
 } from '../lib/supabase';
+import { DEFAULT_COMPANIES, SANTANDER_PAGFOR_DATA } from '../data/defaultCompanies';
+
+export { DEFAULT_COMPANIES, SANTANDER_PAGFOR_DATA };
+
+/**
+ * Strips or converts undefined properties recursively to ensure full Firestore compatibility.
+ * Firestore crashes if any property is undefined.
+ */
+export function cleanFirestoreData<T>(data: T): any {
+  if (data === undefined || data === null) {
+    return null;
+  }
+  return JSON.parse(
+    JSON.stringify(data, (_key, value) => (value === undefined ? '' : value))
+  );
+}
 
 const STORAGE_KEYS = {
+  COMPANIES_V5: 'gerador_cnab_companies_v5',
+  ACTIVE_SELECTION_V5: 'gerador_cnab_active_selection_v5',
   COMPANIES_V4: 'gerador_cnab_companies_v4',
   ACTIVE_SELECTION_V4: 'gerador_cnab_active_selection_v4',
   COMPANIES_V3: 'gerador_cnab_companies_v3',
@@ -20,1112 +38,130 @@ const STORAGE_KEYS = {
   USER_SESSION: 'wanfinance_user_session_v1',
 };
 
-export const DEFAULT_COMPANIES: CompanyProfile[] = [
-  {
-    id: 'comp-viasul-auto-byd',
-    nomeFantasia: 'BYD - ARRUDA',
-    razaoSocial: 'VIA SUL AUTO LTDA',
-    cnpjCpf: '54122933000180',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA PROFESSOR ARRUDA CAMARA',
-    numero: '100',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '52070000',
-    bancos: [
-      {
-        id: 'bank-byd-bradesco',
-        apelido: 'Bradesco - 30612',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '3171',
-        contaDV: '2',
-        convenio: '30612',
-        codigoTransmissao: '30612',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-byd-bb',
-        apelido: 'Banco do Brasil - 30300',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3434',
-        agenciaDV: '0',
-        conta: '6931',
-        contaDV: '0',
-        convenio: '30300',
-        codigoTransmissao: '30300',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-byd-itau',
-        apelido: 'Itaú - 30279',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '98958',
-        contaDV: '2',
-        convenio: '30279',
-        codigoTransmissao: '30279',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-byd-santander',
-        apelido: 'Santander - 30262',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '4661',
-        agenciaDV: '0',
-        conta: '130068256',
-        contaDV: '0',
-        convenio: '30262',
-        codigoTransmissao: '30262',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-byd-trianon',
-        apelido: 'Banco Trianon - 30625',
-        bancoCodigo: '318',
-        bancoNome: 'Banco Trianon / BMG',
-        agencia: '895',
-        agenciaDV: '0',
-        conta: '54726',
-        contaDV: '8',
-        convenio: '30625',
-        codigoTransmissao: '30625',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-byd-itau',
-  },
-  {
-    id: 'comp-invest1-parts',
-    nomeFantasia: 'EMPRESA INVESTPARTS',
-    razaoSocial: 'INVEST1 PARTICIPACOES LTDA',
-    cnpjCpf: '58773491000193',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA PAULISTA',
-    numero: '1500',
-    complemento: '',
-    cidade: 'SAO PAULO',
-    uf: 'SP',
-    cep: '01310200',
-    bancos: [
-      {
-        id: 'bank-invest1-bradesco',
-        apelido: 'Bradesco - 30218',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '85000',
-        contaDV: '4',
-        convenio: '30218',
-        codigoTransmissao: '30218',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-invest1-itau',
-        apelido: 'Itaú - 30216',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '1247',
-        agenciaDV: '0',
-        conta: '40738',
-        contaDV: '8',
-        convenio: '30216',
-        codigoTransmissao: '30216',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-invest1-itau',
-  },
-  {
-    id: 'comp-projeto-part',
-    nomeFantasia: 'EMPRESA PROJETO',
-    razaoSocial: 'PROJETO PART. E EMPREEND S/A.',
-    cnpjCpf: '01800826000106',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA REBOUCAS',
-    numero: '2500',
-    complemento: '',
-    cidade: 'SAO PAULO',
-    uf: 'SP',
-    cep: '05402000',
-    bancos: [
-      {
-        id: 'bank-projeto-itau',
-        apelido: 'Itaú - 30245',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '50846',
-        contaDV: '5',
-        convenio: '30245',
-        codigoTransmissao: '30245',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-projeto-itau',
-  },
-  {
-    id: 'comp-granvia-ford',
-    nomeFantasia: 'FORD IMBIRIBEIRA',
-    razaoSocial: 'GRANVIA VEICULOS',
-    cnpjCpf: '12946886000140',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '2000',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-granvia-bradesco',
-        apelido: 'Bradesco - 30221',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '29004',
-        contaDV: '1',
-        convenio: '30221',
-        codigoTransmissao: '30221',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-granvia-bb',
-        apelido: 'Banco do Brasil - 30227',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3433',
-        agenciaDV: '0',
-        conta: '105905',
-        contaDV: 'X',
-        convenio: '30227',
-        codigoTransmissao: '30227',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-granvia-itau',
-        apelido: 'Itaú - 30224',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '5196',
-        agenciaDV: '0',
-        conta: '18209',
-        contaDV: '0',
-        convenio: '30224',
-        codigoTransmissao: '30224',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-granvia-safra',
-        apelido: 'Safra - 30226',
-        bancoCodigo: '422',
-        bancoNome: 'Banco Safra S.A.',
-        agencia: '144',
-        agenciaDV: '0',
-        conta: '580201',
-        contaDV: '2',
-        convenio: '30226',
-        codigoTransmissao: '30226',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-granvia-santander',
-        apelido: 'Santander - 30220',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '2147',
-        agenciaDV: '0',
-        conta: '13001229',
-        contaDV: '6',
-        convenio: '30220',
-        codigoTransmissao: '30220',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-granvia-itau',
-  },
-  {
-    id: 'comp-eurovia-geely',
-    nomeFantasia: 'GEELY IMBIRIBEIRA',
-    razaoSocial: 'EUROVIA AUTO LTDA - GEELY IMBIRIBEIRA',
-    cnpjCpf: '60933323000160',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '2500',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-geely-bradesco',
-        apelido: 'Bradesco - 30620',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '3353',
-        contaDV: '7',
-        convenio: '30620',
-        codigoTransmissao: '30620',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-geely-bb',
-        apelido: 'Banco do Brasil - 30623',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3434',
-        agenciaDV: '7',
-        conta: '7636',
-        contaDV: '8',
-        convenio: '30623',
-        codigoTransmissao: '30623',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-geely-itau',
-        apelido: 'Itaú - 30621',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '98184',
-        contaDV: '5',
-        convenio: '30621',
-        codigoTransmissao: '30621',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-geely-santander',
-        apelido: 'Santander - 30622',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '3749',
-        agenciaDV: '0',
-        conta: '13005439',
-        contaDV: '4',
-        convenio: '30622',
-        codigoTransmissao: '30622',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-geely-itau',
-  },
-  {
-    id: 'comp-viasul-jeep',
-    nomeFantasia: 'JEEP IMBIRIBEIRA',
-    razaoSocial: 'VIA SUL VEICULOS S/A - JEEP IMBIRIBEIRA',
-    cnpjCpf: '40841736001006',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '1800',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-jeep-itau',
-        apelido: 'Itaú - 30232',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '13314',
-        contaDV: '0',
-        convenio: '30232',
-        codigoTransmissao: '30232',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-jeep-santander',
-        apelido: 'Santander - 30229',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '4661',
-        agenciaDV: '0',
-        conta: '13023301',
-        contaDV: '4',
-        convenio: '30229',
-        codigoTransmissao: '30229',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-jeep-itau',
-  },
-  {
-    id: 'comp-intervia-kia',
-    nomeFantasia: 'KIA PIEDADE',
-    razaoSocial: 'INTERVIA VEICULOS SA PIEDADE',
-    cnpjCpf: '08315588000184',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA BERNARDO VIEIRA DE MELO',
-    numero: '1200',
-    complemento: '',
-    cidade: 'JABOATAO DOS GUARARAPES',
-    uf: 'PE',
-    cep: '54410010',
-    bancos: [
-      {
-        id: 'bank-kia-bradesco',
-        apelido: 'Bradesco - 30204',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '29000',
-        contaDV: '9',
-        convenio: '30204',
-        codigoTransmissao: '30204',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-kia-bb',
-        apelido: 'Banco do Brasil - 30203',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3433',
-        agenciaDV: '9',
-        conta: '105530',
-        contaDV: '5',
-        convenio: '30203',
-        codigoTransmissao: '30203',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-kia-itau',
-        apelido: 'Itaú - 30201',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '50844',
-        contaDV: '0',
-        convenio: '30201',
-        codigoTransmissao: '30201',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-kia-safra',
-        apelido: 'Safra - 30205',
-        bancoCodigo: '422',
-        bancoNome: 'Banco Safra S.A.',
-        agencia: '144',
-        agenciaDV: '0',
-        conta: '4195',
-        contaDV: '1',
-        convenio: '30205',
-        codigoTransmissao: '30205',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-kia-santander',
-        apelido: 'Santander - 30202',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '4661',
-        agenciaDV: '0',
-        conta: '13003914',
-        contaDV: '0',
-        convenio: '30202',
-        codigoTransmissao: '30202',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-kia-itau',
-  },
-  {
-    id: 'comp-viasul-leap',
-    nomeFantasia: 'LEAP IMBIRIBEIRA',
-    razaoSocial: 'VIA SUL VEICULOS S/A - LEAP IMBIRIBEIRA',
-    cnpjCpf: '40841736002312',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '2100',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-leap-itau',
-        apelido: 'Itaú - 30626',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '98171',
-        contaDV: '2',
-        convenio: '30626',
-        codigoTransmissao: '30626',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-leap-santander',
-        apelido: 'Santander - 30627',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '3749',
-        agenciaDV: '0',
-        conta: '13005485',
-        contaDV: '1',
-        convenio: '30627',
-        codigoTransmissao: '30627',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-leap-itau',
-  },
-  {
-    id: 'comp-newvia-motos',
-    nomeFantasia: 'NEWVIA IMBIRIBEIRA',
-    razaoSocial: 'NEWVIA MOTOS LTDA',
-    cnpjCpf: '51478180000152',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '1500',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-newvia-bradesco',
-        apelido: 'Bradesco - 30615',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '3255',
-        contaDV: '7',
-        convenio: '30615',
-        codigoTransmissao: '30615',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-newvia-bb',
-        apelido: 'Banco do Brasil - 30261',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3433',
-        agenciaDV: '9',
-        conta: '7304',
-        contaDV: '0',
-        convenio: '30261',
-        codigoTransmissao: '30261',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-newvia-itau',
-        apelido: 'Itaú - 30271',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '80413',
-        contaDV: '8',
-        convenio: '30271',
-        codigoTransmissao: '30271',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-newvia-safra',
-        apelido: 'Safra - 30624',
-        bancoCodigo: '422',
-        bancoNome: 'Banco Safra S.A.',
-        agencia: '144',
-        agenciaDV: '0',
-        conta: '6954',
-        contaDV: '6',
-        convenio: '30624',
-        codigoTransmissao: '30624',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-newvia-santander',
-        apelido: 'Santander - 30292',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '3886',
-        agenciaDV: '0',
-        conta: '13047880',
-        contaDV: '0',
-        convenio: '30292',
-        codigoTransmissao: '30292',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-newvia-itau',
-  },
-  {
-    id: 'comp-eurovia-nissan',
-    nomeFantasia: 'NISSAN IMBIRIBEIRA',
-    razaoSocial: 'EUROVIA AUT E UTILIT SA MATRIZ',
-    cnpjCpf: '04109834000190',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '2700',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-nissan-bradesco',
-        apelido: 'Bradesco - 30270',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '55073',
-        contaDV: '6',
-        convenio: '30270',
-        codigoTransmissao: '30270',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-nissan-bb',
-        apelido: 'Banco do Brasil - 30286',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3433',
-        agenciaDV: '0',
-        conta: '8976',
-        contaDV: '1',
-        convenio: '30286',
-        codigoTransmissao: '30286',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-nissan-itau',
-        apelido: 'Itaú - 30285',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '50848',
-        contaDV: '1',
-        convenio: '30285',
-        codigoTransmissao: '30285',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-nissan-safra',
-        apelido: 'Safra - 30287',
-        bancoCodigo: '422',
-        bancoNome: 'Banco Safra S.A.',
-        agencia: '144',
-        agenciaDV: '0',
-        conta: '580235',
-        contaDV: '7',
-        convenio: '30287',
-        codigoTransmissao: '30287',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-nissan-santander',
-        apelido: 'Santander - 30269',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '4661',
-        agenciaDV: '0',
-        conta: '13000102',
-        contaDV: '8',
-        convenio: '30269',
-        codigoTransmissao: '30269',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-nissan-itau',
-  },
-  {
-    id: 'comp-eurovia-omoda',
-    nomeFantasia: 'OMODA ABDIAS',
-    razaoSocial: 'EUROVIA COMERCIO DE VEICULOS LTDA',
-    cnpjCpf: '55479113000103',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA GENERAL SAN MARTIN',
-    numero: '1000',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '50761000',
-    bancos: [
-      {
-        id: 'bank-omoda-bradesco',
-        apelido: 'Bradesco - 30616',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '3219',
-        contaDV: '0',
-        convenio: '30616',
-        codigoTransmissao: '30616',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-omoda-bb',
-        apelido: 'Banco do Brasil - 30618',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3434',
-        agenciaDV: '0',
-        conta: '6986',
-        contaDV: '8',
-        convenio: '30618',
-        codigoTransmissao: '30618',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-omoda-itau',
-        apelido: 'Itaú - 30613',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '98565',
-        contaDV: '5',
-        convenio: '30613',
-        codigoTransmissao: '30613',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-omoda-santander',
-        apelido: 'Santander - 30619',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '4661',
-        agenciaDV: '0',
-        conta: '130069783',
-        contaDV: '0',
-        convenio: '30619',
-        codigoTransmissao: '30619',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-omoda-trianon',
-        apelido: 'Banco Trianon - 30655',
-        bancoCodigo: '318',
-        bancoNome: 'Banco Trianon / BMG',
-        agencia: '0895',
-        agenciaDV: '8',
-        conta: '83346',
-        contaDV: '0',
-        convenio: '30655',
-        codigoTransmissao: '30655',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-omoda-itau',
-  },
-  {
-    id: 'comp-eurovia-renault',
-    nomeFantasia: 'RENAULT PIEDADE',
-    razaoSocial: 'EUROVIA VEICULOS AS',
-    cnpjCpf: '02671595000132',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA BERNARDO VIEIRA DE MELO',
-    numero: '1400',
-    complemento: '',
-    cidade: 'JABOATAO DOS GUARARAPES',
-    uf: 'PE',
-    cep: '54410010',
-    bancos: [
-      {
-        id: 'bank-renault-bradesco-2960',
-        apelido: 'Bradesco Ag 2960 - 30248',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '51574',
-        contaDV: '4',
-        convenio: '30248',
-        codigoTransmissao: '30248',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-renault-bradesco-895',
-        apelido: 'Bradesco Ag 895 - 30252',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '895',
-        agenciaDV: '0',
-        conta: '0139514',
-        contaDV: '9',
-        convenio: '30252',
-        codigoTransmissao: '30252',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-renault-bb',
-        apelido: 'Banco do Brasil - 30263',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3433',
-        agenciaDV: '0',
-        conta: '105619',
-        contaDV: '0',
-        convenio: '30263',
-        codigoTransmissao: '30263',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-renault-itau',
-        apelido: 'Itaú - 30255',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '40092',
-        contaDV: '9',
-        convenio: '30255',
-        codigoTransmissao: '30255',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-renault-safra',
-        apelido: 'Safra - 30266',
-        bancoCodigo: '422',
-        bancoNome: 'Banco Safra S.A.',
-        agencia: '144',
-        agenciaDV: '0',
-        conta: '4203',
-        contaDV: '6',
-        convenio: '30266',
-        codigoTransmissao: '30266',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-renault-santander',
-        apelido: 'Santander - 30247',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '4661',
-        agenciaDV: '0',
-        conta: '13000563',
-        contaDV: '7',
-        convenio: '30247',
-        codigoTransmissao: '30247',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-renault-itau',
-  },
-  {
-    id: 'comp-via1-corretora',
-    nomeFantasia: 'VIA 1 CORRETORA',
-    razaoSocial: 'VIA 1 CORRETORA DE SEGUROS LTDA',
-    cnpjCpf: '08617068000126',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '1900',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-via1corretora-santander',
-        apelido: 'Santander - 30230',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '4661',
-        agenciaDV: '0',
-        conta: '13067288',
-        contaDV: '0',
-        convenio: '30230',
-        codigoTransmissao: '30230',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-via1corretora-santander',
-  },
-  {
-    id: 'comp-via1-locadora',
-    nomeFantasia: 'VIA 1 LOCADORA',
-    razaoSocial: 'VIA 1 LOCADORA DE VEICULOS LTDA',
-    cnpjCpf: '40539927000119',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '1950',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-via1locadora-santander',
-        apelido: 'Santander - 30297',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '4661',
-        agenciaDV: '0',
-        conta: '13036996',
-        contaDV: '6',
-        convenio: '30297',
-        codigoTransmissao: '30297',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-via1locadora-santander',
-  },
-  {
-    id: 'comp-via-holding',
-    nomeFantasia: 'VIA HOLDING',
-    razaoSocial: 'VIA HOLDING LTDA',
-    cnpjCpf: '27537487000100',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'RUA SAMUEL KLEIN',
-    numero: '83',
-    complemento: '',
-    cidade: 'SAO CAETANO DO SUL',
-    uf: 'SP',
-    cep: '09510125',
-    bancos: [
-      {
-        id: 'bank-viaholding-bradesco',
-        apelido: 'Bradesco - 30296',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '02357',
-        contaDV: '4',
-        convenio: '30296',
-        codigoTransmissao: '30296',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-viaholding-itau',
-        apelido: 'Itaú - 30278',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '98722',
-        contaDV: '2',
-        convenio: '30278',
-        codigoTransmissao: '30278',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-viaholding-itau',
-  },
-  {
-    id: 'comp-viasul-matriz',
-    nomeFantasia: 'VIA SUL MATRIZ',
-    razaoSocial: 'VIA SUL VEICULOS LTDA',
-    cnpjCpf: '40841736000107',
-    tipoInscricao: 'CNPJ',
-    logradouro: 'AVENIDA MASCARENHAS DE MORAIS',
-    numero: '1700',
-    complemento: '',
-    cidade: 'RECIFE',
-    uf: 'PE',
-    cep: '51170000',
-    bancos: [
-      {
-        id: 'bank-viasulmatriz-bradesco-2960',
-        apelido: 'Bradesco Ag 2960 - 30234',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '2960',
-        agenciaDV: '0',
-        conta: '28755',
-        contaDV: '5',
-        convenio: '30234',
-        codigoTransmissao: '30234',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-viasulmatriz-bradesco-895',
-        apelido: 'Bradesco Ag 895 - 30246',
-        bancoCodigo: '237',
-        bancoNome: 'Banco Bradesco S.A.',
-        agencia: '895',
-        agenciaDV: '0',
-        conta: '140107',
-        contaDV: '6',
-        convenio: '30246',
-        codigoTransmissao: '30246',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-viasulmatriz-bb',
-        apelido: 'Banco do Brasil - 30241',
-        bancoCodigo: '001',
-        bancoNome: 'Banco do Brasil S.A.',
-        agencia: '3433',
-        agenciaDV: '0',
-        conta: '62283',
-        contaDV: '4',
-        convenio: '30241',
-        codigoTransmissao: '30241',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-viasulmatriz-itau',
-        apelido: 'Itaú - 30231',
-        bancoCodigo: '341',
-        bancoNome: 'Itaú Unibanco S.A.',
-        agencia: '0877',
-        agenciaDV: '0',
-        conta: '40091',
-        contaDV: '1',
-        convenio: '30231',
-        codigoTransmissao: '30231',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-      {
-        id: 'bank-viasulmatriz-santander',
-        apelido: 'Santander - 30228',
-        bancoCodigo: '033',
-        bancoNome: 'Banco Santander Brasil S.A.',
-        agencia: '3749',
-        agenciaDV: '0',
-        conta: '13000653',
-        contaDV: '5',
-        convenio: '30228',
-        codigoTransmissao: '30228',
-        nsa: 1,
-        padraoCNAB: '240',
-        layoutVersaoLote: '046',
-      },
-    ],
-    activeBankId: 'bank-viasulmatriz-itau',
-  },
-];
+/**
+ * Deduplicate and sanitize company profiles list
+ */
+function sanitizeAndDeduplicateCompanies(companiesList: CompanyProfile[]): CompanyProfile[] {
+  const seenIds = new Set<string>();
+  const seenCnpjs = new Set<string>();
+  const uniqueCompanies: CompanyProfile[] = [];
+
+  for (const comp of companiesList) {
+    if (!comp || !comp.id) continue;
+    const cleanCnpj = (comp.cnpjCpf || '').replace(/\D/g, '');
+
+    // Skip duplicate IDs or duplicate CNPJs
+    if (seenIds.has(comp.id) || (cleanCnpj && seenCnpjs.has(cleanCnpj))) {
+      continue;
+    }
+
+    seenIds.add(comp.id);
+    if (cleanCnpj) seenCnpjs.add(cleanCnpj);
+
+    // Deduplicate bank accounts inside this company
+    const seenBankIds = new Set<string>();
+    const sanitizedBancos: BankAccountProfile[] = [];
+
+    if (Array.isArray(comp.bancos)) {
+      for (const b of comp.bancos) {
+        if (!b || !b.id || seenBankIds.has(b.id)) continue;
+        seenBankIds.add(b.id);
+        sanitizedBancos.push({
+          ...b,
+          apelido: b.apelido || 'Conta Bancária',
+          bancoCodigo: b.bancoCodigo || '001',
+          bancoNome: b.bancoNome || 'Banco',
+          agencia: b.agencia || '',
+          agenciaDV: b.agenciaDV || '0',
+          conta: b.conta || '',
+          contaDV: b.contaDV || '0',
+          convenio: b.convenio || '',
+          codigoTransmissao: b.codigoTransmissao || b.codigoEstacao || '',
+          codigoEstacao: b.codigoEstacao || b.codigoTransmissao || '',
+          nsa: typeof b.nsa === 'number' ? b.nsa : 1,
+          padraoCNAB: b.padraoCNAB || '240',
+          layoutVersaoLote: b.layoutVersaoLote || (b.bancoCodigo === '033' ? '030' : '046'),
+        });
+      }
+    }
+
+    uniqueCompanies.push({
+      ...comp,
+      nomeFantasia: comp.nomeFantasia || comp.razaoSocial || 'Empresa',
+      razaoSocial: comp.razaoSocial || comp.nomeFantasia || 'Empresa',
+      cnpjCpf: comp.cnpjCpf || '',
+      tipoInscricao: comp.tipoInscricao || 'CNPJ',
+      logradouro: comp.logradouro || '',
+      numero: comp.numero || '',
+      complemento: comp.complemento || '',
+      cidade: comp.cidade || '',
+      uf: comp.uf || 'PE',
+      cep: comp.cep || '',
+      bancos: sanitizedBancos,
+      activeBankId: comp.activeBankId || (sanitizedBancos[0] ? sanitizedBancos[0].id : ''),
+    });
+  }
+
+  return uniqueCompanies;
+}
 
 export function loadCompanyProfiles(): CompanyProfile[] {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.COMPANIES_V4);
+    const data = localStorage.getItem(STORAGE_KEYS.COMPANIES_V5) || localStorage.getItem(STORAGE_KEYS.COMPANIES_V4);
     if (data) {
-      const parsed = JSON.parse(data);
+      const parsed: CompanyProfile[] = JSON.parse(data);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // First deduplicate parsed by id and CNPJ
+        const cleanParsed = sanitizeAndDeduplicateCompanies(parsed);
+
+        // Merge official Santander Pagfor convênio and station codes into parsed profiles
+        const merged = cleanParsed.map((comp) => {
+          const defaultMatch = DEFAULT_COMPANIES.find(
+            (dc) => (dc.cnpjCpf || '').replace(/\D/g, '') === (comp.cnpjCpf || '').replace(/\D/g, '') || dc.id === comp.id
+          );
+          if (!defaultMatch) return comp;
+
+          // Merge Santander bank account if present or add if missing
+          const defaultSantander = defaultMatch.bancos.find((b) => b.bancoCodigo === '033');
+          if (!defaultSantander) return comp;
+
+          const existingSantanderIdx = comp.bancos.findIndex((b) => b.bancoCodigo === '033');
+          if (existingSantanderIdx >= 0) {
+            const existingSantander = comp.bancos[existingSantanderIdx];
+            comp.bancos[existingSantanderIdx] = {
+              ...existingSantander,
+              agencia: existingSantander.agencia || defaultSantander.agencia || '',
+              conta: existingSantander.conta || defaultSantander.conta || '',
+              contaDV: existingSantander.contaDV || defaultSantander.contaDV || '0',
+              convenio: defaultSantander.convenio || existingSantander.convenio || '',
+              codigoTransmissao: defaultSantander.codigoTransmissao || existingSantander.codigoTransmissao || '',
+              codigoEstacao: defaultSantander.codigoEstacao || existingSantander.codigoEstacao || '',
+              apelido: defaultSantander.apelido || existingSantander.apelido || 'Santander',
+              layoutVersaoLote: '030',
+            };
+          } else {
+            comp.bancos.push(defaultSantander);
+          }
+
+          return comp;
+        });
+
+        // Ensure all 16 companies from DEFAULT_COMPANIES are present
+        const currentIds = new Set(merged.map((c) => c.id));
+        const currentCnpjs = new Set(merged.map((c) => (c.cnpjCpf || '').replace(/\D/g, '')).filter(Boolean));
+
+        DEFAULT_COMPANIES.forEach((defComp) => {
+          const cleanDefCnpj = (defComp.cnpjCpf || '').replace(/\D/g, '');
+          if (!currentIds.has(defComp.id) && !currentCnpjs.has(cleanDefCnpj)) {
+            merged.push(defComp);
+            currentIds.add(defComp.id);
+            currentCnpjs.add(cleanDefCnpj);
+          }
+        });
+
+        const finalCompanies = sanitizeAndDeduplicateCompanies(merged);
+        saveCompanyProfiles(finalCompanies);
+        return finalCompanies;
       }
     }
   } catch (e) {
@@ -1138,14 +174,18 @@ export function loadCompanyProfiles(): CompanyProfile[] {
 
 export function saveCompanyProfiles(companies: CompanyProfile[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.COMPANIES_V4, JSON.stringify(companies));
-    companies.forEach((c) => {
-      setDoc(doc(db, 'companies', c.id), c, { merge: true }).catch((err) =>
+    const cleanList = sanitizeAndDeduplicateCompanies(companies);
+    localStorage.setItem(STORAGE_KEYS.COMPANIES_V5, JSON.stringify(cleanList));
+    localStorage.setItem(STORAGE_KEYS.COMPANIES_V4, JSON.stringify(cleanList));
+
+    cleanList.forEach((c) => {
+      const firestoreData = cleanFirestoreData(c);
+      setDoc(doc(db, 'companies', c.id), firestoreData, { merge: true }).catch((err) =>
         console.warn('[Firestore] Sync company warning:', err)
       );
     });
 
-    syncCompanyProfilesToSupabase(companies).catch((err) =>
+    syncCompanyProfilesToSupabase(cleanList).catch((err) =>
       console.warn('[Supabase] Sync companies warning:', err)
     );
   } catch (e) {
@@ -1161,7 +201,7 @@ export function resetToDefaultCompanies(): CompanyProfile[] {
 
 export function loadActiveSelection(): { companyId: string; bankId: string } {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_SELECTION_V4);
+    const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_SELECTION_V5) || localStorage.getItem(STORAGE_KEYS.ACTIVE_SELECTION_V4);
     if (data) {
       const parsed = JSON.parse(data);
       if (parsed.companyId && parsed.bankId) {
@@ -1179,6 +219,7 @@ export function loadActiveSelection(): { companyId: string; bankId: string } {
 
 export function saveActiveSelection(companyId: string, bankId: string): void {
   try {
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_SELECTION_V5, JSON.stringify({ companyId, bankId }));
     localStorage.setItem(STORAGE_KEYS.ACTIVE_SELECTION_V4, JSON.stringify({ companyId, bankId }));
   } catch (e) {
     console.error('Failed to save active selection:', e);
@@ -1200,6 +241,7 @@ export function getActiveCompanySettings(
     : DEFAULT_COMPANIES[0].bancos[0];
 
   return {
+    id: company.id,
     razaoSocial: company.razaoSocial,
     cnpjCpf: company.cnpjCpf,
     tipoInscricao: company.tipoInscricao,
@@ -1218,9 +260,10 @@ export function getActiveCompanySettings(
     contaDV: bank.contaDV,
     convenio: bank.convenio,
     codigoTransmissao: bank.codigoTransmissao,
+    codigoEstacao: bank.codigoEstacao || bank.codigoTransmissao || '',
     nsa: bank.nsa,
     padraoCNAB: bank.padraoCNAB,
-    layoutVersaoLote: bank.layoutVersaoLote,
+    layoutVersaoLote: bank.bancoCodigo === '033' ? '030' : bank.layoutVersaoLote,
   };
 }
 
@@ -1261,6 +304,7 @@ export function saveCompanySettings(company: CompanySettings): void {
               contaDV: company.contaDV,
               convenio: company.convenio,
               codigoTransmissao: company.codigoTransmissao,
+              codigoEstacao: company.codigoEstacao,
               nsa: company.nsa,
               padraoCNAB: company.padraoCNAB,
               layoutVersaoLote: company.layoutVersaoLote,
@@ -1298,7 +342,8 @@ export function saveBoletos(boletos: BoletoItem[]): void {
   try {
     localStorage.setItem(STORAGE_KEYS.BOLETOS, JSON.stringify(boletos));
     boletos.forEach((b) => {
-      setDoc(doc(db, 'boletos', b.id), b, { merge: true }).catch((err) =>
+      const firestoreData = cleanFirestoreData(b);
+      setDoc(doc(db, 'boletos', b.id), firestoreData, { merge: true }).catch((err) =>
         console.warn('[Firestore] Sync boleto warning:', err)
       );
     });
@@ -1380,7 +425,8 @@ export function saveHistory(history: CNABBatchHistory[]): void {
     const cleanHistory = purgeExpiredHistory(history);
     localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(cleanHistory));
     cleanHistory.forEach((h) => {
-      setDoc(doc(db, 'cnab_history', h.id), h, { merge: true }).catch((err) =>
+      const firestoreData = cleanFirestoreData(h);
+      setDoc(doc(db, 'cnab_history', h.id), firestoreData, { merge: true }).catch((err) =>
         console.warn('[Firestore] Sync history warning:', err)
       );
     });
@@ -1392,7 +438,6 @@ export function saveHistory(history: CNABBatchHistory[]): void {
     console.error('Failed to save history:', e);
   }
 }
-
 
 export function loadUserSession(): AuthUser | null {
   try {
@@ -1410,7 +455,8 @@ export function saveUserSession(user: AuthUser | null): void {
   try {
     if (user) {
       localStorage.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user));
-      setDoc(doc(db, 'users', user.id), user, { merge: true }).catch((err) =>
+      const firestoreData = cleanFirestoreData(user);
+      setDoc(doc(db, 'users', user.id), firestoreData, { merge: true }).catch((err) =>
         console.warn('[Firestore] Sync user session warning:', err)
       );
 

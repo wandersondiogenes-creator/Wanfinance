@@ -1,8 +1,9 @@
 import { resetToDefaultCompanies } from '../utils/storage';
+import { SANTANDER_PAGFOR_DATA } from '../data/defaultCompanies';
 import React, { useState } from 'react';
 import { CompanyProfile, BankAccountProfile } from '../types';
 import { BRAZILIAN_BANKS, getBankInfo } from '../utils/banks';
-import { Building2, CreditCard, Plus, Trash2, Edit3, CheckCircle2, Shield, RefreshCw, Save, Check, FileText, Info, Sparkles, Building, ChevronRight, Star } from 'lucide-react';
+import { Building2, CreditCard, Plus, Trash2, Edit3, CheckCircle2, Shield, RefreshCw, Save, Check, FileText, Info, Sparkles, Building, ChevronRight, Star, Table, Search, Copy } from 'lucide-react';
 
 interface CompanySettingsProps {
   companies: CompanyProfile[];
@@ -23,6 +24,9 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
 }) => {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(activeCompanyId);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isViewingSantanderTable, setIsViewingSantanderTable] = useState(false);
+  const [santanderSearch, setSantanderSearch] = useState('');
+  const [copiedText, setCopiedText] = useState<string | null>(null);
 
   // Modals / Editors state
   const [isEditingCompany, setIsEditingCompany] = useState(false);
@@ -203,7 +207,16 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
             </h3>
           </div>
 
-          <div className="flex items-center space-x-2 self-start sm:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => setIsViewingSantanderTable(true)}
+              className="bg-red-950/40 hover:bg-red-900/60 text-red-300 font-semibold text-xs px-3.5 py-2 rounded-xl transition-all border border-red-800/60 flex items-center space-x-1.5 shadow-sm"
+              title="Visualizar códigos de convênio e estação de todas as 16 empresas Santander"
+            >
+              <Table className="w-4 h-4 text-red-400" />
+              <span>Convênios Santander Pagfor ({SANTANDER_PAGFOR_DATA.length})</span>
+            </button>
+
             <button
               onClick={() => {
                 if (confirm('Deseja restaurar e atualizar todas as 16 empresas e contas bancárias com a tabela padrão do sistema?')) {
@@ -582,7 +595,7 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                     </div>
 
                     {/* Bank Details Grid */}
-                    <div className="grid grid-cols-2 gap-2 bg-slate-900/80 p-3 rounded-xl text-xs font-mono border border-slate-800/80">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-900/80 p-3 rounded-xl text-xs font-mono border border-slate-800/80">
                       <div>
                         <span className="text-slate-500 block text-[10px] font-sans font-semibold uppercase">Agência / DV</span>
                         <span className="text-slate-200 font-bold">{b.agencia}-{b.agenciaDV}</span>
@@ -594,13 +607,25 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                       </div>
 
                       <div>
-                        <span className="text-slate-500 block text-[10px] font-sans font-semibold uppercase">Convênio</span>
-                        <span className="text-amber-400 font-bold">{b.convenio}</span>
+                        <span className="text-slate-500 block text-[10px] font-sans font-semibold uppercase">Convênio Pagfor</span>
+                        <span className="text-amber-400 font-bold">{b.convenio || '-'}</span>
                       </div>
+
+                      {b.bancoCodigo === '033' && (
+                        <div>
+                          <span className="text-slate-500 block text-[10px] font-sans font-semibold uppercase">Cód. Estação Santander</span>
+                          <span className="text-emerald-400 font-bold">{b.codigoEstacao || b.codigoTransmissao || '-'}</span>
+                        </div>
+                      )}
 
                       <div>
                         <span className="text-slate-500 block text-[10px] font-sans font-semibold uppercase">CNAB & NSA</span>
                         <span className="text-blue-400 font-bold">CNAB {b.padraoCNAB} | #{b.nsa}</span>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-500 block text-[10px] font-sans font-semibold uppercase">Layout Lote</span>
+                        <span className="text-slate-300 font-bold font-mono">{b.layoutVersaoLote || (b.bancoCodigo === '033' ? '030' : '046')}</span>
                       </div>
                     </div>
 
@@ -898,7 +923,7 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
                     Código de Convênio no Banco
@@ -912,15 +937,39 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                         bank: { ...editingBankModal.bank!, convenio: e.target.value },
                       })
                     }
-                    placeholder="Ex: 98765432"
+                    placeholder="Ex: 4903471219"
                     className="w-full bg-slate-800 border border-slate-700 text-slate-100 text-sm font-mono rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500"
                     required
                   />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Convênio Pagamentos a Fornecedores</p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                    Código Transmissão (Opcional)
+                    Código de Estação (Santander)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingBankModal.bank.codigoEstacao || editingBankModal.bank.codigoTransmissao || ''}
+                    onChange={(e) =>
+                      setEditingBankModal({
+                        ...editingBankModal,
+                        bank: {
+                          ...editingBankModal.bank!,
+                          codigoEstacao: e.target.value,
+                          codigoTransmissao: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder="Ex: YY38, 04UP, 05CE"
+                    className="w-full bg-slate-800 border border-slate-700 text-slate-100 text-sm font-mono rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500 uppercase"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Posições 192 a 211 do Header (Santander)</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                    Cód. Transmissão (Outros)
                   </label>
                   <input
                     type="text"
@@ -931,7 +980,7 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                         bank: { ...editingBankModal.bank!, codigoTransmissao: e.target.value },
                       })
                     }
-                    placeholder="Ex: 1234567890"
+                    placeholder="Ex: 123456"
                     className="w-full bg-slate-800 border border-slate-700 text-slate-100 text-sm font-mono rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -963,14 +1012,14 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={editingBankModal.bank.layoutVersaoLote || '046'}
+                    value={editingBankModal.bank.layoutVersaoLote || (editingBankModal.bank.bancoCodigo === '033' ? '030' : '046')}
                     onChange={(e) =>
                       setEditingBankModal({
                         ...editingBankModal,
                         bank: { ...editingBankModal.bank!, layoutVersaoLote: e.target.value },
                       })
                     }
-                    placeholder="046"
+                    placeholder={editingBankModal.bank.bancoCodigo === '033' ? '030' : '046'}
                     className="w-full bg-slate-800 border border-slate-700 text-slate-100 text-sm font-mono rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -1012,6 +1061,151 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Tabela Completa de Convênios Santander Pagfor (16 Empresas) */}
+      {isViewingSantanderTable && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-red-400">
+                  <Table className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-100 flex items-center space-x-2">
+                    <span>Tabela de Convênios Santander — Pagamentos a Fornecedores</span>
+                    <span className="bg-red-500/20 text-red-300 border border-red-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                      Banco 033
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Convênios e Códigos de Estação cadastrados para as 16 empresas do grupo
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsViewingSantanderTable(false)}
+                className="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-800 hover:bg-slate-700 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                placeholder="Buscar por Empresa, Razão Social, CNPJ, Agência ou Convênio..."
+                value={santanderSearch}
+                onChange={(e) => setSantanderSearch(e.target.value)}
+                className="w-full bg-slate-800/80 border border-slate-700 text-slate-100 text-xs rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:border-red-500 placeholder-slate-500"
+              />
+            </div>
+
+            {/* Table Container */}
+            <div className="max-h-[60vh] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/50">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-800/80 text-slate-400 font-semibold uppercase tracking-wider sticky top-0 border-b border-slate-800 text-[10px]">
+                  <tr>
+                    <th className="px-4 py-3">Empresa / Razão Social</th>
+                    <th className="px-4 py-3">CNPJ</th>
+                    <th className="px-3 py-3">Agência</th>
+                    <th className="px-4 py-3">Conta</th>
+                    <th className="px-4 py-3">Convênio</th>
+                    <th className="px-3 py-3">Cód. Estação</th>
+                    <th className="px-3 py-3 text-center">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                  {SANTANDER_PAGFOR_DATA.filter((row) => {
+                    if (!santanderSearch.trim()) return true;
+                    const query = santanderSearch.toLowerCase();
+                    return (
+                      row.nome.toLowerCase().includes(query) ||
+                      row.cnpj.includes(query) ||
+                      row.agencia.includes(query) ||
+                      row.conta.includes(query) ||
+                      row.convenio.includes(query) ||
+                      row.codigoEstacao.toLowerCase().includes(query)
+                    );
+                  }).map((item, idx) => {
+                    const matchCompany = companies.find(
+                      (c) => c.cnpjCpf.replace(/\D/g, '') === item.cnpj.replace(/\D/g, '')
+                    );
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="px-4 py-2.5 font-sans">
+                          <p className="font-bold text-slate-200">{item.nome}</p>
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-300">{item.cnpj}</td>
+                        <td className="px-3 py-2.5 text-slate-300 font-bold">{item.agencia}</td>
+                        <td className="px-4 py-2.5 text-slate-300">
+                          {item.conta}-{item.contaDV}
+                        </td>
+                        <td className="px-4 py-2.5 font-bold text-amber-400">
+                          <div className="flex items-center space-x-1.5">
+                            <span>{item.convenio}</span>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(item.convenio);
+                                setCopiedText(item.convenio);
+                                setTimeout(() => setCopiedText(null), 2000);
+                              }}
+                              className="text-slate-500 hover:text-amber-300 transition-colors"
+                              title="Copiar convênio"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 font-bold text-emerald-400">
+                          <span className="bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                            {item.codigoEstacao}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          {matchCompany && (
+                            <button
+                              onClick={() => {
+                                handleSelectCompanyTab(matchCompany.id);
+                                setIsViewingSantanderTable(false);
+                              }}
+                              className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded-lg text-[10px] font-sans font-semibold transition-colors"
+                            >
+                              Ver Empresa
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {copiedText && (
+              <div className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs px-3 py-1.5 rounded-xl text-center font-medium">
+                Copiado para a área de transferência: {copiedText}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs text-slate-400">
+              <span>
+                Total de Empresas com Santander Cadastrado: <strong className="text-slate-200">{SANTANDER_PAGFOR_DATA.length}</strong>
+              </span>
+              <button
+                onClick={() => setIsViewingSantanderTable(false)}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold px-4 py-2 rounded-xl transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

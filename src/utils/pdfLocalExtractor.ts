@@ -158,7 +158,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                 let extractedValue = parsed.valor > 0 ? parsed.valor : (detected.valor || 0);
 
                 if (extractedValue <= 0) {
-                  const valorMatch = textBlock.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+COBRADO|TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|VALOR\s+DO\s+DOCUMENTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+                  const valorMatch = textBlock.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+Documento|VALOR\s+ORIGINAL|Valor\s+Original|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado)|Valor)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
                   if (valorMatch) {
                     const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
                     const parsedVal = parseFloat(valStr);
@@ -170,10 +170,10 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
                 let docNumber = detected.autoInfracao || '';
                 let nossoNum = '';
-                const numDocMatch = textBlock.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+do\s+Documento|Número\s+do\s+Documento|Nº\s+Doc|Seu\s+Número)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
+                const numDocMatch = textBlock.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+do\s+Documento|Número\s+do\s+Documento|Nº\s+Doc|Seu\s+Número|Compromisso)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
                 if (numDocMatch && !docNumber) docNumber = numDocMatch[1].trim();
 
-                const nossoNumMatch = textBlock.match(/(?:Nosso\s+Número|Cart\.\s*\/\s*Nosso\s+Número)\s*[:\s]*([\w\/\.-]{5,25})/i);
+                const nossoNumMatch = textBlock.match(/(?:Nosso\s+Número|Cart\.\s*\/\s*Nosso\s+Número|Nosso\s+Numero)\s*[:\s]*([\w\/\.-]{5,25})/i);
                 if (nossoNumMatch) nossoNum = nossoNumMatch[1].trim();
 
                 const finalFavorecido = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
@@ -184,7 +184,8 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   linhaDigitavel: clean,
                   codigoBarras: parsed.codigoBarras || clean,
                   favorecidoNome: finalFavorecido,
-                  favorecidoCnpjCpf: '',
+                  favorecidoCnpjCpf: detected.favorecidoCnpjCpf || '',
+                  beneficiarioCnpjCpf: detected.favorecidoCnpjCpf || '',
                   pagador: detected.pagador || '',
                   pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
                   valor: extractedValue,
@@ -228,7 +229,10 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                       linhaDigitavel: chunk48,
                       codigoBarras: parsed48.codigoBarras || chunk48,
                       favorecidoNome: detected.favorecidoNome || extractFavorecidoFromText(textBlock || fullDocText, parsed48.bancoNome),
-                      favorecidoCnpjCpf: '',
+                      favorecidoCnpjCpf: detected.favorecidoCnpjCpf || '',
+                      beneficiarioCnpjCpf: detected.favorecidoCnpjCpf || '',
+                      pagador: detected.pagador || '',
+                      pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
                       valor: parsed48.valor > 0 ? parsed48.valor : (detected.valor || 0),
                       dataVencimento: detected.dataVencimento || parsed48.dataVencimento || new Date().toISOString().split('T')[0],
                       seuNumero: detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
@@ -260,7 +264,10 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   linhaDigitavel: chunk,
                   codigoBarras: parsed.codigoBarras || chunk,
                   favorecidoNome: detected.favorecidoNome || extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome),
-                  favorecidoCnpjCpf: '',
+                  favorecidoCnpjCpf: detected.favorecidoCnpjCpf || '',
+                  beneficiarioCnpjCpf: detected.favorecidoCnpjCpf || '',
+                  pagador: detected.pagador || '',
+                  pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
                   valor: parsed.valor > 0 ? parsed.valor : (detected.valor || 0),
                   dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
                   seuNumero: detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,

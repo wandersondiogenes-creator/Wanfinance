@@ -27,7 +27,6 @@ import {
 } from 'lucide-react';
 import { BoletoItem, CNABBatchHistory } from '../types';
 import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate } from '../utils/boletoParser';
-import { getApiUrl } from '../config/apiConfig';
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate, getBoletoCleanKey, isGenericRef } from '../utils/duplicateDetector';
 import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
@@ -39,6 +38,7 @@ import {
   learnNewLayoutPattern,
   recordFastPathSuccess,
 } from '../utils/layoutLearningEngine';
+import { applyLearnedCorrectionsToBoleto } from '../utils/correctionsMemoryEngine';
 
 export interface DetailedErrorInfo {
   errorType: string;
@@ -303,11 +303,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               step: 'Chamada API Servidor (/api/extract-boleto-pdf)',
               fileName: file.name,
               fileSize: file.size,
-              endpoint: getApiUrl('/api/extract-boleto-pdf'),
+              endpoint: '/api/extract-boleto-pdf',
               severity: 'info',
             });
 
-            const response = await fetch(getApiUrl('/api/extract-boleto-pdf'), {
+            const response = await fetch('/api/extract-boleto-pdf', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -606,7 +606,13 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                 : `Extraído de ${file.name}`),
             confidence: typeof extracted.confianca === 'number' ? extracted.confianca / 100 : (extracted.confidence || 0.95),
             confianca: extracted.confianca || 95,
-            alertas: extracted.alertas || [],
+            alertas: (() => {
+              const list = Array.isArray(extracted.alertas) ? [...extracted.alertas] : [];
+              if (finalValor >= 250000 && !list.some((a) => a.includes('250'))) {
+                list.push('⚡ ALERTA DE ALTA ALÇADA: Valor elevado (> R$ 250.000,00) - Exige autorização prévia');
+              }
+              return list;
+            })(),
             camposDivergentes: extracted.camposDivergentes || [],
           },
         };
@@ -1309,6 +1315,12 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                       <span>{dupInfo.duplicateSourceLabel || 'Duplicado'}</span>
                                     </span>
                                   )}
+                                  {item.data?.valor && item.data.valor >= 250000 ? (
+                                    <span className="inline-flex items-center gap-1 text-purple-950 bg-purple-100 border border-purple-300 font-extrabold px-2 py-0.5 rounded-full text-[10px] shadow-2xs">
+                                      <AlertTriangle className="w-3 h-3 text-purple-700" />
+                                      <span>&gt; R$ 250k</span>
+                                    </span>
+                                  ) : null}
                                 </div>
                               </td>
                               <td className="p-3 text-center">
@@ -1411,6 +1423,16 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                 <span>{dupInfo.duplicateSourceLabel || 'Boleto Repetido'}</span>
                               </span>
                             )}
+
+                            {item.data?.valor && item.data.valor >= 250000 ? (
+                              <span
+                                className="text-xs text-purple-950 bg-purple-100 px-3 py-1 rounded-full border border-purple-300 flex items-center space-x-1 font-black shadow-xs"
+                                title="Valor igual ou superior a R$ 250.000,00 - Exige autorização de alta alçada"
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5 text-purple-700" />
+                                <span>Alta Alçada (&gt; R$ 250k)</span>
+                              </span>
+                            ) : null}
 
                             {item.status === 'loading' && (
                               <span key="status-badge-loading" className="text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 flex items-center space-x-1.5 font-bold">

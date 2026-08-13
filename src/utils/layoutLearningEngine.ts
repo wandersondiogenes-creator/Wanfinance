@@ -578,15 +578,58 @@ export function loadLearnedLayouts(): LearnedLayoutPattern[] {
   return DEFAULT_LEARNED_LAYOUTS;
 }
 
+import { db } from '../lib/firebase';
+import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
+
 /**
- * Salva a base de modelos no LocalStorage
+ * Salva a base de modelos no LocalStorage e sincroniza com o Firestore
  */
 export function saveLearnedLayouts(patterns: LearnedLayoutPattern[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(patterns));
+    // Firestore cloud sync asynchronously
+    patterns.forEach((pattern) => {
+      setDoc(doc(db, 'learned_layouts', pattern.id), pattern, { merge: true }).catch((err) =>
+        console.warn('[Firestore] Sync pattern warning:', err)
+      );
+    });
   } catch (e) {
     console.warn('[Layout Engine] Erro ao salvar modelos:', e);
   }
+}
+
+/**
+ * Syncs learned layout patterns from Firestore cloud database
+ */
+export async function syncLearnedLayoutsFromCloud(): Promise<LearnedLayoutPattern[]> {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'learned_layouts'));
+    const cloudPatterns: LearnedLayoutPattern[] = [];
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data() as LearnedLayoutPattern;
+      if (data && data.id) {
+        cloudPatterns.push(data);
+      }
+    });
+
+    if (cloudPatterns.length > 0) {
+      const local = loadLearnedLayouts();
+      const mergedMap = new Map<string, LearnedLayoutPattern>();
+      local.forEach((p) => mergedMap.set(p.id, p));
+      cloudPatterns.forEach((p) => {
+        const existing = mergedMap.get(p.id);
+        if (!existing || new Date(p.lastUsedDate) > new Date(existing.lastUsedDate)) {
+          mergedMap.set(p.id, p);
+        }
+      });
+      const merged = Array.from(mergedMap.values());
+      saveLearnedLayouts(merged);
+      return merged;
+    }
+  } catch (err) {
+    console.warn('[Firestore] Sync learned layouts error:', err);
+  }
+  return loadLearnedLayouts();
 }
 
 /**

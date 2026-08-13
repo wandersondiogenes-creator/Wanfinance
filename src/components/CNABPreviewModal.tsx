@@ -128,6 +128,13 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
 
   const allSelected = boletos.length > 0 && boletos.every((b) => b.selected);
 
+  // Check boletos missing beneficiary CNPJ/CPF for Santander J-52 compliance
+  const isSantanderAccount = company.bancoCodigo === '033' || company.padraoCNAB === '240';
+  const boletosMissingDoc = validBoletos.filter((b) => {
+    const docClean = (b.favorecidoCnpjCpf || b.beneficiarioCnpjCpf || '').replace(/\D/g, '');
+    return !docClean || docClean === '00000000000000' || docClean === '0';
+  });
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
       <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl my-6 flex flex-col max-h-[92vh]">
@@ -244,6 +251,30 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
+
+          {/* Santander Beneficiary CNPJ Compliance Alert */}
+          {isSantanderAccount && boletosMissingDoc.length > 0 && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 flex items-start space-x-3 text-xs text-amber-950 shadow-xs animate-fade-in">
+              <div className="w-8 h-8 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0 mt-0.5 font-bold">
+                ⚠️
+              </div>
+              <div className="space-y-1">
+                <p className="font-extrabold text-amber-950 text-sm flex items-center gap-1.5">
+                  <span>Validação Santander V11.7: {boletosMissingDoc.length} boleto(s) sem CNPJ/CPF do Beneficiário</span>
+                </p>
+                <p className="text-amber-900">
+                  O Banco Santander exige obrigatoriamente no <strong>Segmento J-52 (Posições 76 e 77-91)</strong> o Tipo e o Número de Inscrição real do Beneficiário/Favorecido para evitar rejeição com ocorrência <strong>"AT" (Inscrição do Beneficiário Inválida)</strong>.
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {boletosMissingDoc.map((b) => (
+                    <span key={b.id} className="bg-amber-100 border border-amber-300 text-amber-950 px-2 py-0.5 rounded font-mono text-[11px] font-bold">
+                      {b.favorecidoNome} ({b.seuNumero || 'Sem Ref'})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Boletos Management Drawer / Section */}
           {showBoletosManager && (

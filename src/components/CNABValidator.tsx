@@ -171,6 +171,30 @@ export const CNABValidator: React.FC<CNABValidatorProps> = ({
       if (trailer && trailer.charAt(7) !== '9') {
         issues.push('A última linha não possui indicador de Trailer de Arquivo (Tipo 9 na Pos 8).');
       }
+
+      // Check Santander details (Segmento J, J-52, and Beneficiary Document)
+      if (bancoCodigo === '033') {
+        lines.forEach((l, idx) => {
+          const tipoReg = l.charAt(7);
+          const segmento = l.charAt(13);
+          const lineNum = idx + 1;
+
+          if (tipoReg === '3' && segmento === 'J') {
+            const regOpcional = l.substring(17, 19);
+            if (regOpcional === '52') {
+              const tipoInsc = l.charAt(75);
+              const docBeneficiario = l.substring(76, 91).trim();
+              const docClean = docBeneficiario.replace(/\D/g, '');
+              if (!docClean || docClean === '00000000000000' || docClean === '0') {
+                issues.push(`Linha ${lineNum} (Segmento J-52 Santander): CNPJ/CPF do Beneficiário zerado ou ausente (Pos 77-91). O banco retornará "NUMERO DOCUMENTO FORNECEDOR INVALIDO".`);
+              }
+              if (tipoInsc !== '1' && tipoInsc !== '2') {
+                issues.push(`Linha ${lineNum} (Segmento J-52 Santander): Tipo de Inscrição do Beneficiário inválido na Pos 76 (encontrado '${tipoInsc}', esperado 1=CPF ou 2=CNPJ).`);
+              }
+            }
+          }
+        });
+      }
     }
 
     if (isCNAB400 && lines[0].length >= 400) {

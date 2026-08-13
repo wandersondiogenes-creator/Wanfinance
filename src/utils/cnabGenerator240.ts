@@ -65,9 +65,14 @@ export function generateCNAB240(
   const contaDV = padRightSpaces(company.contaDV || '0', 1);
   const agenciaContaDV = ' ';
 
-  const convenio = padRightSpaces(company.convenio || '', 20);
+  const isSantander = bancoCodigo === '033';
+
+  const convenio = isSantander && company.convenio && company.convenio.length < 20
+    ? `0033${padLeftZeros(company.agencia, 4)}${padLeftZeros(company.convenio || company.codigoTransmissao || '0', 12)}`
+    : padRightSpaces(company.convenio || '', 20);
+
   const empresaNome = padRightSpaces(company.razaoSocial, 30);
-  const bancoNome = padRightSpaces(company.bancoNome, 30);
+  const bancoNome = isSantander ? padRightSpaces('Banco Santander', 30) : padRightSpaces(company.bancoNome, 30);
   const nsa = padLeftZeros(company.nsa, 6);
 
   // 1. HEADER DE ARQUIVO (Tipo Registro 0)
@@ -75,10 +80,10 @@ export function generateCNAB240(
     bancoCodigo,                           // 001-003 (3) Banco
     '0000',                                // 004-007 (4) Lote de serviço
     '0',                                   // 008-008 (1) Tipo de registro = 0
-    '         ',                           // 009-017 (9) Reservado FEBRABAN
+    '         ',                           // 009-017 (9) Reservado FEBRABAN / Brancos
     tipoInscricaoCompany,                  // 018-018 (1) Tipo inscrição
     inscricaoCompany,                      // 019-032 (14) CNPJ/CPF Empresa
-    convenio,                              // 033-052 (20) Convênio no banco
+    convenio,                              // 033-052 (20) Convênio no banco (BBBBAAAACCCCCCCCCCCC p/ Santander)
     agencia,                               // 053-057 (5) Agência
     agenciaDV,                             // 058-058 (1) DV Agência
     conta,                                 // 059-070 (12) Conta Corrente
@@ -91,27 +96,37 @@ export function generateCNAB240(
     dataGeracao,                           // 144-151 (8) Data Geração (DDMMAAAA)
     horaGeracao,                           // 152-157 (6) Hora Geração (HHMMSS)
     nsa,                                   // 158-163 (6) NSA Sequencial Arquivo
-    '103',                                 // 164-166 (3) Versão Layout Arquivo
-    '01600',                               // 167-171 (5) Densidade Gravação
+    isSantander ? '060' : '103',           // 164-166 (3) Versão Layout Arquivo ('060' Santander)
+    isSantander ? '01600' : '01600',       // 167-171 (5) Densidade Gravação
     padRightSpaces('', 20),                // 172-191 (20) Reservado Banco
-    padRightSpaces('', 20),                // 192-211 (20) Reservado Empresa
-    padRightSpaces('', 29),                // 212-240 (29) Reservado FEBRABAN
+    isSantander && (company.codigoEstacao || company.codigoTransmissao)
+      ? padRightSpaces((company.codigoEstacao || company.codigoTransmissao || '').trim(), 20)
+      : padRightSpaces('', 20),            // 192-211 (20) Reservado Empresa / Código Estação
+    padRightSpaces('', 19),                // 212-230 (19) Filler
+    padRightSpaces('', 10),                // 231-240 (10) Ocorrências para Retorno
   ];
 
-  const headerArquivo = headerArquivoParts.join('');
+  const headerArquivo = headerArquivoParts.join('').substring(0, 240).padEnd(240, ' ');
   lines.push(headerArquivo);
 
   highlights.push({
     type: 'HEADER_ARQUIVO',
     lineNumber: 1,
     content: headerArquivo,
-    description: 'Header de Arquivo - Identificação da empresa pagadora e do banco',
+    description: isSantander
+      ? 'Header de Arquivo Santander (Versão 060) - Identificação da empresa pagadora'
+      : 'Header de Arquivo - Identificação da empresa pagadora e do banco',
     fields: [
-      { pos: '001-003', name: 'Banco', value: bancoCodigo, description: 'Código do Banco Pagador' },
+      { pos: '001-003', name: 'Banco', value: bancoCodigo, description: 'Código do Banco Pagador (033 = Santander)' },
       { pos: '019-032', name: 'CNPJ/CPF', value: inscricaoCompany, description: 'Documento da Empresa' },
+      { pos: '033-052', name: 'Convênio Pagfor', value: convenio.trim(), description: isSantander ? 'Convênio Santander (BBBBAAAACCCCCCCCCCCC)' : 'Código do Convênio' },
+      ...(isSantander && (company.codigoEstacao || company.codigoTransmissao)
+        ? [{ pos: '192-211', name: 'Cód. Estação', value: (company.codigoEstacao || company.codigoTransmissao || '').trim(), description: 'Código da Estação Santander Pagfor' }]
+        : []),
       { pos: '073-102', name: 'Empresa', value: empresaNome.trim(), description: 'Razão Social da Empresa' },
       { pos: '144-151', name: 'Data Geração', value: dataGeracao, description: 'Data do Arquivo' },
       { pos: '158-163', name: 'NSA', value: nsa, description: 'Número Sequencial do Arquivo' },
+      { pos: '164-166', name: 'Versão Layout', value: isSantander ? '060' : '103', description: 'Versão do Layout do Arquivo' },
     ],
   });
 
@@ -122,10 +137,10 @@ export function generateCNAB240(
     loteServico,                           // 004-007 (4) Lote = 0001
     '1',                                   // 008-008 (1) Tipo de registro = 1
     'C',                                   // 009-009 (1) Operação = C (Crédito)
-    '30',                                  // 010-011 (2) Serviço = 30 (Pagamento de Títulos/Boletos)
+    isSantander ? '20' : '30',             // 010-011 (2) Serviço (20 = Pagamento Fornecedor Santander)
     '31',                                  // 012-013 (2) Forma Lançamento = 31 (Boletos Outros Bancos/Geral)
-    company.layoutVersaoLote || '046',      // 014-016 (3) Versão Layout Lote
-    ' ',                                   // 017-017 (1) Reservado FEBRABAN
+    isSantander ? '030' : (company.layoutVersaoLote || '046'), // 014-016 (3) Versão Layout Lote ('030' Santander)
+    ' ',                                   // 017-017 (1) Reservado FEBRABAN / Branco
     tipoInscricaoCompany,                  // 018-018 (1) Tipo inscrição
     inscricaoCompany,                      // 019-032 (14) CNPJ/CPF Empresa
     convenio,                              // 033-052 (20) Convênio
@@ -135,30 +150,34 @@ export function generateCNAB240(
     contaDV,                               // 071-071 (1) DV Conta
     agenciaContaDV,                        // 072-072 (1) DV Ag/Conta
     empresaNome,                           // 073-102 (30) Nome da Empresa
-    padRightSpaces('PAGAMENTO DE BOLETOS BANCARIOS', 40), // 103-142 (40) Mensagem
+    padRightSpaces('PAGAMENTO A FORNECEDORES', 40), // 103-142 (40) Mensagem
     padRightSpaces(company.logradouro || 'RUA PRINCIPAL', 30), // 143-172 (30) Logradouro
     padLeftZeros(company.numero || '100', 5), // 173-177 (5) Número
     padRightSpaces(company.complemento || '', 15), // 178-192 (15) Complemento
-    padRightSpaces(company.cidade || 'SAO PAULO', 15), // 193-207 (15) Cidade
-    padLeftZeros(company.cep || '01000000', 8), // 208-215 (8) CEP
-    padRightSpaces(company.uf || 'SP', 2), // 216-217 (2) UF
-    padRightSpaces('', 8),                 // 218-225 (8) Indicativo Forma Pagamento
-    padRightSpaces('', 15),                // 226-240 (15) Reservado FEBRABAN
+    padRightSpaces(company.cidade || 'SAO PAULO', 20), // 193-212 (20) Cidade
+    padLeftZeros(company.cep?.substring(0, 5) || '01000', 5), // 213-217 (5) CEP
+    padLeftZeros(company.cep?.substring(5) || '000', 3), // 218-220 (3) Complemento CEP
+    padRightSpaces(company.uf || 'SP', 2), // 221-222 (2) UF
+    padRightSpaces('', 8),                 // 223-230 (8) Indicativo Forma Pagamento
+    padRightSpaces('', 10),                // 231-240 (10) Ocorrências para o Retorno
   ];
 
-  const headerLote = headerLoteParts.join('');
+  const headerLote = headerLoteParts.join('').substring(0, 240).padEnd(240, ' ');
   lines.push(headerLote);
 
   highlights.push({
     type: 'HEADER_LOTE',
     lineNumber: 2,
     content: headerLote,
-    description: 'Header de Lote - Especifica o tipo de lote (Pagamento de Títulos/Boletos)',
+    description: isSantander
+      ? 'Header de Lote Santander (Versão Lote 030 - Serviço 20 Pagamento Fornecedor)'
+      : 'Header de Lote - Especifica o tipo de lote (Pagamento de Títulos/Boletos)',
     fields: [
       { pos: '004-007', name: 'Lote', value: loteServico, description: 'Número do Lote' },
-      { pos: '010-011', name: 'Serviço', value: '30', description: 'Pagamento de Títulos/Boletos' },
+      { pos: '010-011', name: 'Serviço', value: isSantander ? '20' : '30', description: isSantander ? 'Pagamento a Fornecedores (Santander)' : 'Pagamento de Títulos/Boletos' },
+      { pos: '014-016', name: 'Versão Lote', value: isSantander ? '030' : (company.layoutVersaoLote || '046'), description: 'Versão do Layout do Lote' },
       { pos: '073-102', name: 'Empresa', value: empresaNome.trim(), description: 'Razão Social' },
-      { pos: '208-217', name: 'Endereço', value: `${company.cidade}/${company.uf}`, description: 'Localização da Empresa' },
+      { pos: '143-222', name: 'Endereço', value: `${company.cidade}/${company.uf}`, description: 'Localização da Empresa' },
     ],
   });
 
@@ -190,7 +209,8 @@ export function generateCNAB240(
       '3',                                   // 008-008 (1) Tipo de registro = 3
       seqStr,                                // 009-013 (5) N° Sequencial Registro no Lote
       'J',                                   // 014-014 (1) Código do Segmento = J
-      '000',                                 // 015-017 (3) Tipo Movimento = 000 (Inclusão)
+      '0',                                   // 015-015 (1) Tipo de Movimento = 0 (Inclusão)
+      '00',                                  // 016-017 (2) Código Instrução Movimento = 00 (Liberado)
       codigoBarras,                          // 018-061 (44) Código de Barras
       favorecidoNome,                        // 062-091 (30) Nome do Favorecido/Beneficiário
       dataVencimento,                        // 092-099 (8) Data de Vencimento
@@ -199,15 +219,15 @@ export function generateCNAB240(
       valorJurosMulta,                       // 130-144 (15) Valor Juros/Multa
       dataPagamento,                         // 145-152 (8) Data do Pagamento
       valorPagamento,                        // 153-167 (15) Valor do Pagamento Efetivo
-      padLeftZeros('0', 15),                 // 168-182 (15) Quantidade Moeda
+      padLeftZeros('0', 15),                 // 168-182 (15) Quantidade Moeda (Zeros)
       seuNumero,                             // 183-202 (20) Seu Número / Ref Empresa
       nossoNumero,                           // 203-222 (20) Nosso Número / Ref Banco
       '09',                                  // 223-224 (2) Código da Moeda (09 = Real)
-      padRightSpaces('', 6),                 // 225-230 (6) Reservado FEBRABAN
-      padRightSpaces('', 10),                // 231-240 (10) Ocorrências
+      padRightSpaces('', 6),                 // 225-230 (6) Filler
+      padRightSpaces('', 10),                // 231-240 (10) Ocorrências para Retorno
     ];
 
-    const linhaSegmentoJ = segmentoJParts.join('');
+    const linhaSegmentoJ = segmentoJParts.join('').substring(0, 240).padEnd(240, ' ');
     lines.push(linhaSegmentoJ);
 
     highlights.push({
@@ -225,45 +245,81 @@ export function generateCNAB240(
       ],
     });
 
-    // SEGMENTO J-52 (Opcional/Obrigatório: Identificação do Favorecido e Pagador Avalista)
+    // SEGMENTO J-52 (Obrigatório Santander / Febraban: Identificação do Favorecido e Pagador)
     sequencialRegistroNoLote += 1;
     const seqJ52Str = padLeftZeros(sequencialRegistroNoLote, 5);
 
-    const docFavorecidoClean = onlyNumbers(boleto.favorecidoCnpjCpf || '00000000000000');
-    const tipoInscricaoFavorecido = docFavorecidoClean.length > 11 ? '2' : '1';
+    // Determine Beneficiary / Favorecido document and type (Mandatory for Santander J-52)
+    const rawFavorecidoDoc = boleto.favorecidoCnpjCpf || boleto.beneficiarioCnpjCpf || '';
+    const docFavorecidoClean = onlyNumbers(rawFavorecidoDoc);
+    
+    // Tipo de Inscrição Beneficiário (Posição 76): 1=CPF, 2=CNPJ, 3=PIS/PASEP
+    let tipoInscricaoFavorecido = '2'; // Default to CNPJ for companies
+    if (docFavorecidoClean.length > 0 && docFavorecidoClean.length <= 11) {
+      tipoInscricaoFavorecido = '1'; // CPF
+    } else if (docFavorecidoClean.length > 11) {
+      tipoInscricaoFavorecido = '2'; // CNPJ
+    }
+
+    // Determine Pagador document and type
+    const rawPagadorDoc = boleto.pagadorCnpjCpf || company.cnpjCpf || '';
+    const docPagadorClean = onlyNumbers(rawPagadorDoc);
+    let tipoInscricaoPagador = company.tipoInscricao === 'CNPJ' ? '2' : '1';
+    if (docPagadorClean.length > 0) {
+      tipoInscricaoPagador = docPagadorClean.length > 11 ? '2' : '1';
+    }
+
+    const pagadorNome = padRightSpaces(boleto.pagador || company.razaoSocial, 40);
+    const beneficiarioNome = padRightSpaces(boleto.favorecidoNome || boleto.beneficiario || 'BENEFICIARIO DO BOLETO', 40);
 
     const segmentoJ52Parts = [
-      bancoCodigo,                           // 001-003 (3) Banco
-      loteServico,                           // 004-007 (4) Lote
-      '3',                                   // 008-008 (1) Tipo de registro = 3
-      seqJ52Str,                             // 009-013 (5) Sequencial
-      'J',                                   // 014-014 (1) Segmento J
-      '   ',                                 // 015-017 (3) Reservado
-      '52',                                  // 018-019 (2) Código Registro Opcional J-52
-      tipoInscricaoCompany,                  // 020-020 (1) Tipo Inscrição Sacado (Empresa Pagadora)
-      inscricaoCompany,                      // 021-035 (15) CNPJ/CPF Sacado Pagador
-      empresaNome.padEnd(40, ' ').substring(0, 40), // 036-075 (40) Nome Sacado Pagador
-      tipoInscricaoFavorecido,               // 076-076 (1) Tipo Inscrição Beneficiário
-      padLeftZeros(docFavorecidoClean, 15),  // 077-091 (15) CNPJ/CPF Beneficiário
-      favorecidoNome.padEnd(40, ' ').substring(0, 40), // 092-131 (40) Nome Beneficiário
-      '0',                                   // 132-132 (1) Tipo Inscrição Sacador Avalista
-      padLeftZeros('0', 15),                 // 133-147 (15) CNPJ/CPF Sacador Avalista
-      padRightSpaces('', 40),                // 148-187 (40) Nome Sacador Avalista
-      padRightSpaces('', 53),                // 188-240 (53) Reservado FEBRABAN
+      bancoCodigo,                                  // 001-003 (3) Banco (033 = Santander)
+      loteServico,                                  // 004-007 (4) Lote de Serviço = 0001
+      '3',                                          // 008-008 (1) Tipo de registro = 3 (Detalhe)
+      seqJ52Str,                                    // 009-013 (5) Sequencial no Lote
+      'J',                                          // 014-014 (1) Segmento = J
+      ' ',                                          // 015-015 (1) Filler / Reservado FEBRABAN
+      '00',                                         // 016-017 (2) Código de Movimento / Remessa = 00
+      '52',                                         // 018-019 (2) Identificação Registro Opcional J-52
+      tipoInscricaoPagador,                         // 020-020 (1) Tipo Inscrição Pagador (1=CPF, 2=CNPJ)
+      padLeftZeros(docPagadorClean || inscricaoCompany, 15), // 021-035 (15) CNPJ/CPF Pagador (15 dígitos com zeros)
+      pagadorNome,                                  // 036-075 (40) Nome do Pagador
+      tipoInscricaoFavorecido,                      // 076-076 (1) Tipo Inscrição Beneficiário (1=CPF, 2=CNPJ) - Santander V11.7
+      padLeftZeros(docFavorecidoClean, 15),         // 077-091 (15) CNPJ/CPF Beneficiário (15 dígitos com zeros) - Santander V11.7
+      beneficiarioNome,                             // 092-131 (40) Nome do Beneficiário
+      '0',                                          // 132-132 (1) Tipo Inscrição Sacador Avalista (0=Isento/Não informado)
+      padLeftZeros('0', 15),                        // 133-147 (15) CNPJ/CPF Sacador Avalista (15 zeros)
+      padRightSpaces('', 40),                       // 148-187 (40) Nome Sacador Avalista (40 espaços)
+      padRightSpaces('', 53),                       // 188-240 (53) Reservado Santander / FEBRABAN (53 espaços)
     ];
 
-    const linhaSegmentoJ52 = segmentoJ52Parts.join('');
+    const linhaSegmentoJ52 = segmentoJ52Parts.join('').substring(0, 240).padEnd(240, ' ');
     lines.push(linhaSegmentoJ52);
+
+    const isBeneficiaryDocMissing = !docFavorecidoClean || docFavorecidoClean === '00000000000000' || docFavorecidoClean === '0';
 
     highlights.push({
       type: 'SEGMENTO_J52',
       lineNumber: lines.length,
       content: linhaSegmentoJ52,
-      description: `Segmento J-52 (Detalhamento Favorecido #${idx + 1})`,
+      description: isSantander
+        ? `Segmento J-52 Santander V11.7 (Obrigatório - Beneficiário: ${boleto.favorecidoNome || 'Cedente'})`
+        : `Segmento J-52 (Identificação do Beneficiário e Pagador #${idx + 1})`,
       fields: [
-        { pos: '021-035', name: 'CNPJ Pagador', value: inscricaoCompany, description: 'Pagador da Conta' },
-        { pos: '077-091', name: 'Doc Beneficiário', value: padLeftZeros(docFavorecidoClean, 15), description: 'CPF/CNPJ Recebedor' },
-        { pos: '092-131', name: 'Nome Beneficiário', value: favorecidoNome.trim(), description: 'Nome do Recebedor' },
+        { pos: '018-019', name: 'Reg Opcional', value: '52', description: 'Identificação Segmento J-52' },
+        { pos: '020-020', name: 'Tipo Insc. Pagador', value: tipoInscricaoPagador, description: tipoInscricaoPagador === '2' ? '2 = CNPJ Pagador' : '1 = CPF Pagador' },
+        { pos: '021-035', name: 'CNPJ Pagador', value: padLeftZeros(docPagadorClean || inscricaoCompany, 15), description: 'CNPJ/CPF do Pagador/Sacado' },
+        { pos: '036-075', name: 'Nome Pagador', value: pagadorNome.trim(), description: 'Razão Social do Pagador' },
+        { pos: '076-076', name: 'Tipo Insc. Beneficiário', value: tipoInscricaoFavorecido, description: tipoInscricaoFavorecido === '2' ? '2 = CNPJ Beneficiário' : '1 = CPF Beneficiário' },
+        {
+          pos: '077-091',
+          name: 'Doc Beneficiário',
+          value: padLeftZeros(docFavorecidoClean, 15),
+          description: isBeneficiaryDocMissing
+            ? '⚠️ ATENÇÃO: CNPJ/CPF do Beneficiário ausente! O Santander rejeitará com ocorrência AT.'
+            : 'CPF/CNPJ Real do Beneficiário (Obrigatório Santander)',
+        },
+        { pos: '092-131', name: 'Nome Beneficiário', value: beneficiarioNome.trim(), description: 'Razão Social do Favorecido/Recebedor' },
       ],
     });
   });
@@ -284,10 +340,10 @@ export function generateCNAB240(
     padLeftZeros('0', 18),                 // 042-059 (18) Quantidade de Moedas
     padLeftZeros('0', 6),                  // 060-065 (6) N° Aviso de Débito
     padRightSpaces('', 165),               // 066-230 (165) Reservado FEBRABAN
-    padRightSpaces('', 10),                // 231-240 (10) Ocorrências
+    padRightSpaces('', 10),                // 231-240 (10) Ocorrências para Retorno
   ];
 
-  const trailerLote = trailerLoteParts.join('');
+  const trailerLote = trailerLoteParts.join('').substring(0, 240).padEnd(240, ' ');
   lines.push(trailerLote);
 
   highlights.push({
@@ -314,11 +370,10 @@ export function generateCNAB240(
     padRightSpaces('', 9),                 // 009-017 (9) Reservado FEBRABAN
     qtdLotesStr,                           // 018-023 (6) Qtd de Lotes
     qtdRegistrosArqStr,                    // 024-029 (6) Qtd de Registros no Arquivo
-    padLeftZeros('0', 6),                  // 030-035 (6) Qtd de Contas Conciliação
-    padRightSpaces('', 205),               // 036-240 (205) Reservado FEBRABAN
+    padRightSpaces('', 211),               // 030-240 (211) Filler / Reservado
   ];
 
-  const trailerArquivo = trailerArquivoParts.join('');
+  const trailerArquivo = trailerArquivoParts.join('').substring(0, 240).padEnd(240, ' ');
   lines.push(trailerArquivo);
 
   highlights.push({

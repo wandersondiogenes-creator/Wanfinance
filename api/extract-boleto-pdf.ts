@@ -119,7 +119,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             let extractedValue = parsed.valor || 0;
 
             if (extractedValue <= 0) {
-              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+Documento|VALOR\s+ORIGINAL|Valor\s+Original|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado)|Valor)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
               if (valorMatch) {
                 const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
                 const parsedVal = parseFloat(valStr);
@@ -167,15 +167,16 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               favorecidoNome,
               cedente: favorecidoNome,
               beneficiario: favorecidoNome,
-              favorecidoCnpjCpf: "",
+              favorecidoCnpjCpf: detected.favorecidoCnpjCpf || "",
+              beneficiarioCnpjCpf: detected.favorecidoCnpjCpf || "",
               pagador: detected.pagador || "Não identificado com segurança",
               pagadorCnpjCpf: detected.pagadorCnpjCpf || "",
-              CNPJ: "",
+              CNPJ: detected.favorecidoCnpjCpf || "",
               valor: extractedValue,
               dataVencimento: extractedDueDate || new Date().toISOString().split("T")[0],
               seuNumero: docNum,
               numeroDocumento: docNum,
-              nossoNumero: "",
+              nossoNumero: detected.seuNumero || "",
               bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
               bancoNome: detected.bancoNome || parsed.bancoNome,
               banco: detected.bancoNome || parsed.bancoNome,
@@ -328,11 +329,10 @@ export default async function handler(req: any, res: any) {
       });
 
       const modelsToTry = [
-        "gemini-2.5-flash",
         "gemini-3.6-flash",
         "gemini-flash-latest",
         "gemini-3.1-flash-lite",
-        "gemini-2.5-pro",
+        "gemini-3.1-pro-preview",
       ];
       for (const modelName of modelsToTry) {
         try {
@@ -365,9 +365,11 @@ export default async function handler(req: any, res: any) {
           const parsedData = repairAndParseJson(rawText);
           if (Array.isArray(parsedData.boletos) && parsedData.boletos.length > 0) {
             boletosExtracted = parsedData.boletos;
+            geminiApiError = null;
             break;
           } else if (parsedData && (parsedData.linhaDigitavel || parsedData.favorecidoNome)) {
             boletosExtracted = [parsedData];
+            geminiApiError = null;
             break;
           }
         } catch (err: any) {
