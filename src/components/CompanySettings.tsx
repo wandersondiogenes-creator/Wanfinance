@@ -1025,12 +1025,19 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                    Próximo NSA
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Próximo NSA
+                    </label>
+                    {editingBankModal.bank.bancoCodigo === '033' && (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold border border-amber-500/30">
+                        Santander Produção ≥ 11
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="number"
-                    min={1}
+                    min={editingBankModal.bank.bancoCodigo === '033' ? 11 : 1}
                     value={editingBankModal.bank.nsa}
                     onChange={(e) =>
                       setEditingBankModal({
@@ -1041,6 +1048,13 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                     className="w-full bg-slate-800 border border-slate-700 text-slate-100 text-sm font-mono font-bold rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500"
                     required
                   />
+                  {editingBankModal.bank.bancoCodigo === '033' ? (
+                    <p className="text-[10px] text-amber-400/90 mt-1 leading-tight">
+                      * <strong>Posições 158-163</strong>: No Santander, faixa 1 a 10 é tratada como Teste. Para Produção comercial, use de <strong>11 em diante (000011...)</strong>.
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 mt-1">Número Sequencial do Arquivo</p>
+                  )}
                 </div>
               </div>
 

@@ -73,7 +73,13 @@ export function generateCNAB240(
 
   const empresaNome = padRightSpaces(company.razaoSocial, 30);
   const bancoNome = isSantander ? padRightSpaces('Banco Santander', 30) : padRightSpaces(company.bancoNome, 30);
-  const nsa = padLeftZeros(company.nsa, 6);
+  
+  // Santander Pagfor V11.7: Posições 158-163 (NSA - Número Sequencial do Arquivo).
+  // Faixa de 1 a 10 (000001 a 000010) é tratada pelo banco exclusivamente como Teste/Homologação.
+  // Para seguir em Produção, a sequência deve iniciar obrigatoriamente a partir de 11 em diante (000011, 000012, etc.).
+  const nsaRaw = typeof company.nsa === 'number' ? company.nsa : parseInt(String(company.nsa || '11'), 10) || 11;
+  const effectiveNsa = (isSantander && nsaRaw < 11) ? 11 : nsaRaw;
+  const nsa = padLeftZeros(effectiveNsa, 6);
 
   // 1. HEADER DE ARQUIVO (Tipo Registro 0)
   const headerArquivoParts = [
@@ -125,7 +131,14 @@ export function generateCNAB240(
         : []),
       { pos: '073-102', name: 'Empresa', value: empresaNome.trim(), description: 'Razão Social da Empresa' },
       { pos: '144-151', name: 'Data Geração', value: dataGeracao, description: 'Data do Arquivo' },
-      { pos: '158-163', name: 'NSA', value: nsa, description: 'Número Sequencial do Arquivo' },
+      {
+        pos: '158-163',
+        name: 'NSA (Sequencial)',
+        value: nsa,
+        description: isSantander
+          ? `Número Sequencial do Arquivo (Produção Santander: ${nsa} - Faixa Produção ≥ 11)`
+          : `Número Sequencial do Arquivo (NSA #${effectiveNsa})`,
+      },
       { pos: '164-166', name: 'Versão Layout', value: isSantander ? '060' : '103', description: 'Versão do Layout do Arquivo' },
     ],
   });

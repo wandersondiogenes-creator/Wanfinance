@@ -155,7 +155,7 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-medium">
-                {result.totalBoletos} boletos | R$ {result.totalValor.toFixed(2)} | NSA #{company.nsa}
+                {result.totalBoletos} boletos | R$ {result.totalValor.toFixed(2)} | NSA #{company.bancoCodigo === '033' && (company.nsa || 1) < 11 ? 11 : company.nsa} {company.bancoCodigo === '033' ? '(Produção Santander)' : ''}
               </p>
             </div>
           </div>

@@ -172,8 +172,11 @@ export const CNABValidator: React.FC<CNABValidatorProps> = ({
         issues.push('A última linha não possui indicador de Trailer de Arquivo (Tipo 9 na Pos 8).');
       }
 
-      // Check Santander details (Segmento J, J-52, and Beneficiary Document)
+      // Check Santander details (Segmento J, J-52, NSA, and Beneficiary Document)
       if (bancoCodigo === '033') {
+        if (nsaExtracted >= 1 && nsaExtracted <= 10) {
+          issues.push(`Header de Arquivo (Pos 158-163): NSA = ${String(nsaExtracted).padStart(6, '0')}. Atenção: No Santander, a faixa 000001 a 000010 é tratada como ambiente de teste. Para seguir em produção comercial, o banco exige a partir de 000011.`);
+        }
         lines.forEach((l, idx) => {
           const tipoReg = l.charAt(7);
           const segmento = l.charAt(13);

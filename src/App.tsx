@@ -366,7 +366,8 @@ export default function App() {
             ...c,
             bancos: c.bancos.map((b) => {
               if (b.id === activeSelection.bankId) {
-                return { ...b, nsa: b.nsa + 1 };
+                const currentNsa = b.bancoCodigo === '033' && (b.nsa || 1) < 11 ? 11 : (b.nsa || 1);
+                return { ...b, nsa: currentNsa + 1 };
               }
               return b;
             }),

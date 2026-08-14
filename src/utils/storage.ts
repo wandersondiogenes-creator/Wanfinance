@@ -78,7 +78,7 @@ function sanitizeAndDeduplicateCompanies(companiesList: CompanyProfile[]): Compa
           convenio: b.convenio || '',
           codigoTransmissao: b.codigoTransmissao || b.codigoEstacao || '',
           codigoEstacao: b.codigoEstacao || b.codigoTransmissao || '',
-          nsa: typeof b.nsa === 'number' ? b.nsa : 1,
+          nsa: typeof b.nsa === 'number' ? (b.bancoCodigo === '033' && b.nsa < 11 ? 11 : b.nsa) : (b.bancoCodigo === '033' ? 11 : 1),
           padraoCNAB: b.padraoCNAB || '240',
           layoutVersaoLote: b.layoutVersaoLote || (b.bancoCodigo === '033' ? '030' : '046'),
         });
