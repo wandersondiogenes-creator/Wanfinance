@@ -19,7 +19,9 @@ import {
   loadUserSession,
   saveUserSession,
 } from './utils/storage';
-import { Header } from './components/Header';
+import { AppleSidebar, AppTabType } from './components/AppleSidebar';
+import { AppleTopNav } from './components/AppleTopNav';
+import { AppleCompanyBankBar } from './components/AppleCompanyBankBar';
 import { LoginScreen } from './components/LoginScreen';
 import { BoletoTable } from './components/BoletoTable';
 import { ExecutionSidebar } from './components/ExecutionSidebar';
@@ -385,6 +387,21 @@ export default function App() {
   };
 
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Tab Title Map for Apple Top Navigation Bar
+  const tabTitles: Record<AppTabType, { title: string; subtitle: string }> = {
+    boletos: { title: 'Boletos a Pagar', subtitle: 'Lote de Pagamentos' },
+    novo_boleto: { title: 'Importar / Inserir Boletos', subtitle: 'Entrada de Dados' },
+    empresa: { title: 'Empresas & Contas Bancárias', subtitle: 'Configurações de Pagador' },
+    historico: { title: 'Remessas Geradas', subtitle: 'Histórico & Arquivos CNAB' },
+    validador: { title: 'Validador CNAB FEBRABAN', subtitle: 'Conformidade Técnica' },
+    sheets: { title: 'Integração Google Sheets', subtitle: 'Sincronização de Planilhas' },
+    api_pagamentos: { title: 'API Bancária Direta', subtitle: 'Conexão Santander & Itaú' },
+    modelos_aprendidos: { title: 'Modelos de Boletos Aprendidos', subtitle: 'IA de Reconhecimento' },
+    extratos_bancarios: { title: 'Extrato & DDA Bancário', subtitle: 'Conciliação Automática' },
+  };
+
   const selectedBoletos = boletos.filter((b) => b.selected && b.isValid);
   const totalSelectedValor = selectedBoletos.reduce(
     (acc, b) => acc + (b.valor - (b.desconto || 0) + (b.jurosMulta || 0)),
@@ -396,19 +413,19 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
-      {/* Toast Notification - Colorful & Vivid */}
+    <div className="min-h-screen bg-[#f5f5f7] dark:bg-[#000000] text-[#1d1d1f] dark:text-[#f5f5f7] flex font-sans selection:bg-blue-500 selection:text-white">
+      {/* Apple Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 animate-bounce transition-all duration-300">
+        <div className="fixed bottom-6 right-6 z-50 transition-all duration-300 animate-in fade-in slide-in-from-bottom-5">
           <div
-            className={`flex items-center space-x-2.5 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold ${
+            className={`flex items-center space-x-3 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-semibold backdrop-blur-2xl ${
               toastMessage.type === 'success'
-                ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-600/30'
+                ? 'bg-emerald-600/90 text-white border-emerald-500/50 shadow-emerald-600/30'
                 : toastMessage.type === 'error'
-                ? 'bg-rose-600 text-white border-rose-500 shadow-rose-600/30'
+                ? 'bg-rose-600/90 text-white border-rose-500/50 shadow-rose-600/30'
                 : toastMessage.type === 'warning'
-                ? 'bg-amber-500 text-white border-amber-400 shadow-amber-500/30'
-                : 'bg-blue-600 text-white border-blue-500 shadow-blue-600/30'
+                ? 'bg-amber-500/90 text-white border-amber-400/50 shadow-amber-500/30'
+                : 'bg-blue-600/90 text-white border-blue-500/50 shadow-blue-600/30'
             }`}
           >
             {toastMessage.type === 'success' ? (
@@ -416,116 +433,185 @@ export default function App() {
             ) : toastMessage.type === 'error' ? (
               <AlertCircle className="w-4 h-4 text-white" />
             ) : (
-              <Sparkles className="w-4 h-4 text-white" />
+              <Sparkles className="w-4 h-4 text-amber-200" />
             )}
             <span>{toastMessage.text}</span>
           </div>
         </div>
       )}
 
-      {/* Header & Tabs */}
-      <Header
+      {/* iPadOS Sidebar Component */}
+      <AppleSidebar
+        activeTab={activeTab}
+        setActiveTab={(tab) => {
+          if (tab === 'novo_boleto') {
+            setEditingBoleto(null);
+            setIsFormModalOpen(true);
+          } else {
+            setActiveTab(tab);
+          }
+        }}
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
         company={activeCompanySettings}
         companies={companies}
         activeCompanyId={activeSelection.companyId}
         activeBankId={activeSelection.bankId}
         onSelectCompany={handleSelectCompany}
         onSelectBank={handleSelectBank}
-        activeTab={activeTab}
-        setActiveTab={handleTabChange}
         selectedBoletosCount={selectedBoletos.length}
+        totalBoletosCount={boletos.length}
         totalSelectedValor={totalSelectedValor}
-        onQuickGenerateCNAB={() => setIsPreviewModalOpen(true)}
+        overdueCount={overdueCount}
+        duplicateCount={duplicateCount}
         onOpenPDFModal={() => setIsPDFModalOpen(true)}
+        onOpenBatchModal={() => setIsBatchModalOpen(true)}
+        onOpenNewModal={() => {
+          setEditingBoleto(null);
+          setIsFormModalOpen(true);
+        }}
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         user={currentUser}
         onLogout={handleLogout}
       />
 
-      {/* Main Body Content */}
-      <main className="flex-1 max-w-[1800px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {(activeTab === 'boletos' || activeTab === 'novo_boleto') && (
-          <div className="w-full">
-            {/* Main Area: Boletos Table or Insert Boletos Panel occupying full width */}
-            <div className="w-full min-w-0">
-              {activeTab === 'novo_boleto' ? (
-                <div className="space-y-6">
-                  <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs">
-                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                      <div>
-                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                          Inserir e Colar Boletos a Pagar
-                        </h2>
-                        <p className="text-xs text-slate-500 font-medium">
-                          Escolha o método mais rápido para importar boletos para o lote atual
-                        </p>
+      {/* Main Content Area with Adaptive Left Margin for Sidebar */}
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:pl-72' : 'lg:pl-0'}`}>
+        {/* Apple Top Navigation Bar */}
+        <AppleTopNav
+          isSidebarOpen={isSidebarOpen}
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          title={tabTitles[activeTab]?.title || 'Wanfinance'}
+          subtitle={tabTitles[activeTab]?.subtitle}
+          selectedBoletosCount={selectedBoletos.length}
+          totalSelectedValor={totalSelectedValor}
+          onQuickGenerateCNAB={() => setIsPreviewModalOpen(true)}
+          onOpenPDFModal={() => setIsPDFModalOpen(true)}
+          onOpenBatchModal={() => setIsBatchModalOpen(true)}
+          onOpenNewModal={() => {
+            setEditingBoleto(null);
+            setIsFormModalOpen(true);
+          }}
+          activeTab={activeTab}
+        />
+
+        {/* Apple Company & Bank Bar */}
+        <AppleCompanyBankBar
+          company={activeCompanySettings}
+          companies={companies}
+          activeCompanyId={activeSelection.companyId}
+          activeBankId={activeSelection.bankId}
+          onSelectCompany={handleSelectCompany}
+          onSelectBank={handleSelectBank}
+          onManageCompanies={() => setActiveTab('empresa')}
+        />
+
+        {/* Apple iPad Main Stage Content Container */}
+        <main className="flex-1 w-full max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {(activeTab === 'boletos' || activeTab === 'novo_boleto') && (
+            <div className="w-full">
+              {/* Main Area: Boletos Table or Insert Boletos Panel occupying full width */}
+              <div className="w-full min-w-0">
+                {activeTab === 'novo_boleto' ? (
+                  <div className="space-y-6">
+                    <div className="bg-white dark:bg-[#1c1c1e] border border-black/[0.06] dark:border-white/[0.08] rounded-3xl p-6 shadow-sm backdrop-blur-2xl">
+                      <div className="flex items-center justify-between pb-4 border-b border-black/[0.06] dark:border-white/[0.06]">
+                        <div>
+                          <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                            Inserir e Colar Boletos a Pagar
+                          </h2>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                            Escolha o método mais rápido para importar boletos para o lote atual
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setActiveTab('boletos')}
+                          className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          ← Voltar para Boletos
+                        </button>
                       </div>
-                      <button
-                        onClick={() => setActiveTab('boletos')}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-800 underline cursor-pointer"
-                      >
-                        ← Voltar para Boletos
-                      </button>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                        {/* Option 1: PDF Extraction via IA */}
+                        <div
+                          onClick={() => setIsPDFModalOpen(true)}
+                          className="bg-white dark:bg-[#2c2c2e] border border-blue-500/20 hover:border-blue-500/50 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3 apple-card-hover"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold shadow-sm shadow-blue-500/20">
+                            <Sparkles className="w-5 h-5 text-amber-300" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">1. Extrair PDF por IA</h3>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                            Envie múltiplos arquivos PDF ou fotos de boletos. A IA analisa e preenche todos os dados automaticamente.
+                          </p>
+                          <button className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/15 px-3 py-1.5 rounded-xl transition-colors">
+                            Abrir Extrator PDF →
+                          </button>
+                        </div>
+
+                        {/* Option 2: Colar em Lote */}
+                        <div
+                          onClick={() => setIsBatchModalOpen(true)}
+                          className="bg-white dark:bg-[#2c2c2e] border border-emerald-500/20 hover:border-emerald-500/50 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3 apple-card-hover"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white flex items-center justify-center font-bold shadow-sm shadow-emerald-500/20">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">2. Colar Múltiplos Boletos</h3>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                            Cole várias linhas digitáveis de uma vez. O sistema calcula vencimento, banco e valida os dígitos verificadores.
+                          </p>
+                          <button className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 px-3 py-1.5 rounded-xl transition-colors">
+                            Colar em Lote →
+                          </button>
+                        </div>
+
+                        {/* Option 3: Preencher Manual */}
+                        <div
+                          onClick={() => {
+                            setEditingBoleto(null);
+                            setIsFormModalOpen(true);
+                          }}
+                          className="bg-white dark:bg-[#2c2c2e] border border-amber-500/20 hover:border-amber-500/50 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3 apple-card-hover"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold shadow-sm shadow-amber-500/20">
+                            <AlertCircle className="w-5 h-5" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">3. Inserção Manual</h3>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                            Preencha individualmente o formulário completo com favorecido, código de barras, valor, descontos e juros.
+                          </p>
+                          <button className="text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/15 px-3 py-1.5 rounded-xl transition-colors">
+                            Preencher Formulário →
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                      {/* Option 1: PDF Extraction via IA */}
-                      <div
-                        onClick={() => setIsPDFModalOpen(true)}
-                        className="bg-gradient-to-b from-blue-50 to-white border-2 border-blue-200 hover:border-blue-500 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3"
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
-                          <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-                        </div>
-                        <h3 className="text-sm font-black text-slate-900">1. Extrair PDF por IA</h3>
-                        <p className="text-xs text-slate-600">
-                          Envie um ou múltiplos arquivos PDF ou fotos de boletos. A Inteligência Artificial extrai favorecido, valor, vencimento e linha digitável.
-                        </p>
-                        <button className="text-xs font-bold text-blue-700 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-xl transition-colors">
-                          Abrir Extrator PDF →
-                        </button>
-                      </div>
-
-                      {/* Option 2: Colar em Lote */}
-                      <div
-                        onClick={() => setIsBatchModalOpen(true)}
-                        className="bg-gradient-to-b from-emerald-50 to-white border-2 border-emerald-200 hover:border-emerald-500 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3"
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
-                          <CheckCircle2 className="w-5 h-5" />
-                        </div>
-                        <h3 className="text-sm font-black text-slate-900">2. Colar Múltiplos Boletos</h3>
-                        <p className="text-xs text-slate-600">
-                          Cole várias linhas digitáveis de uma só vez (uma por linha). O sistema calcula vencimento, banco e valida os dígitos verificadores.
-                        </p>
-                        <button className="text-xs font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-xl transition-colors">
-                          Colar em Lote →
-                        </button>
-                      </div>
-
-                      {/* Option 3: Preencher Manual */}
-                      <div
-                        onClick={() => {
-                          setEditingBoleto(null);
-                          setIsFormModalOpen(true);
-                        }}
-                        className="bg-gradient-to-b from-amber-50 to-white border-2 border-amber-200 hover:border-amber-500 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3"
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold">
-                          <AlertCircle className="w-5 h-5" />
-                        </div>
-                        <h3 className="text-sm font-black text-slate-900">3. Inserção Manual</h3>
-                        <p className="text-xs text-slate-600">
-                          Preencha individualmente o formulário completo com favorecido, código de barras/linha, valor, descontos, juros e ref.
-                        </p>
-                        <button className="text-xs font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 px-3 py-1.5 rounded-xl transition-colors">
-                          Preencher Formulário →
-                        </button>
-                      </div>
-                    </div>
+                    {/* Show Table Below for Convenience */}
+                    <BoletoTable
+                      boletos={boletos}
+                      history={history}
+                      filterType={sidebarFilterType}
+                      setFilterType={setSidebarFilterType}
+                      onToggleSelect={handleToggleSelect}
+                      onSelectAll={handleSelectAll}
+                      onDeleteBoleto={handleDeleteBoleto}
+                      onDeleteSelected={handleDeleteSelected}
+                      onEditBoleto={handleEditBoleto}
+                      onDuplicateBoleto={handleDuplicateBoleto}
+                      onOpenNewModal={() => {
+                        setEditingBoleto(null);
+                        setIsFormModalOpen(true);
+                      }}
+                      onOpenBatchModal={() => setIsBatchModalOpen(true)}
+                      onOpenPDFModal={() => setIsPDFModalOpen(true)}
+                      onGenerateCNAB={() => setIsPreviewModalOpen(true)}
+                      onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
+                    />
                   </div>
-
-                  {/* Show Table Below for Convenience */}
+                ) : (
                   <BoletoTable
                     boletos={boletos}
                     history={history}
@@ -546,124 +632,102 @@ export default function App() {
                     onGenerateCNAB={() => setIsPreviewModalOpen(true)}
                     onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
                   />
-                </div>
-              ) : (
-                <BoletoTable
-                  boletos={boletos}
-                  history={history}
-                  filterType={sidebarFilterType}
-                  setFilterType={setSidebarFilterType}
-                  onToggleSelect={handleToggleSelect}
-                  onSelectAll={handleSelectAll}
-                  onDeleteBoleto={handleDeleteBoleto}
-                  onDeleteSelected={handleDeleteSelected}
-                  onEditBoleto={handleEditBoleto}
-                  onDuplicateBoleto={handleDuplicateBoleto}
-                  onOpenNewModal={() => {
-                    setEditingBoleto(null);
-                    setIsFormModalOpen(true);
-                  }}
-                  onOpenBatchModal={() => setIsBatchModalOpen(true)}
-                  onOpenPDFModal={() => setIsPDFModalOpen(true)}
-                  onGenerateCNAB={() => setIsPreviewModalOpen(true)}
-                  onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
-                />
-              )}
+                )}
+              </div>
             </div>
+          )}
+
+          {activeTab === 'empresa' && (
+            <CompanySettingsComponent
+              companies={companies}
+              activeCompanyId={activeSelection.companyId}
+              activeBankId={activeSelection.bankId}
+              onSaveCompanyProfiles={handleSaveCompanyProfiles}
+              onSelectCompany={handleSelectCompany}
+              onSelectBank={handleSelectBank}
+            />
+          )}
+
+          {activeTab === 'historico' && (
+            <HistoryPanel
+              history={history}
+              currentUser={currentUser}
+              onClearHistory={() => {
+                setHistory([]);
+                saveHistory([]);
+                showToast('Seu histórico foi totalmente limpo.');
+              }}
+              onDeleteHistoryItem={(id) => {
+                setHistory((prev) => prev.filter((item) => item.id !== id));
+                showToast('Registro do histórico excluído.');
+              }}
+              onDownloadBatch={(batch) => {
+                const contentToDownload = batch.content || '';
+                const blob = new Blob([contentToDownload], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = batch.filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                showToast(`Arquivo ${batch.filename} baixado novamente.`);
+              }}
+            />
+          )}
+
+          {activeTab === 'validador' && (
+            <CNABValidator
+              boletos={boletos}
+              activeCompany={activeCompanySettings}
+              currentUser={currentUser}
+              onSaveToHistory={handleSaveToHistory}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'sheets' && (
+            <GoogleSheetsPanel
+              boletos={boletos}
+              history={history}
+              onImportBoletos={handleImportBatchBoletos}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'api_pagamentos' && (
+            <BankPaymentApiPanel
+              company={activeCompanySettings}
+              boletos={boletos}
+            />
+          )}
+
+          {activeTab === 'modelos_aprendidos' && (
+            <LearnedLayoutsAdminPanel
+              onShowToast={(msg) => showToast(msg, 'info')}
+            />
+          )}
+
+          {activeTab === 'extratos_bancarios' && (
+            <ExtratoBancarioMainPanel
+              company={activeCompanySettings}
+              onShowToast={(msg) => showToast(msg, 'success')}
+            />
+          )}
+        </main>
+
+        {/* Apple iPad Clean Footer */}
+        <footer className="border-t border-black/[0.06] dark:border-white/[0.08] py-4 text-center text-xs text-slate-500 dark:text-slate-400 bg-white/50 dark:bg-[#1c1c1e]/50 backdrop-blur-xl mt-auto">
+          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p>© {new Date().getFullYear()} <strong className="font-semibold text-slate-800 dark:text-slate-200">Wanfinance CNAB</strong> • iPadOS Design System</p>
+            <p className="text-slate-400 text-[11px]">
+              Multi-empresa & FEBRABAN CNAB 240 / 400 (Santander, Itaú, Bradesco, BB, Caixa, Sicoob, Sicredi, Inter)
+            </p>
           </div>
-        )}
+        </footer>
+      </div>
 
-        {activeTab === 'empresa' && (
-          <CompanySettingsComponent
-            companies={companies}
-            activeCompanyId={activeSelection.companyId}
-            activeBankId={activeSelection.bankId}
-            onSaveCompanyProfiles={handleSaveCompanyProfiles}
-            onSelectCompany={handleSelectCompany}
-            onSelectBank={handleSelectBank}
-          />
-        )}
-
-        {activeTab === 'historico' && (
-          <HistoryPanel
-            history={history}
-            currentUser={currentUser}
-            onClearHistory={() => {
-              setHistory([]);
-              saveHistory([]);
-              showToast('Seu histórico foi totalmente limpo.');
-            }}
-            onDeleteHistoryItem={(id) => {
-              setHistory((prev) => prev.filter((item) => item.id !== id));
-              showToast('Registro do histórico excluído.');
-            }}
-            onDownloadBatch={(batch) => {
-              const contentToDownload = batch.content || '';
-              const blob = new Blob([contentToDownload], { type: 'text/plain;charset=utf-8' });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = batch.filename;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-              showToast(`Arquivo ${batch.filename} baixado novamente.`);
-            }}
-          />
-        )}
-
-
-        {activeTab === 'validador' && (
-          <CNABValidator
-            boletos={boletos}
-            activeCompany={activeCompanySettings}
-            currentUser={currentUser}
-            onSaveToHistory={handleSaveToHistory}
-            showToast={showToast}
-          />
-        )}
-
-        {activeTab === 'sheets' && (
-          <GoogleSheetsPanel
-            boletos={boletos}
-            history={history}
-            onImportBoletos={handleImportBatchBoletos}
-            showToast={showToast}
-          />
-        )}
-
-        {activeTab === 'api_pagamentos' && (
-          <BankPaymentApiPanel
-            company={activeCompanySettings}
-            boletos={boletos}
-          />
-        )}
-
-        {activeTab === 'modelos_aprendidos' && (
-          <LearnedLayoutsAdminPanel
-            onShowToast={(msg) => showToast(msg, 'info')}
-          />
-        )}
-
-        {activeTab === 'extratos_bancarios' && (
-          <ExtratoBancarioMainPanel
-            company={activeCompanySettings}
-            onShowToast={(msg) => showToast(msg, 'success')}
-          />
-        )}
-      </main>
-
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500 shadow-sm mt-auto">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <p>© {new Date().getFullYear()} <strong className="text-blue-700 font-bold">Wanfinance</strong> | Gerador CNAB de Pagamentos - FEBRABAN 240 / 400</p>
-          <p className="text-slate-500">
-            Suporte para múltiplos pagadores e bancos: Itaú, Bradesco, Banco do Brasil, Santander, Caixa, Sicoob, Sicredi e Inter.
-          </p>
-        </div>
-      </footer>
 
       {/* Modals */}
       <BoletoFormModal
