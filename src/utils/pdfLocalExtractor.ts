@@ -26,7 +26,21 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '');
     }
 
-    const binaryStr = atob(cleanBase64);
+    // Strip whitespace, linebreaks, and handle padding for atob safely
+    cleanBase64 = cleanBase64.replace(/[\r\n\s]+/g, '');
+    const padLength = cleanBase64.length % 4;
+    if (padLength > 0) {
+      cleanBase64 += '='.repeat(4 - padLength);
+    }
+
+    let binaryStr = '';
+    try {
+      binaryStr = atob(cleanBase64);
+    } catch {
+      // Fallback binary decode if atob fails
+      binaryStr = '';
+    }
+
     const bytes = new Uint8Array(binaryStr.length);
     for (let i = 0; i < binaryStr.length; i++) {
       bytes[i] = binaryStr.charCodeAt(i);
@@ -35,37 +49,39 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
     const pageTexts: string[] = [];
 
     // 1. Structural PDF page-by-page extraction using pdfjs-dist
-    try {
-      const pdfjsLib = await import('pdfjs-dist');
-      if (pdfjsLib) {
-        if (pdfjsLib.GlobalWorkerOptions) {
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '4.0.379'}/build/pdf.worker.min.mjs`;
+    if (bytes.length > 0) {
+      try {
+        const pdfjsLib = await import('pdfjs-dist');
+        if (pdfjsLib) {
+          if (pdfjsLib.GlobalWorkerOptions) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+          }
+          if ('verbosity' in pdfjsLib) {
+            (pdfjsLib as any).verbosity = 0; // Silent verbosity mode
+          }
         }
-        if ('verbosity' in pdfjsLib) {
-          (pdfjsLib as any).verbosity = 0; // Silent verbosity mode
-        }
-      }
-      const loadingTask = pdfjsLib.getDocument({
-        data: bytes.buffer,
-        stopAtErrors: false,
-      });
-      const pdfDoc = await loadingTask.promise;
+        const loadingTask = pdfjsLib.getDocument({
+          data: bytes.buffer,
+          stopAtErrors: false,
+        } as any);
+        const pdfDoc = await loadingTask.promise;
 
-      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-        const page = await pdfDoc.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const pageStrings = textContent.items.map((item: any) => item.str || '');
-        const pageCombined = pageStrings.join(' ');
-        pageTexts.push(pageCombined);
+        for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+          const page = await pdfDoc.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const pageStrings = textContent.items.map((item: any) => (item as any)?.str || '');
+          const pageCombined = pageStrings.join(' ');
+          pageTexts.push(pageCombined);
+        }
+      } catch (pdfJsErr: any) {
+        const msg = String(pdfJsErr?.message || pdfJsErr);
+        technicalLogger.log({
+          step: 'Aviso pdfjs-dist',
+          fileName,
+          severity: 'warn',
+          errorMessage: msg,
+        });
       }
-    } catch (pdfJsErr: any) {
-      const msg = String(pdfJsErr?.message || pdfJsErr);
-      technicalLogger.log({
-        step: 'Aviso pdfjs-dist',
-        fileName,
-        severity: 'warn',
-        errorMessage: msg,
-      });
     }
 
     // If pdfjs failed to get text, try decompressed streams safely without regex

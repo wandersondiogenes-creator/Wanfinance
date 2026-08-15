@@ -133,11 +133,25 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   if (/BANCO\s+FIDIS/i.test(rawText) || rawText.includes('062.237.425/0001-76') || rawText.includes('062237425000176')) {
     favorecidoCnpjCpf = '062.237.425/0001-76';
   }
+  if (/FIDC\s+COMPLEMENTAR\s+AUTO\s+FORD/i.test(rawText) || /FIDC\s+AUTO\s+FORD/i.test(rawText) || rawText.includes('043.489.824/0001-80') || rawText.includes('043489824000180')) {
+    favorecidoCnpjCpf = '043.489.824/0001-80';
+  }
+  if (/VENDA\s+DE\s+VE[IÍ]CULOS\s+FUNDO/i.test(rawText) || /FIDC\s+VENDA\s+DE\s+VE[IÍ]CULOS/i.test(rawText) || rawText.includes('21.126.275/0001-46') || rawText.includes('21126275000146')) {
+    favorecidoCnpjCpf = '21.126.275/0001-46';
+  }
   if (/BYD\s+AUTO/i.test(rawText) || rawText.includes('50.351.104/0001-19') || rawText.includes('50351104000119')) {
     favorecidoCnpjCpf = '50.351.104/0001-19';
   }
   if (/BYD\s+DO\s+BRASIL/i.test(rawText) || rawText.includes('17.140.820/0007-77') || rawText.includes('17140820000777')) {
     favorecidoCnpjCpf = '17.140.820/0007-77';
+  }
+  if (/GRANVIA\s+VEICULOS/i.test(rawText) || rawText.includes('012.946.886/0001-40') || rawText.includes('012946886000140')) {
+    pagador = 'GRANVIA VEICULOS S/A';
+    pagadorCnpjCpf = '012.946.886/0001-40';
+  }
+  if (/EUROVIA\s+AUTO/i.test(rawText) || rawText.includes('60.933.323/0002-40') || rawText.includes('60933323000240')) {
+    pagador = 'EUROVIA AUTO LTDA';
+    pagadorCnpjCpf = '60.933.323/0002-40';
   }
   if (/VIA\s+SUL\s+VEICULOS/i.test(rawText) || rawText.includes('040.841.736/0022-31') || rawText.includes('040841736002231')) {
     pagador = 'VIA SUL VEICULOS S/A';
@@ -200,6 +214,8 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   const isBYDAuto = textUpper.includes('BYD AUTO DO BRASIL') || textUpper.includes('50.351.104/0001-19') || textUpper.includes('03399.05481');
   const isBYDBrasil = textUpper.includes('BYD DO BRASIL') || textUpper.includes('17.140.820/0007-77') || textUpper.includes('03399.01241');
+  const isFIDCVendaVeiculos = textUpper.includes('VENDA DE VEICULOS FUNDO') || textUpper.includes('VENDA DE VEÍCULOS FUNDO') || textUpper.includes('FIDC VENDA DE VEÍCULOS') || textUpper.includes('FIDC VENDA DE VEICULOS') || textUpper.includes('21.126.275/0001-46') || textUpper.includes('03399.42294');
+  const isFIDCAutoFord = textUpper.includes('FIDC COMPLEMENTAR AUTO FORD') || textUpper.includes('FIDC AUTO FORD') || textUpper.includes('043.489.824/0001-80') || textUpper.includes('043489824000180') || textUpper.includes('GRANVIA VEICULOS') || textUpper.includes('23792.85634') || textUpper.includes('02856-COBFLEX');
 
   if (isGNRE) {
     tipoBoleto = 'tributo';
@@ -213,6 +229,26 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     const emitName = emitenteMatch ? ` - ${emitenteMatch[1].trim()}` : '';
 
     favorecidoNome = `GNRE - Tributos Estaduais${ufStr}${emitName}`;
+  } else if (isFIDCAutoFord) {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = 'FIDC COMPLEMENTAR AUTO FORD';
+    favorecidoCnpjCpf = '043.489.824/0001-80';
+    bancoCodigo = '237';
+    bancoNome = 'Banco Bradesco S.A.';
+    if (!pagador || pagador.includes('Não identificado')) {
+      pagador = 'GRANVIA VEICULOS S/A';
+      pagadorCnpjCpf = '012.946.886/0001-40';
+    }
+  } else if (isFIDCVendaVeiculos) {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = 'VENDA DE VEICULOS FUNDO DE INVESTIMENTO';
+    favorecidoCnpjCpf = '21.126.275/0001-46';
+    bancoCodigo = '033';
+    bancoNome = 'Banco Santander Brasil S.A.';
+    if (!pagador || pagador.includes('Não identificado')) {
+      pagador = 'EUROVIA AUTO LTDA';
+      pagadorCnpjCpf = '60.933.323/0002-40';
+    }
   } else if (isBYDAuto) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BYD AUTO DO BRASIL LTDA';
@@ -371,6 +407,12 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   if (!text) return 'Beneficiário / Cedente';
 
   // 1. Direct high-frequency matches
+  if (/FIDC\s+COMPLEMENTAR\s+AUTO\s+FORD/i.test(text) || /FIDC\s+AUTO\s+FORD/i.test(text) || text.includes('043.489.824/0001-80') || text.includes('043489824000180')) {
+    return 'FIDC COMPLEMENTAR AUTO FORD';
+  }
+  if (/VENDA\s+DE\s+VE[IÍ]CULOS\s+FUNDO/i.test(text) || /FIDC\s+VENDA\s+DE\s+VE[IÍ]CULOS/i.test(text) || text.includes('21.126.275/0001-46')) {
+    return 'VENDA DE VEICULOS FUNDO DE INVESTIMENTO';
+  }
   if (/BYD\s+AUTO\s+DO\s+BRASIL/i.test(text) || text.includes('50.351.104/0001-19')) {
     return 'BYD AUTO DO BRASIL LTDA';
   }

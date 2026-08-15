@@ -185,7 +185,7 @@ export const AppleSidebar: React.FC<AppleSidebarProps> = ({
               <h1 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-1 leading-none">
                 <span>Wanfinance</span>
                 <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-md bg-black/[0.05] dark:bg-white/[0.1] text-slate-500 dark:text-slate-400">
-                  iPad Pro
+                  Pro
                 </span>
               </h1>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">

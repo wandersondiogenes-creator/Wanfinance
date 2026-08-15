@@ -98,7 +98,7 @@ function extractTextFromPdfBuffer(buffer: Buffer): string {
         const streamBuffer = buffer.subarray(contentStart, contentEnd);
         let decompressed = "";
         try {
-          decompressed = zlib.inflateSync(streamBuffer).toString("utf-8");
+          decompressed = zlib.inflateSync(streamBuffer, { finishFlush: zlib.constants.Z_SYNC_FLUSH }).toString("utf-8");
         } catch {
           try {
             decompressed = zlib.inflateRawSync(streamBuffer).toString("utf-8");
@@ -106,7 +106,7 @@ function extractTextFromPdfBuffer(buffer: Buffer): string {
             try {
               decompressed = zlib.unzipSync(streamBuffer).toString("utf-8");
             } catch {
-              // Ignore uncompressed stream
+              // Ignore non-standard or encrypted stream
             }
           }
         }
@@ -361,17 +361,18 @@ async function startServer() {
 
         const callGeminiWithRetryAndFallback = async () => {
           const modelsToTry = [
-            "gemini-3.6-flash",
+            "gemini-3.7-flash",
             "gemini-flash-latest",
             "gemini-3.1-flash-lite",
-            "gemini-3.1-pro-preview",
           ];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
             try {
               console.log(`[Gemini API] Executando análise com modelo ${modelName}...`);
-              const response = await ai.models.generateContent({
+              
+              // 12s timeout for Gemini API call to prevent server/browser fetch timeout
+              const generatePromise = ai.models.generateContent({
                 model: modelName,
                 contents: [
                   {
@@ -397,6 +398,12 @@ async function startServer() {
                   responseSchema: GEMINI_BOLETO_SCHEMA as any,
                 },
               });
+
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("Timeout Gemini API (12s)")), 12000)
+              );
+
+              const response = await Promise.race([generatePromise, timeoutPromise]) as any;
               return response;
             } catch (err: any) {
               lastError = err;

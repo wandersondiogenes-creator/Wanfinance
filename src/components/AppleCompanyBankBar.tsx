@@ -59,7 +59,7 @@ export const AppleCompanyBankBar: React.FC<AppleCompanyBankBarProps> = ({
   }, []);
 
   return (
-    <div className="w-full bg-white/75 dark:bg-[#1c1c1e]/75 backdrop-blur-2xl border-b border-black/[0.06] dark:border-white/[0.08] px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+    <div className="w-full bg-white dark:bg-[#1c1c1e] border-b border-black/[0.06] dark:border-white/[0.08] px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs relative z-30">
       <div className="flex flex-wrap items-center gap-2.5">
         {/* EMPRESA CARD - Apple Segmented Card Style */}
         <div className="relative" ref={companyRef}>
@@ -71,7 +71,7 @@ export const AppleCompanyBankBar: React.FC<AppleCompanyBankBarProps> = ({
             }}
             className={`group flex items-center gap-3 px-3.5 py-2 rounded-2xl transition-all text-left cursor-pointer border ${
               isCompanyOpen
-                ? 'bg-blue-50/80 dark:bg-blue-500/15 border-blue-500/40 shadow-sm ring-2 ring-blue-500/20'
+                ? 'bg-blue-50 dark:bg-blue-500/15 border-blue-500/40 shadow-sm ring-2 ring-blue-500/20'
                 : 'bg-black/[0.03] dark:bg-white/[0.06] hover:bg-black/[0.06] dark:hover:bg-white/[0.1] border-black/[0.05] dark:border-white/[0.06]'
             }`}
           >
@@ -102,7 +102,7 @@ export const AppleCompanyBankBar: React.FC<AppleCompanyBankBarProps> = ({
 
           {/* Company Popover */}
           {isCompanyOpen && (
-            <div className="absolute left-0 mt-2 w-84 sm:w-96 bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute left-0 mt-2 w-84 sm:w-96 bg-white dark:bg-[#202022] border border-black/10 dark:border-white/15 rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
               <div className="px-3 py-2 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-blue-500" /> Selecionar Empresa
@@ -176,7 +176,7 @@ export const AppleCompanyBankBar: React.FC<AppleCompanyBankBarProps> = ({
             }}
             className={`group flex items-center gap-3 px-3.5 py-2 rounded-2xl transition-all text-left cursor-pointer border ${
               isBankOpen
-                ? 'bg-indigo-50/80 dark:bg-indigo-500/15 border-indigo-500/40 shadow-sm ring-2 ring-indigo-500/20'
+                ? 'bg-indigo-50 dark:bg-indigo-500/15 border-indigo-500/40 shadow-sm ring-2 ring-indigo-500/20'
                 : 'bg-black/[0.03] dark:bg-white/[0.06] hover:bg-black/[0.06] dark:hover:bg-white/[0.1] border-black/[0.05] dark:border-white/[0.06]'
             }`}
           >
@@ -220,7 +220,7 @@ export const AppleCompanyBankBar: React.FC<AppleCompanyBankBarProps> = ({
 
           {/* Bank Popover */}
           {isBankOpen && (
-            <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-84 sm:w-96 bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute left-0 mt-2 w-84 sm:w-96 bg-white dark:bg-[#202022] border border-black/10 dark:border-white/15 rounded-2xl shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
               <div className="px-3 py-2 border-b border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Landmark className="w-3.5 h-3.5 text-indigo-500" /> Contas de {currentCompany?.nomeFantasia || 'Empresa'}

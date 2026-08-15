@@ -307,6 +307,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               severity: 'info',
             });
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
             const response = await fetch('/api/extract-boleto-pdf', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -316,7 +319,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                 fileName: file.name,
                 fileSize: file.size,
               }),
+              signal: controller.signal,
             });
+            clearTimeout(timeoutId);
 
             const reqTimeMs = Math.round(performance.now() - reqStartTime);
             const contentType = response.headers.get('content-type') || '';
