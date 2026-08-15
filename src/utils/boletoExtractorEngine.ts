@@ -55,11 +55,10 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
    - "agenciaConta": Agência e Conta do Beneficiário se visível.
 4. REGRA DE MÁXIMA SEGURANÇA E NÃO-INVENÇÃO:
    - SE UM CAMPO NÃO ESTIVER PRESENTE NO BOLETO OU SE HOUVER DÚVIDA, RETORNE EXATAMENTE A STRING "Não identificado com segurança" PARA CAMPOS DE TEXTO E 0 PARA NÚMEROS. NUNCA CHUTE, NUNCA INVENTE E NUNCA ADIVINHE DADOS.
-5. CARNÊS COM MÚLTIPLAS PARCELAS:
-   - Apenas se o documento for um carnê físico com cupons/parcelas em páginas diferentes com vencimentos e valores mensais distintos, retorne cada parcela distinta.
-6. DOCUMENTOS COM VÁRIAS VIAS OU DISCRIMINAÇÃO DE DÉBITOS DO MESMO BOLETO (REGRA DE MÁXIMA IMPORTÂNCIA):
-   - Se o documento contiver vias repetidas da mesma guia (ex: "1ª via - Banco", "2ª via - Contribuinte", "3ª via - Fisco") ou tabelas detalhando itens de débitos (ex: "Primeiro Emplacamento R$ 234,25", "Ordem R$ 49,30", "Total R$ 283,55"), TRATA-SE DE UM ÚNICO BOLETO.
-   - Retorne APENAS 1 (UM) ÚNICO item no array "boletos" com o VALOR TOTAL (ex: 283.55). NUNCA crie múltiplos boletos para as vias ou para os sub-itens da tabela!
+5. CARNÊS E LOTES MULTI-PÁGINAS COM MÚLTIPLOS DOCUMENTOS/VEÍCULOS DISTINTOS:
+   - Se o arquivo PDF contiver múltiplas páginas e cada página contiver uma guia/boleto de um veículo ou débito diferente (ex: Página 1 com IPVA Placa QYH7D57, Página 2 com IPVA Placa SOE9J44, Página 3 com IPVA Placa SNL2D75, Página 4 com IPVA Placa RZS1I93), EXTRAIA CADA UMA DAS GUIAS INDIVIDUALMENTE e retorne todas no array "boletos" (um objeto por guia/página).
+6. DOCUMENTOS COM VÁRIAS VIAS REPETIDAS DA MESMA GUIA NA MESMA PÁGINA (VIA USUÁRIO / VIA BANCO):
+   - Se na mesma página houver 2 vias idênticas (ex: topo "VIA USUÁRIO" e rodapé "VIA BANCO") com o mesmo código de barras, trata-se de 1 único boleto para aquele veículo. Retorne apenas 1 item para essa página.
 7. EXCEÇÃO CRÍTICA PARA GUIAS GNRE, TRIBUTOS E ARRECADAÇÃO (DOCUMENTO VÁLIDO PARA PAGAMENTO):
    - Em guias de arrecadação GNRE, DARF, DAE, Tributos Estaduais/Federais e Concessionárias: se o documento contiver o campo "Documento Válido para pagamento", "Válido para pagamento até" ou similar especificando uma data (exemplo: "Documento Válido para pagamento 07/08/2026"), CONSIDERE OBRIGATORIAMENTE ESTA DATA FINAL (ex: 2026-08-07) como a "dataVencimento" oficial do boleto.
    - Esta data limite de pagamento/validade TEM PRECEDÊNCIA ABSOLUTA sobre qualquer outra data presente no campo "Data de Vencimento" ou codificada no código de barras.

@@ -146,7 +146,8 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
     const patterns = [
       /\d{5}[\.\s-]*\d{5}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d[\.\s-]*\d{14}/g,
       /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
-      /\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d/g,
+      /\d{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d/g,
+      /(?:8\d{10}[-\s.]*\d\s*){4}/g,
       /\b\d{47,48}\b/g,
       /\b\d{44}\b/g,
     ];
@@ -185,11 +186,11 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                 }
 
                 let docNumber = detected.autoInfracao || '';
-                let nossoNum = '';
+                let nossoNum = detected.seuNumero || '';
                 const numDocMatch = textBlock.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+do\s+Documento|Número\s+do\s+Documento|Nº\s+Doc|Seu\s+Número|Compromisso)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
                 if (numDocMatch && !docNumber) docNumber = numDocMatch[1].trim();
 
-                const nossoNumMatch = textBlock.match(/(?:Nosso\s+Número|Cart\.\s*\/\s*Nosso\s+Número|Nosso\s+Numero)\s*[:\s]*([\w\/\.-]{5,25})/i);
+                const nossoNumMatch = textBlock.match(/(?:Nosso\s+Número|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+Número|Nosso\s+Numero)\s*[:\s]*([\w\/\.-]{5,25})/i);
                 if (nossoNumMatch) nossoNum = nossoNumMatch[1].trim();
 
                 const finalFavorecido = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
@@ -206,8 +207,8 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
                   valor: extractedValue,
                   dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
-                  numeroDocumento: docNumber,
-                  seuNumero: docNumber || detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
+                  numeroDocumento: docNumber || nossoNum,
+                  seuNumero: docNumber || nossoNum || detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
                   nossoNumero: nossoNum,
                   bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
                   bancoNome: detected.bancoNome || parsed.bancoNome,

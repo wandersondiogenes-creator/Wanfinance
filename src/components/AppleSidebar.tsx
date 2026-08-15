@@ -168,29 +168,33 @@ export const AppleSidebar: React.FC<AppleSidebarProps> = ({
       >
         {/* Apple iPad Top Sidebar Header with Traffic Lights & Logo */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.06]">
-          <div className="flex items-center space-x-3">
-            {/* iPadOS macOS Window Control Dots */}
-            <div className="flex items-center space-x-1.5 mr-1 hidden sm:flex">
-              <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]/50 shadow-2xs" />
-              <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]/50 shadow-2xs" />
-              <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29]/50 shadow-2xs" />
+          <div className="flex items-center space-x-2.5">
+            {/* macOS Window Control Dots */}
+            <div className="flex items-center space-x-1.5 shrink-0">
+              <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] border border-[#e0443e]/40 shadow-2xs" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] border border-[#dea123]/40 shadow-2xs" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f] border border-[#1aab29]/40 shadow-2xs" />
             </div>
 
-            {/* Apple Minimal App Icon */}
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 text-white flex items-center justify-center font-black text-sm shadow-md shadow-blue-500/20">
+            {/* Apple Blue-Purple App Icon with W */}
+            <div className="w-7 h-7 rounded-[9px] bg-gradient-to-br from-[#4f86f7] via-[#5c6df6] to-[#a855f7] text-white flex items-center justify-center font-black text-xs shadow-sm shadow-indigo-500/25 shrink-0 select-none">
               W
             </div>
 
-            <div>
-              <h1 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-1 leading-none">
-                <span>Wanfinance</span>
-                <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-md bg-black/[0.05] dark:bg-white/[0.1] text-slate-500 dark:text-slate-400">
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-1.5 leading-none">
+                <span className="text-[13.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+                  Wanfinance
+                </span>
+                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-md bg-slate-200/80 dark:bg-white/[0.1] text-slate-500 dark:text-slate-400 leading-none">
                   Pro
                 </span>
-              </h1>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                CNAB {currentBank?.padraoCNAB || company.padraoCNAB} Pagfor
-              </p>
+              </div>
+              <div className="mt-1">
+                <span className="inline-flex items-center text-[10.5px] font-normal text-slate-600 dark:text-slate-300 bg-[#ebf0f7] dark:bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-200/90 dark:border-slate-700/80 shadow-2xs leading-none">
+                  Excellence
+                </span>
+              </div>
             </div>
           </div>
 

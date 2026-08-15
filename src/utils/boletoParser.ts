@@ -158,6 +158,15 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     pagadorCnpjCpf = '040.841.736/0022-31';
   }
 
+  // Extract Pagador / Proprietário (including format: "168.356.034-53 EVALDO OLIVEIRA PIO")
+  if (!pagadorCnpjCpf || !pagador) {
+    const propDirectMatch = rawText.match(/(?:PROPRIET[AÁ]RIO|PROPRIETARIO)\s*[:\s\r\n]*(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\s+([A-ZÀ-Ú\s.]{3,60})/i);
+    if (propDirectMatch) {
+      if (!pagadorCnpjCpf) pagadorCnpjCpf = propDirectMatch[1].trim();
+      if (!pagador) pagador = propDirectMatch[2].trim();
+    }
+  }
+
   // Extract Beneficiário CNPJ if not matched
   if (!favorecidoCnpjCpf) {
     const benCnpjMatch = rawText.match(/(?:Beneficiário|Beneficiario|Cedente|Razão\s+Social|Favorecido)[^]*?(?:CPF\/CNPJ|CNPJ|CPF|CNPJ\/MF|CPF\/MF)\s*[:\s]*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})/i);

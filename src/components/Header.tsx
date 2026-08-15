@@ -89,27 +89,32 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between py-3 gap-3.5">
           {/* Logo & Main Title */}
           <div className="flex items-center space-x-3 shrink-0">
-            {/* Geometric Golden W Logo */}
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/25 shrink-0 border border-amber-300/40">
-              <svg viewBox="0 0 100 100" className="w-6 h-6 text-slate-950 fill-current font-black">
-                <path d="M15 25 L35 75 L50 45 L65 75 L85 25 L70 25 L60 55 L50 35 L40 55 L30 25 Z" />
-              </svg>
+            {/* macOS Window Control Dots */}
+            <div className="flex items-center space-x-1.5 shrink-0 hidden sm:flex">
+              <div className="w-3 h-3 rounded-full bg-[#ff5f56] border border-[#e0443e]/40 shadow-2xs" />
+              <div className="w-3 h-3 rounded-full bg-[#ffbd2e] border border-[#dea123]/40 shadow-2xs" />
+              <div className="w-3 h-3 rounded-full bg-[#27c93f] border border-[#1aab29]/40 shadow-2xs" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-xl font-black tracking-tight uppercase flex items-center gap-1">
-                  <span className="text-white">WAN</span>
-                  <span className="text-[#E5A93C]">FINANCE</span>
-                  <span className="text-slate-600 font-normal ml-1">|</span>
-                  <span className="text-slate-200 text-base font-bold ml-1">CNAB</span>
-                </h1>
-                <span className="bg-amber-500/15 text-amber-400 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border border-amber-500/30 tracking-wide">
-                  CNAB {currentBank?.padraoCNAB || company.padraoCNAB}
+
+            {/* Apple Blue-Purple App Icon with W */}
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4f86f7] via-[#5c6df6] to-[#a855f7] text-white flex items-center justify-center font-black text-sm shadow-md shadow-indigo-500/25 shrink-0 select-none">
+              W
+            </div>
+
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5 leading-none">
+                <span className="text-base font-bold text-white tracking-tight">
+                  Wanfinance
+                </span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-white/10 text-slate-300 leading-none">
+                  Pro
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-medium">
-                Gestão Financeira, DDA & Remessas Bancárias
-              </p>
+              <div className="mt-1">
+                <span className="inline-flex items-center text-[11px] font-normal text-slate-300 bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/80 shadow-2xs leading-none">
+                  Excellence
+                </span>
+              </div>
             </div>
           </div>
 

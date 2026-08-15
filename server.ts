@@ -146,6 +146,8 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
   const patterns = [
     /\d{5}[\.\s]*\d{5}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d[\.\s]*\d{14}/g,
     /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
+    /\d{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d/g,
+    /(?:8\d{10}[-\s.]*\d\s*){4}/g,
     /\b\d{47,48}\b/g,
     /\b\d{44}\b/g,
   ];
@@ -164,7 +166,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             let extractedValue = parsed.valor || 0;
 
             if (extractedValue <= 0) {
-              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
               if (valorMatch) {
                 const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
                 const parsedVal = parseFloat(valStr);
@@ -180,7 +182,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               : extractFavorecidoFromText(rawText, parsed.bancoNome);
 
             if (parsed.bancoCodigo === '858' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
-              favorecidoNome = 'SEFAZ - Guia GNRE';
+              favorecidoNome = 'SECRETARIA DA FAZENDA - SEFAZ IPVA';
             } else if (parsed.bancoCodigo === '856' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
               favorecidoNome = 'Receita Federal - DARF';
             }
@@ -191,15 +193,18 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               linhaDigitavel: clean,
               codigoBarras: parsed.codigoBarras || clean,
               favorecidoNome,
-              favorecidoCnpjCpf: "",
+              favorecidoCnpjCpf: detected.favorecidoCnpjCpf || "",
               pagador: detected.pagador || "Não identificado com segurança",
               pagadorCnpjCpf: detected.pagadorCnpjCpf || "",
               valor: extractedValue,
               dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split("T")[0],
               seuNumero: docNum,
-              nossoNumero: "",
+              nossoNumero: detected.seuNumero || "",
               bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
               bancoNome: detected.bancoNome || parsed.bancoNome,
+              tipoBoleto: detected.tipoBoleto,
+              placa: detected.placa,
+              renavam: detected.renavam,
               observacoes: detected.observacoes || "Extraído do texto do PDF via leitor local",
               confidence: 0.9,
             });

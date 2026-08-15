@@ -991,8 +991,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             <div>
               <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                 Sistema Inteligente de Extração e Memória de Boletos
-                <span className="text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  OneFinance AI
+                <span className="text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-300 px-2.5 py-0.5 rounded-full tracking-wide">
+                  Wanfinance IA
                 </span>
               </h2>
               <p className="text-xs text-slate-500 font-medium">
