@@ -270,6 +270,7 @@ export interface LearnedLayoutPattern {
     favorecidoRegex?: string;
     pagadorRegex?: string;
     seuNumeroRegex?: string;
+    nossoNumeroRegex?: string;
   };
 }
 

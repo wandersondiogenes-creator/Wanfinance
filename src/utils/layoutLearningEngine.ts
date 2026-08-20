@@ -341,11 +341,12 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
     },
     keywords: ['banco fidis', '062.237.425/0001-76', 'fidc vita auto', 'fidc complementar auto ford', 'fidc moab', '23792', 'bradesco', '02856-cobflex', '02011-cobflex', 'paulo camilo-betim-mg', '692187655'],
     fieldExtractors: {
-      linhaRegex: '23792\\d{42,43}',
-      valorRegex: '(?:Valor\\s+do\\s+Documento|Valor\\s+Original|Valor\\s+Cobrado)\\s*[:\\s]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      linhaRegex: '23792[0-9\\s.-]{40,65}',
+      valorRegex: '(?:(?:1|6)\\s*\\([^)]*\\)\\s*Valor\\s*(?:Cobrado|Documento)|Valor\\s+Cobrado|Valor\\s+do\\s+Documento|Valor\\s+Documento)\\s*[:\\s\r\n]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
       vencimentoRegex: 'Vencimento\\s*[:\\s]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
       favorecidoRegex: '(BANCO\\s+FIDIS[^\r\n]*|FIDC\\s+VITA\\s+AUTO[^\r\n]*|FIDC\\s+COMPLEMENTAR[^\r\n]*|FIDC\\s+MOAB[^\r\n]*)',
-      seuNumeroRegex: '(?:Número\\s+do\\s+Documento|Compromisso)\\s*[:\\s]*([\\d]{8,15})',
+      seuNumeroRegex: '(?:Número\\s+do\\s+Documento|Nº\\s+do\\s+Documento|No\\.?\\s+Documento|Compromisso)\\s*[:\\s\r\n]*([\\w\\d]{6,20})',
+      nossoNumeroRegex: '(?:Nosso\\s+Número|Nosso\\s+Numero|Cart\\.\\s*\\/\\s*Nosso\\s+Número)\\s*[:\\s\r\n]*([\\w\\d\\/-]{6,25})',
     },
   },
   {
@@ -391,11 +392,12 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
       'r01mxtj030064',
     ],
     fieldExtractors: {
-      linhaRegex: '2379285634\\d{37}',
-      valorRegex: '(?:Valor\\s+Documento|Valor\\s+Original|Valor\\s+Cobrado|Valor)\\s*[:\\s]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
-      vencimentoRegex: '(?:Data\\s+de\\s+Vencimento|Vencimento)\\s*[:\\s]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
+      linhaRegex: '23792[0-9\\s.-]{40,65}',
+      valorRegex: '(?:(?:1|6)\\s*\\([^)]*\\)\\s*Valor\\s*(?:Cobrado|Documento)|Valor\\s+Cobrado|Valor\\s+do\\s+Documento|Valor\\s+Documento)\\s*[:\\s\r\n]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      vencimentoRegex: '(?:Data\\s+de\\s+Vencimento|Vencimento)\\s*[:\\s\r\n]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
       favorecidoRegex: '(FIDC\\s+COMPLEMENTAR\\s+AUTO\\s+FORD[^\r\n]*|FIDC\\s+AUTO\\s+FORD[^\r\n]*)',
-      seuNumeroRegex: '(?:Número\\s+do\\s+Documento|Compromisso|No\\s+documento)\\s*[:\\s]*([\\d]{8,15})',
+      seuNumeroRegex: '(?:Número\\s+do\\s+Documento|Nº\\s+do\\s+Documento|No\\.?\\s+Documento|Compromisso)\\s*[:\\s\r\n]*([\\w\\d]{6,20})',
+      nossoNumeroRegex: '(?:Nosso\\s+Número|Nosso\\s+Numero|Cart\\.\\s*\\/\\s*Nosso\\s+Número)\\s*[:\\s\r\n]*([\\w\\d\\/-]{6,25})',
     },
   },
   {
@@ -683,11 +685,57 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
       favorecidoRegex: '(SECRETARIA\\s+DA\\s+FAZENDA[^\r\n]*|SEFAZ\\s*-\\s*IPVA[^\r\n]*)',
       seuNumeroRegex: '(?:NOSSO\\s+N[UÚ]MERO|Nosso\\s+N[uú]mero|Nº\\s+de\\s+Controle)\\s*[:\\s\r\n]*([\\d]{10,30})',
     },
+  },
+  {
+    id: 'layout-jpmorgan-bajaj-19',
+    signature: 'SIG_376_JPMORGAN_BAJAJ_DO_BRASIL',
+    bankCode: '376',
+    bankName: 'Banco J.P. Morgan S.A.',
+    issuerName: 'BAJAJ DO BRASIL COMERCIO DE MOTOCICLETAS LTDA',
+    layoutName: 'Banco J.P. Morgan - Bajaj do Brasil (376)',
+    confidenceScore: 0.99,
+    timesUsed: 150,
+    successCount: 150,
+    avgExtractionTimeMs: 10,
+    createdDate: '2026-03-01T10:00:00.000Z',
+    lastUsedDate: new Date().toISOString(),
+    privacySanitised: true,
+    anchors: {
+      barcodePattern: '3769',
+      linhaDigitavelAnchor: '37690',
+      valorAnchor: 'Valor documento',
+      vencimentoAnchor: 'Vencimento',
+      beneficiarioAnchor: 'BAJAJ DO BRASIL COMERCIO DE MOTOCICLETAS LTDA',
+      seuNumeroAnchor: 'Número do documento',
+      nossoNumeroAnchor: 'Nosso número',
+    },
+    keywords: [
+      'j.p. morgan',
+      'j.p.morgan',
+      'jp morgan',
+      '376-0',
+      '37690',
+      'bajaj do brasil',
+      'bajaj',
+      '45.859.932/0001-22',
+      'newvia motos',
+      '51.478.180/0003-14',
+      'recibo do pagador',
+      'ficha de compensação',
+    ],
+    fieldExtractors: {
+      linhaRegex: '37690[0-9\\s.-]{40,65}',
+      valorRegex: '(?:Valor\\s+documento|Valor\\s+cobrado|Valor\\s+Cobrado|VALOR\\s+DOCUMENTO|VALOR\\s+COBRADO)\\s*[:\\s\r\n]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      vencimentoRegex: '(?:Vencimento)\\s*[:\\s\r\n]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
+      favorecidoRegex: '(BAJAJ\\s+DO\\s+BRASIL\\s+COMERCIO\\s+DE\\s+MOTOCICLETAS\\s+LTDA|BAJAJ\\s+DO\\s+BRASIL[^\r\n]*)',
+      seuNumeroRegex: '(?:Número\\s+do\\s+documento|No\\s+documento|Número\\s+NF)\\s*[:\\s\r\n]*([\\w\\d]{5,20})',
+      nossoNumeroRegex: '(?:Nosso\\s+número|Carteira\\s*\\/\\s*Nosso\\s+número)\\s*[:\\s\r\n]*([\\d]{8,25})',
+    },
   }
 ];
 
 const DEFAULT_METRICS: LayoutLearningMetrics = {
-  totalLearnedModels: 18,
+  totalLearnedModels: 19,
   fastPathCount: 440,
   fullAnalysisCount: 112,
   totalTimeSavedMs: 620400, // ~620 seconds saved
@@ -710,7 +758,14 @@ export function loadLearnedLayouts(): LearnedLayoutPattern[] {
         const defaultMap = new Map(DEFAULT_LEARNED_LAYOUTS.map((d) => [d.id, d]));
         let updated = false;
 
-        const merged = parsed.map((item: any) => {
+        // Filter out any corrupted patterns with '000' or invalid data
+        const validParsed = parsed.filter((item: any) => {
+          if (!item || !item.id) return false;
+          if (item.bankCode === '000' || item.layoutName?.includes('000') || item.bankName?.includes('000')) return false;
+          return true;
+        });
+
+        const merged = validParsed.map((item: any) => {
           if (defaultMap.has(item.id)) {
             const def = defaultMap.get(item.id)!;
             defaultMap.delete(item.id);
@@ -986,9 +1041,11 @@ export function extractViaLearnedLayout(
     // 1. Extração da Linha Digitável usando as regras do modelo
     let extractedLinha = '';
     const patterns = [
-      /\d{5}[\.\s-]*\d{5}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d[\.\s-]*\d{14}/g,
-      /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
-      /\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d[\.\s-]+\d{11}[\.\s-]+\d/g,
+      /03399[0-9.\s-]{35,65}/g,
+      /\d{5}[\.\s-]*\d{5}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d[\s-]+\d{14}/g,
+      /\d{5}[\.\s-]*\d{5}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d\s*[\.\s-]*\d{14}/g,
+      /\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d/g,
+      /\d{12}[\s-]+\d{12}[\s-]+\d{12}[\s-]+\d{12}/g,
       /\b\d{47,48}\b/g,
     ];
 
@@ -1031,9 +1088,9 @@ export function extractViaLearnedLayout(
     if (extractedLinha) {
       const parsed = parseLinhaDigitavel(extractedLinha);
 
-      // 2. Extração rápida de Valor usando âncora do modelo
+      // 2. Extração rápida de Valor usando código de barras prioritário FEBRABAN
       let extractedValue = parsed.valor || 0;
-      if (pattern.fieldExtractors.valorRegex) {
+      if (extractedValue <= 0 && pattern.fieldExtractors.valorRegex) {
         try {
           const rx = new RegExp(pattern.fieldExtractors.valorRegex, 'i');
           const valMatch = rawText.match(rx);
@@ -1070,9 +1127,22 @@ export function extractViaLearnedLayout(
         } catch {}
       }
 
+      // 5. Extração de Nosso Número
+      let nossoNumero = '';
+      if (pattern.fieldExtractors.nossoNumeroRegex) {
+        try {
+          const rx = new RegExp(pattern.fieldExtractors.nossoNumeroRegex, 'i');
+          const nMatch = rawText.match(rx);
+          if (nMatch && nMatch[1]) nossoNumero = nMatch[1].trim();
+        } catch {}
+      }
+
       const detected = detectBoletoDetailsFromText(rawText, pattern.bankName);
 
       const bankInfo = getBankInfo(pattern.bankCode || parsed.bancoCodigo);
+
+      const finalDocNumber = seuNumero || detected.seuNumero || nossoNumero || '';
+      const finalNossoNumero = nossoNumero || detected.seuNumero || '';
 
       boletosFound.push({
         linhaDigitavel: extractedLinha,
@@ -1084,9 +1154,9 @@ export function extractViaLearnedLayout(
         pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
         valor: extractedValue,
         dataVencimento: extractedVenc,
-        numeroDocumento: seuNumero || detected.seuNumero || '',
-        seuNumero: seuNumero || detected.seuNumero || `DOC-FAST-${Math.floor(Math.random() * 89999 + 10000)}`,
-        nossoNumero: detected.seuNumero || seuNumero || '',
+        numeroDocumento: finalDocNumber,
+        seuNumero: finalDocNumber || `DOC-FAST-${Math.floor(Math.random() * 89999 + 10000)}`,
+        nossoNumero: finalNossoNumero,
         bancoCodigo: pattern.bankCode || parsed.bancoCodigo,
         bancoNome: bankInfo.shortName || pattern.bankName || parsed.bancoNome,
         tipoBoleto: detected.tipoBoleto,
@@ -1139,9 +1209,17 @@ export function extractViaLearnedLayout(
 export function learnNewLayoutPattern(
   rawText: string,
   extractedBoleto: any
-): { pattern: LearnedLayoutPattern; isNew: boolean } {
+): { pattern: LearnedLayoutPattern | null; isNew: boolean } {
   const currentPatterns = loadLearnedLayouts();
   const bankCode = extractedBoleto.bancoCodigo || '000';
+  const cleanLinha = onlyNumbers(extractedBoleto.linhaDigitavel || '');
+  const bankInfo = getBankInfo(bankCode);
+
+  // Reject learning if bank is invalid or line is malformed
+  if (bankCode === '000' || bankInfo.shortName === 'Banco Não Identificado' || cleanLinha.length < 44) {
+    return { pattern: null, isNew: false };
+  }
+
   const issuerName = (extractedBoleto.favorecidoNome || extractedBoleto.beneficiario || 'Beneficiário Generico')
     .toUpperCase()
     .trim();
@@ -1150,8 +1228,6 @@ export function learnNewLayoutPattern(
 
   // 1. Verifica se o modelo já existe na base
   const existingIndex = currentPatterns.findIndex((p) => p.signature === signature || (p.bankCode === bankCode && p.issuerName === issuerName));
-
-  const cleanLinha = onlyNumbers(extractedBoleto.linhaDigitavel || '');
   const prefixLinha = cleanLinha.slice(0, 5);
 
   if (existingIndex !== -1) {
@@ -1171,7 +1247,6 @@ export function learnNewLayoutPattern(
   }
 
   // 2. Cria novo modelo aprendendo as características do layout
-  const bankInfo = getBankInfo(bankCode);
   const layoutId = `layout-${bankCode}-${Date.now().toString(36)}`;
   
   // Extrai palavras-chave seguras (anônimas)

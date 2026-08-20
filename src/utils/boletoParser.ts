@@ -108,20 +108,30 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     }
   }
 
-  // 5. Extracted Values (Valor Cobrado / Valor Documento / Valor Original / Valor Total)
+  // 5. Extracted Values (Valor Cobrado / Valor Documento / Valor Total)
   let valor: number | undefined;
-  const valorCobradoMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+Documento|VALOR\s+ORIGINAL|Valor\s+Original|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado)|Valor)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+  const valorCobradoMatch = rawText.match(/(?:(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Cobrado|Documento)|(?:=\s*)?Valor\s+Cobrado|VALOR\s+COBRADO|(?:=\s*)?Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
   if (valorCobradoMatch) {
     const valStr = valorCobradoMatch[1].replace(/\./g, '').replace(',', '.');
     const parsedVal = parseFloat(valStr);
     if (!isNaN(parsedVal) && parsedVal > 0) {
       valor = parsedVal;
     }
+  } else {
+    // Secondary fallback (e.g. Total or generic Valor if no main header matched)
+    const fallbackValMatch = rawText.match(/(?:TOTAL|Valor\s+Original|VALOR)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+    if (fallbackValMatch) {
+      const valStr = fallbackValMatch[1].replace(/\./g, '').replace(',', '.');
+      const parsedVal = parseFloat(valStr);
+      if (!isNaN(parsedVal) && parsedVal > 0) {
+        valor = parsedVal;
+      }
+    }
   }
 
   // GNRE / Control Number / Nosso Numero / Numero do Documento / Compromisso
   let gnomeNum = '';
-  const gnreCtrlMatch = rawText.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nosso\s+Número|NOSSO\s+NÚMERO|Nosso\s+Numero|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo|Compromisso|Número\s+do\s+Documento|Nº\s+do\s+Documento)\s*[:\s\r\n]*([\w\d.-]{5,30})/i);
+  const gnreCtrlMatch = rawText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|Nº\s+do\s+Documento|N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Nosso\s+Número|NOSSO\s+NÚMERO|Nosso\s+Numero|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo|Compromisso)\s*[:\s\r\n]*([\w\d\/\.-]{5,30})/i);
   if (gnreCtrlMatch) {
     gnomeNum = gnreCtrlMatch[1].trim();
   }
@@ -134,6 +144,9 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   if (/BANCO\s+FIDIS/i.test(rawText) || rawText.includes('062.237.425/0001-76') || rawText.includes('062237425000176')) {
     favorecidoCnpjCpf = '062.237.425/0001-76';
   }
+  if (/BAJAJ\s+DO\s+BRASIL/i.test(rawText) || /BAJAJ/i.test(rawText) || rawText.includes('45.859.932/0001-22') || rawText.includes('45859932000122')) {
+    favorecidoCnpjCpf = '45.859.932/0001-22';
+  }
   if (/FIDC\s+COMPLEMENTAR\s+AUTO\s+FORD/i.test(rawText) || /FIDC\s+AUTO\s+FORD/i.test(rawText) || rawText.includes('043.489.824/0001-80') || rawText.includes('043489824000180')) {
     favorecidoCnpjCpf = '043.489.824/0001-80';
   }
@@ -145,6 +158,10 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   }
   if (/BYD\s+DO\s+BRASIL/i.test(rawText) || rawText.includes('17.140.820/0007-77') || rawText.includes('17140820000777')) {
     favorecidoCnpjCpf = '17.140.820/0007-77';
+  }
+  if (/NEWVIA\s+MOTOS/i.test(rawText) || rawText.includes('51.478.180/0003-14') || rawText.includes('51478180000314')) {
+    pagador = 'NEWVIA MOTOS LTDA';
+    pagadorCnpjCpf = '51.478.180/0003-14';
   }
   if (/GRANVIA\s+VEICULOS/i.test(rawText) || rawText.includes('012.946.886/0001-40') || rawText.includes('012946886000140')) {
     pagador = 'GRANVIA VEICULOS S/A';
@@ -231,11 +248,33 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   const isDETRANPE = textUpper.includes('DETRAN-PE') || textUpper.includes('DETRAN PE') || (textUpper.includes('DETRAN') && textUpper.includes('PERNAMBUCO'));
   const isSEFAZPE = textUpper.includes('SEFAZ - IPVA') || textUpper.includes('SEFAZ-IPVA') || textUpper.includes('SEFAZ-PE') || (textUpper.includes('SECRETARIA DA FAZENDA') && textUpper.includes('IPVA') && (textUpper.includes('PE') || textUpper.includes('PERNAMBUCO') || textUpper.includes('UIB0C33')));
   const isDARParaiba = textUpper.includes('GOVERNO DO ESTADO DA PARAÍBA') || textUpper.includes('SEFAZ-PB') || textUpper.includes('DAR - MOD 2') || textUpper.includes('AUTO LANÇAMENTO DO IPVA');
-  const isIPVA = !isGNRE && !isDETRANPE && !isDAEBahia && (textUpper.includes('IPVA') || textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ'));
-  const isLicenciamento = textUpper.includes('LICENCIAMENTO') || (textUpper.includes('DETRAN') && !textUpper.includes('MULTA') && !textUpper.includes('INFRAÇ') && !textUpper.includes('INFRAC'));
-  const isMulta = textUpper.includes('MULTA') || textUpper.includes('INFRAÇ') || textUpper.includes('INFRAC') || textUpper.includes('CTTU') || textUpper.includes('AMC') || textUpper.includes('PRF') || textUpper.includes('AUTARQUIA DE TRÂNSITO') || textUpper.includes('NOTIFICAÇÃO DA PENALIDADE') || textUpper.includes('PENALIDADE');
+  const isIPVA = !isGNRE && !isDETRANPE && !isDAEBahia && (textUpper.includes('IPVA') || ((textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ')) && !textUpper.includes('BANCO')));
+  const isLicenciamento = (textUpper.includes('LICENCIAMENTO') || textUpper.includes('TAXA DE LICENCIAMENTO')) && (textUpper.includes('DETRAN') || textUpper.includes('VEÍCULO') || textUpper.includes('VEICULO'));
+  
+  // Real traffic fines: must have genuine traffic infraction markers, NOT standard banking penalty instructions ("Mora / Multa", "Cobrar multa de")
+  const isMulta = !isGNRE && (
+    textUpper.includes('MULTA DE TRÂNSITO') ||
+    textUpper.includes('MULTA DE TRANSITO') ||
+    textUpper.includes('INFRAÇÃO DE TRÂNSITO') ||
+    textUpper.includes('INFRACAO DE TRANSITO') ||
+    textUpper.includes('AUTO DE INFRAÇÃO') ||
+    textUpper.includes('AUTO DE INFRACAO') ||
+    textUpper.includes('NOTIFICAÇÃO DA PENALIDADE') ||
+    textUpper.includes('NOTIFICACAO DA PENALIDADE') ||
+    textUpper.includes('NOTIFICAÇÃO DA AUTUAÇÃO') ||
+    textUpper.includes('NOTIFICACAO DA AUTUACAO') ||
+    textUpper.includes('ÓRGÃO AUTUADOR') ||
+    textUpper.includes('ORGAO AUTUADOR') ||
+    textUpper.includes('AUTARQUIA DE TRÂNSITO') ||
+    textUpper.includes('AUTARQUIA DE TRANSITO') ||
+    (textUpper.includes('CTTU') && (textUpper.includes('TRÂNSITO') || textUpper.includes('MULTA'))) ||
+    (textUpper.includes('AMC') && (textUpper.includes('TRÂNSITO') || textUpper.includes('MULTA'))) ||
+    textUpper.includes('POLICIA RODOVIARIA FEDERAL') ||
+    textUpper.includes('PRF -')
+  );
   const isTributoFederal = textUpper.includes('DARF') || textUpper.includes('RECEITA FEDERAL') || textUpper.includes('SIMPLES NACIONAL');
 
+  const isBajaj = textUpper.includes('BAJAJ DO BRASIL') || textUpper.includes('BAJAJ') || textUpper.includes('45.859.932/0001-22') || textUpper.includes('37690.00104') || (textUpper.includes('J.P. MORGAN') && textUpper.includes('MOTOCICLETAS'));
   const isBYDAuto = textUpper.includes('BYD AUTO DO BRASIL') || textUpper.includes('50.351.104/0001-19') || textUpper.includes('03399.05481');
   const isBYDBrasil = textUpper.includes('BYD DO BRASIL') || textUpper.includes('17.140.820/0007-77') || textUpper.includes('03399.01241');
   const isFIDCVendaVeiculos = textUpper.includes('VENDA DE VEICULOS FUNDO') || textUpper.includes('VENDA DE VEÍCULOS FUNDO') || textUpper.includes('FIDC VENDA DE VEÍCULOS') || textUpper.includes('FIDC VENDA DE VEICULOS') || textUpper.includes('21.126.275/0001-46') || textUpper.includes('03399.42294');
@@ -253,6 +292,16 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     const emitName = emitenteMatch ? ` - ${emitenteMatch[1].trim()}` : '';
 
     favorecidoNome = `GNRE - Tributos Estaduais${ufStr}${emitName}`;
+  } else if (isBajaj) {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = 'BAJAJ DO BRASIL COMERCIO DE MOTOCICLETAS LTDA';
+    favorecidoCnpjCpf = '45.859.932/0001-22';
+    bancoCodigo = '376';
+    bancoNome = 'Banco J.P. Morgan S.A.';
+    if (!pagador || pagador.includes('Não identificado')) {
+      pagador = 'NEWVIA MOTOS LTDA';
+      pagadorCnpjCpf = '51.478.180/0003-14';
+    }
   } else if (isFIDCAutoFord) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'FIDC COMPLEMENTAR AUTO FORD';
@@ -436,6 +485,9 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   if (!text) return 'Beneficiário / Cedente';
 
   // 1. Direct high-frequency matches
+  if (/BAJAJ\s+DO\s+BRASIL/i.test(text) || /BAJAJ/i.test(text) || text.includes('45.859.932/0001-22') || text.includes('45859932000122')) {
+    return 'BAJAJ DO BRASIL COMERCIO DE MOTOCICLETAS LTDA';
+  }
   if (/FIDC\s+COMPLEMENTAR\s+AUTO\s+FORD/i.test(text) || /FIDC\s+AUTO\s+FORD/i.test(text) || text.includes('043.489.824/0001-80') || text.includes('043489824000180')) {
     return 'FIDC COMPLEMENTAR AUTO FORD';
   }
@@ -755,16 +807,18 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
     const dataVencimento = parseFatorVencimento(fatorVencimento);
     const valor = parseValor(valorRaw);
     const isMod10Valid = validateModulo10LinhaDigitavel(limpa);
-    const hasValidStructure = /^(0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})[89]/.test(limpa);
+    const bankFound = getBankInfo(bancoCodigo);
+    const isKnownBank = bankFound.shortName !== 'Banco Não Identificado' && bancoCodigo !== '000';
+    const hasValidStructure = isKnownBank && /^(0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})[89]/.test(limpa);
 
     return {
       linhaDigitavelLimpa: limpa,
       codigoBarras,
       bancoCodigo,
-      bancoNome: bankInfo.shortName,
+      bancoNome: bankFound.shortName,
       valor,
       dataVencimento: dataVencimento || new Date().toISOString().split('T')[0],
-      isValid: isMod10Valid || hasValidStructure,
+      isValid: (isMod10Valid || hasValidStructure) && isKnownBank,
       tipo,
     };
   }

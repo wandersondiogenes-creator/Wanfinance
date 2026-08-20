@@ -144,13 +144,20 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
   // 3. Raw 47 or 48 contiguous digits
   // 4. Raw 44-digit barcodes
   const patterns = [
-    /03399[0-9.\s-]{40,65}/g,
-    /\d{5}[\.\s]*\d{5}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d[\.\s]*\d{14}/g,
-    /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
-    /\d{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d/g,
+    // 1. Santander specific prefix
+    /03399[0-9.\s-]{35,65}/g,
+    // 2. Standard 47-digit Linha Digitável (5 blocks: 5.5  5.6  5.6  1  14)
+    /\d{5}[\.\s-]*\d{5}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d[\s-]+\d{14}/g,
+    // 3. Flexible 47-digit pattern
+    /\d{5}[\.\s-]*\d{5}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d\s*[\.\s-]*\d{14}/g,
+    // 4. Standard 48-digit Concessionária/Tributo (4 blocks of 11.1 or 12)
+    /\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d/g,
+    /\d{12}[\s-]+\d{12}[\s-]+\d{12}[\s-]+\d{12}/g,
     /(?:8\d{10}[-\s.]*\d\s*){4}/g,
+    // 5. Contiguous digits
     /\b\d{47,48}\b/g,
     /\b\d{44}\b/g,
+    // 6. Generic Brazilian bank line digitavel
     /(?:0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})9[0-9.\s-]{40,65}/g,
   ];
 
@@ -208,6 +215,76 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               placa: detected.placa,
               renavam: detected.renavam,
               observacoes: detected.observacoes || "Extraído do texto do PDF via leitor local",
+              confidence: 0.9,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 7. Fallback scan of contiguous digits in full text
+  if (boletosFound.length === 0) {
+    const textDigitsOnly = onlyNumbers(rawText);
+    if (textDigitsOnly.length >= 47 && textDigitsOnly.length < 20000) {
+      for (let i = 0; i <= textDigitsOnly.length - 47; i++) {
+        if (i <= textDigitsOnly.length - 48) {
+          const chunk48 = textDigitsOnly.substring(i, i + 48);
+          if (chunk48.startsWith('8')) {
+            const parsed48 = parseLinhaDigitavel(chunk48);
+            if (parsed48.isValid) {
+              const key44 = parsed48.codigoBarras || chunk48;
+              if (!seenLines.has(chunk48) && !seenLines.has(key44)) {
+                seenLines.add(chunk48);
+                seenLines.add(key44);
+                const detected = detectBoletoDetailsFromText(rawText, parsed48.bancoNome);
+                boletosFound.push({
+                  linhaDigitavel: chunk48,
+                  codigoBarras: parsed48.codigoBarras || chunk48,
+                  favorecidoNome: detected.favorecidoNome || 'Beneficiário',
+                  favorecidoCnpjCpf: detected.favorecidoCnpjCpf || '',
+                  pagador: detected.pagador || 'Pagador',
+                  pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
+                  valor: parsed48.valor || detected.valor || 0,
+                  dataVencimento: detected.dataVencimento || parsed48.dataVencimento || new Date().toISOString().split('T')[0],
+                  seuNumero: detected.seuNumero || `DOC-${chunk48.substring(30, 40)}`,
+                  nossoNumero: detected.seuNumero || '',
+                  bancoCodigo: parsed48.bancoCodigo,
+                  bancoNome: parsed48.bancoNome,
+                  tipoBoleto: detected.tipoBoleto,
+                  placa: detected.placa,
+                  renavam: detected.renavam,
+                  confidence: 0.9,
+                });
+              }
+            }
+          }
+        }
+
+        const chunk47 = textDigitsOnly.substring(i, i + 47);
+        const parsed47 = parseLinhaDigitavel(chunk47);
+        if (parsed47.isValid && parsed47.valor > 0) {
+          const key44 = parsed47.codigoBarras || chunk47;
+          if (!seenLines.has(chunk47) && !seenLines.has(key44)) {
+            seenLines.add(chunk47);
+            seenLines.add(key44);
+            const detected = detectBoletoDetailsFromText(rawText, parsed47.bancoNome);
+            boletosFound.push({
+              linhaDigitavel: chunk47,
+              codigoBarras: parsed47.codigoBarras || chunk47,
+              favorecidoNome: detected.favorecidoNome || 'Beneficiário',
+              favorecidoCnpjCpf: detected.favorecidoCnpjCpf || '',
+              pagador: detected.pagador || 'Pagador',
+              pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
+              valor: parsed47.valor || detected.valor || 0,
+              dataVencimento: detected.dataVencimento || parsed47.dataVencimento || new Date().toISOString().split('T')[0],
+              seuNumero: detected.seuNumero || `DOC-${chunk47.substring(30, 40)}`,
+              nossoNumero: detected.seuNumero || '',
+              bancoCodigo: parsed47.bancoCodigo,
+              bancoNome: parsed47.bancoNome,
+              tipoBoleto: detected.tipoBoleto,
+              placa: detected.placa,
+              renavam: detected.renavam,
               confidence: 0.9,
             });
           }
@@ -407,7 +484,7 @@ async function startServer() {
               });
 
               const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error(`Timeout Gemini API (8s) no modelo ${modelName}`)), 8000)
+                setTimeout(() => reject(new Error(`Timeout Gemini API (20s) no modelo ${modelName}`)), 20000)
               );
 
               const response = await Promise.race([generatePromise, timeoutPromise]) as any;
@@ -481,37 +558,58 @@ async function startServer() {
         .filter((b) => b && typeof b === "object")
         .map((b) => validateAndCrossCheckBoleto(b));
 
-      // Deduplicate boletos (prevents 1st, 2nd, 3rd via duplication while keeping distinct parcelas)
-      const seenKeys = new Set<string>();
+      // Filter out table-row sub-items if a valid primary boleto with 47/48-digit linha exists
+      const validLinhaBoletos = boletosExtracted.filter((b) => {
+        const d = onlyNumbers(String(b.linhaDigitavel || b.codigoBarras || ""));
+        return d.length === 47 || d.length === 48;
+      });
+
+      if (validLinhaBoletos.length > 0) {
+        // Discard any items that do not have their own valid 47/48 digit linha digitável
+        boletosExtracted = validLinhaBoletos;
+      }
+
+      // Deduplicate boletos strictly by 44-digit barcode key (unifying 47, 48, 44 digits)
+      const seenBarcodeKeys = new Map<string, typeof boletosExtracted[0]>();
       const uniqueBoletos: typeof boletosExtracted = [];
 
       for (const b of boletosExtracted) {
         const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
         const cleanDigits = onlyNumbers(rawDigits);
         
-        // Normalize to 44-digit código de barras key to unify 47, 48, and 44 digit formats
         let cleanKey = cleanDigits;
         if (cleanDigits.length === 47 || cleanDigits.length === 48) {
           const parsed = parseLinhaDigitavel(cleanDigits);
           if (parsed.codigoBarras) cleanKey = parsed.codigoBarras;
+          // Ensure authoritative value from barcode is used if parsed.valor > 0
+          if (parsed.valor > 0) {
+            b.valor = parsed.valor;
+          }
+          if (parsed.dataVencimento && (!b.dataVencimento || b.dataVencimento.startsWith("Não"))) {
+            b.dataVencimento = parsed.dataVencimento;
+          }
         }
 
         const nosso = String(b.nossoNumero || "").replace(/\D/g, "");
         const venc = String(b.dataVencimento || "").trim();
 
-        let uniqueKey = cleanKey;
-        if (!uniqueKey || uniqueKey.length < 20) {
-          if (nosso || venc) {
-            uniqueKey = `${nosso}_${venc}_${b.valor || 0}`;
-          }
-        }
+        let uniqueKey = cleanKey.length >= 40 ? cleanKey : (nosso || venc ? `${nosso}_${venc}` : "");
 
         if (uniqueKey) {
-          if (!seenKeys.has(uniqueKey)) {
-            seenKeys.add(uniqueKey);
+          if (!seenBarcodeKeys.has(uniqueKey)) {
+            seenBarcodeKeys.set(uniqueKey, b);
             uniqueBoletos.push(b);
           } else {
-            console.log(`[OCR Server] Ignorando via/boleto duplicado com chave: ${uniqueKey}`);
+            const existing = seenBarcodeKeys.get(uniqueKey)!;
+            // Keep the one with highest valor or more complete data
+            if ((b.valor || 0) > (existing.valor || 0)) {
+              const idx = uniqueBoletos.indexOf(existing);
+              if (idx !== -1) {
+                uniqueBoletos[idx] = b;
+                seenBarcodeKeys.set(uniqueKey, b);
+              }
+            }
+            console.log(`[OCR Server] Consolidado boleto/via repetida com chave: ${uniqueKey}`);
           }
         } else {
           uniqueBoletos.push(b);

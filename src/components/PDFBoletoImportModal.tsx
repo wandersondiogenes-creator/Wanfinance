@@ -386,8 +386,18 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         return [errorItem];
       }
 
-      // Deduplicate rawBoletos by clean 44-digit barcode key to prevent false multi-boleto records
-      const seenRawKeys = new Set<string>();
+      // Filter out table-row sub-items if a valid primary boleto with 47/48-digit linha exists
+      const validLinhas = rawBoletos.filter((b) => {
+        const d = onlyNumbers(b.linhaDigitavel || b.codigoBarras || '');
+        return d.length === 47 || d.length === 48;
+      });
+
+      if (validLinhas.length > 0) {
+        rawBoletos = validLinhas;
+      }
+
+      // Deduplicate rawBoletos strictly by 44-digit barcode key
+      const seenRawKeys = new Map<string, any>();
       const uniqueRawBoletos: any[] = [];
 
       for (const b of rawBoletos) {
@@ -396,16 +406,28 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         if (rawDigits.length === 47 || rawDigits.length === 48) {
           const parsed = parseLinhaDigitavel(rawDigits);
           if (parsed.codigoBarras) key44 = parsed.codigoBarras;
+          if (parsed.valor > 0) {
+            b.valor = parsed.valor;
+          }
         }
         const nos = onlyNumbers(b.nossoNumero || b.seuNumero || '');
         const venc = String(b.dataVencimento || '').trim();
 
-        const finalKey = key44.length >= 44 ? key44 : (nos || venc ? `${nos}_${venc}` : '');
+        const finalKey = key44.length >= 40 ? key44 : (nos || venc ? `${nos}_${venc}` : '');
 
         if (finalKey) {
           if (!seenRawKeys.has(finalKey)) {
-            seenRawKeys.add(finalKey);
+            seenRawKeys.set(finalKey, b);
             uniqueRawBoletos.push(b);
+          } else {
+            const existing = seenRawKeys.get(finalKey);
+            if ((b.valor || 0) > (existing.valor || 0)) {
+              const idx = uniqueRawBoletos.indexOf(existing);
+              if (idx !== -1) {
+                uniqueRawBoletos[idx] = b;
+                seenRawKeys.set(finalKey, b);
+              }
+            }
           }
         } else {
           uniqueRawBoletos.push(b);

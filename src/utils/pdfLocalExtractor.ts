@@ -53,15 +53,17 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       try {
         const pdfjsLib = await import('pdfjs-dist');
         if (pdfjsLib) {
-          if (pdfjsLib.GlobalWorkerOptions) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-          }
+          try {
+            if (pdfjsLib.GlobalWorkerOptions) {
+              pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version || '4.10.38'}/pdf.worker.min.mjs`;
+            }
+          } catch {}
           if ('verbosity' in pdfjsLib) {
             (pdfjsLib as any).verbosity = 0; // Silent verbosity mode
           }
         }
         const loadingTask = pdfjsLib.getDocument({
-          data: bytes.buffer,
+          data: bytes,
           stopAtErrors: false,
         } as any);
         const pdfDoc = await loadingTask.promise;
@@ -144,13 +146,20 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
     // 2. Scan each page text for 47 and 48 digit linha digitável patterns
     const patterns = [
-      /03399[0-9.\s-]{40,65}/g,
-      /\d{5}[\.\s-]*\d{5}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d[\.\s-]*\d{14}/g,
-      /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
-      /\d{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d/g,
+      // 1. Bank slips with bank code badge prefix e.g. |237-2| 23792... or 1237-2| 23792...
+      /(?:\|?\s*\d{3}[-\s]\d\s*\|?\s*)?(\d{5}[\.\s-]*\d{5}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d[\s-]+\d{14})/g,
+      // 2. Santander specific prefix
+      /03399[0-9.\s-]{35,65}/g,
+      // 3. Flexible 47-digit pattern
+      /\d{5}[\.\s-]*\d{5}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d\s*[\.\s-]*\d{14}/g,
+      // 4. Standard 48-digit Concessionária/Tributo (4 blocks of 11.1 or 12)
+      /\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d/g,
+      /\d{12}[\s-]+\d{12}[\s-]+\d{12}[\s-]+\d{12}/g,
       /(?:8\d{10}[-\s.]*\d\s*){4}/g,
+      // 5. Contiguous digits
       /\b\d{47,48}\b/g,
       /\b\d{44}\b/g,
+      // 6. Generic Brazilian bank line digitavel
       /(?:0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})9[0-9.\s-]{40,65}/g,
     ];
 
@@ -159,86 +168,95 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       const detected = detectBoletoDetailsFromText(blockText);
 
       for (const pattern of patterns) {
-        const matches = textBlock.match(pattern);
-        if (matches) {
-          for (const matchStr of matches) {
-            const clean = onlyNumbers(matchStr);
-            if (clean.length === 47 || clean.length === 48 || clean.length === 44) {
-              const parsed = parseLinhaDigitavel(clean);
-              if (parsed.isValid) {
-                const key44 = parsed.codigoBarras || clean;
-                if (seenLines.has(clean) || seenLines.has(key44)) {
-                  continue;
-                }
-                seenLines.add(clean);
-                seenLines.add(key44);
+        let match: RegExpExecArray | null;
+        const regex = new RegExp(pattern.source, pattern.flags);
+        while ((match = regex.exec(textBlock)) !== null) {
+          const matchStr = match[1] || match[0];
+          let clean = onlyNumbers(matchStr);
 
-                // Priority: Value decoded directly from barcode
-                let extractedValue = parsed.valor > 0 ? parsed.valor : (detected.valor || 0);
+          // If bank code badge (e.g. 237-2) was captured at the start, trim it to 47 digits
+          if (clean.length > 47 && clean.length <= 54) {
+            const last47 = clean.slice(-47);
+            const parsedLast47 = parseLinhaDigitavel(last47);
+            if (parsedLast47.isValid) {
+              clean = last47;
+            }
+          }
 
-                if (extractedValue <= 0) {
-                  const valorMatch = textBlock.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+Documento|VALOR\s+ORIGINAL|Valor\s+Original|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado)|Valor)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
-                  if (valorMatch) {
-                    const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
-                    const parsedVal = parseFloat(valStr);
-                    if (!isNaN(parsedVal) && parsedVal > 0) {
-                      extractedValue = parsedVal;
-                    }
+          if (clean.length === 47 || clean.length === 48 || clean.length === 44) {
+            const parsed = parseLinhaDigitavel(clean);
+            if (parsed.isValid && parsed.bancoCodigo !== '000') {
+              const key44 = parsed.codigoBarras || clean;
+              if (seenLines.has(clean) || seenLines.has(key44)) {
+                continue;
+              }
+              seenLines.add(clean);
+              seenLines.add(key44);
+
+              // Priority: Value decoded directly from barcode
+              let extractedValue = parsed.valor > 0 ? parsed.valor : (detected.valor || 0);
+
+              if (extractedValue <= 0) {
+                const valorMatch = textBlock.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+Documento|VALOR\s+ORIGINAL|Valor\s+Original|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado)|Valor)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+                if (valorMatch) {
+                  const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
+                  const parsedVal = parseFloat(valStr);
+                  if (!isNaN(parsedVal) && parsedVal > 0) {
+                    extractedValue = parsedVal;
                   }
                 }
-
-                let docNumber = detected.autoInfracao || '';
-                let nossoNum = detected.nossoNumero || detected.seuNumero || '';
-
-                // Capture document number with support for No. do Documento, Nº Doc, Número do Documento
-                const numDocMatch = textBlock.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|N[oº°]\.?\s*Doc|N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Seu\s+Número|Compromisso|Fatura|Nota\s+Fiscal|NF)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
-                if (numDocMatch && !docNumber) docNumber = numDocMatch[1].trim();
-
-                // Capture Nosso Número
-                const nossoNumMatch = textBlock.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+N[uú]mero|Nosso\s+Numero|Nosso\s+N[oº°]\.?)\s*[:\s\r\n]*([\w\/\.-]{5,25})/i);
-                if (nossoNumMatch && !nossoNum) nossoNum = nossoNumMatch[1].trim();
-
-                const finalFavorecido = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
-                  ? detected.favorecidoNome
-                  : extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome);
-
-                const finalPagador = detected.pagador || 'Pagador Não Identificado';
-                const finalPagadorCnpj = detected.pagadorCnpjCpf || '';
-                const finalBeneficiarioCnpj = detected.favorecidoCnpjCpf || '';
-
-                // Fallback document reference: never use generic PDF-BROWSER-1 string
-                const uniqueRef = docNumber || nossoNum || detected.seuNumero || `BOL-${clean.substring(33, 47) || Date.now()}`;
-
-                boletosFound.push({
-                  linhaDigitavel: clean,
-                  codigoBarras: parsed.codigoBarras || clean,
-                  favorecidoNome: finalFavorecido,
-                  favorecidoCnpjCpf: finalBeneficiarioCnpj,
-                  beneficiarioCnpjCpf: finalBeneficiarioCnpj,
-                  pagador: finalPagador,
-                  pagadorCnpjCpf: finalPagadorCnpj,
-                  valor: extractedValue,
-                  dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
-                  numeroDocumento: docNumber || nossoNum || uniqueRef,
-                  seuNumero: uniqueRef,
-                  nossoNumero: nossoNum,
-                  bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
-                  bancoNome: detected.bancoNome || parsed.bancoNome,
-                  tipoBoleto: detected.tipoBoleto,
-                  placa: detected.placa,
-                  renavam: detected.renavam,
-                  autoInfracao: detected.autoInfracao,
-                  observacoes: detected.observacoes || 'Extraído via leitor de PDF local',
-                  confidence: 0.95,
-                });
               }
+
+              let docNumber = detected.autoInfracao || '';
+              let nossoNum = detected.nossoNumero || detected.seuNumero || '';
+
+              // Capture document number with support for No. do Documento, Nº Doc, Número do Documento
+              const numDocMatch = textBlock.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|N[oº°]\.?\s*Doc|N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Seu\s+Número|Compromisso|Fatura|Nota\s+Fiscal|NF)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
+              if (numDocMatch && !docNumber) docNumber = numDocMatch[1].trim();
+
+              // Capture Nosso Número
+              const nossoNumMatch = textBlock.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+N[uú]mero|Nosso\s+Numero|Nosso\s+N[oº°]\.?)\s*[:\s\r\n]*([\w\/\.-]{5,25})/i);
+              if (nossoNumMatch && !nossoNum) nossoNum = nossoNumMatch[1].trim();
+
+              const finalFavorecido = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
+                ? detected.favorecidoNome
+                : extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome);
+
+              const finalPagador = detected.pagador || 'Pagador Não Identificado';
+              const finalPagadorCnpj = detected.pagadorCnpjCpf || '';
+              const finalBeneficiarioCnpj = detected.favorecidoCnpjCpf || '';
+
+              const uniqueRef = docNumber || nossoNum || detected.seuNumero || `BOL-${clean.substring(33, 47) || Date.now()}`;
+
+              boletosFound.push({
+                linhaDigitavel: clean,
+                codigoBarras: parsed.codigoBarras || clean,
+                favorecidoNome: finalFavorecido,
+                favorecidoCnpjCpf: finalBeneficiarioCnpj,
+                beneficiarioCnpjCpf: finalBeneficiarioCnpj,
+                pagador: finalPagador,
+                pagadorCnpjCpf: finalPagadorCnpj,
+                valor: extractedValue,
+                dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
+                numeroDocumento: docNumber || nossoNum || uniqueRef,
+                seuNumero: uniqueRef,
+                nossoNumero: nossoNum,
+                bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
+                bancoNome: detected.bancoNome || parsed.bancoNome,
+                tipoBoleto: detected.tipoBoleto,
+                placa: detected.placa,
+                renavam: detected.renavam,
+                autoInfracao: detected.autoInfracao,
+                observacoes: detected.observacoes || 'Extraído via leitor de PDF local',
+                confidence: 0.95,
+              });
             }
           }
         }
       }
     }
 
-    // 3. Scan for scattered 47 or 48-digit sequences in extracted clean page text
+    // 3. Fallback scan: ONLY accept strictly Modulo 10/11 verified 47 or 48-digit valid lines
     if (boletosFound.length === 0) {
       for (const textBlock of pageTexts) {
         const textDigitsOnly = onlyNumbers(textBlock);
@@ -249,7 +267,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
               const chunk48 = textDigitsOnly.substring(i, i + 48);
               if (chunk48.startsWith('8')) {
                 const parsed48 = parseLinhaDigitavel(chunk48);
-                if (parsed48.isValid) {
+                if (parsed48.isValid && parsed48.bancoCodigo !== '000') {
                   const key44 = parsed48.codigoBarras || chunk48;
                   if (!seenLines.has(chunk48) && !seenLines.has(key44)) {
                     seenLines.add(chunk48);
@@ -276,7 +294,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                       confidence: 0.85,
                     });
                   }
-                  i += 47; // Skip past this 48-digit block
+                  i += 47;
                   continue;
                 }
               }
@@ -284,7 +302,8 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
             const chunk = textDigitsOnly.substring(i, i + 47);
             const parsed = parseLinhaDigitavel(chunk);
-            if (parsed.isValid && parsed.valor > 0 && parsed.bancoCodigo !== '000') {
+            // Require verified bank code and valid modulo 10 checksum
+            if (parsed.isValid && parsed.valor > 0 && parsed.bancoCodigo !== '000' && parsed.bancoNome !== 'Banco Não Identificado') {
               const key44 = parsed.codigoBarras || chunk;
               if (!seenLines.has(chunk) && !seenLines.has(key44)) {
                 seenLines.add(chunk);
@@ -311,7 +330,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   confidence: 0.85,
                 });
               }
-              i += 46; // Skip past this 47-digit block
+              i += 46;
             }
           }
         }
