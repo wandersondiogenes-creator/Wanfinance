@@ -6,13 +6,10 @@ import {
   User,
   Eye,
   EyeOff,
-  FileText,
   AlertCircle,
   HelpCircle,
   Loader2,
   CheckCircle2,
-  ShieldCheck,
-  Sparkles,
   ArrowRight,
   Fingerprint,
   Layers,
@@ -182,12 +179,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </span>
           </div>
         </div>
-
-        {/* Apple Security Pill */}
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/[0.04] dark:bg-white/[0.08] text-slate-600 dark:text-slate-300 text-xs font-medium border border-black/[0.05] dark:border-white/[0.08] backdrop-blur-md">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-          <span>FEBRABAN CNAB 240/400</span>
-        </div>
       </header>
 
       {/* Apple iPad-Style Central Card Form */}
@@ -195,11 +186,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         
         {/* Left Informational Showcase */}
         <div className="lg:col-span-6 space-y-6 hidden lg:block pr-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold border border-blue-500/20">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>iPadOS Human Interface Architecture</span>
-          </div>
-
           <div className="space-y-3">
             <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight">
               Gestão de Pagamentos & <br />
@@ -214,20 +200,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
           {/* Apple Bento Cards Preview */}
           <div className="space-y-3 pt-2">
-            <div className="p-3.5 rounded-2xl bg-white/70 dark:bg-[#1c1c1e]/70 border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-xl flex items-center gap-3.5 shadow-xs">
-              <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                <FileText className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-900 dark:text-white">
-                  Multi-Bancos FEBRABAN
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Santander, Itaú, Bradesco, Banco do Brasil, Caixa, Sicoob e Inter
-                </p>
-              </div>
-            </div>
-
             <div className="p-3.5 rounded-2xl bg-white/70 dark:bg-[#1c1c1e]/70 border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-xl flex items-center gap-3.5 shadow-xs">
               <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
                 <Layers className="w-4 h-4" />

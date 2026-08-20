@@ -403,45 +403,48 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
     signature: 'SIG_033_SANTANDER_FIDC_RENAULT_VEICULOS',
     bankCode: '033',
     bankName: 'Banco Santander Brasil S.A.',
-    issuerName: 'VENDA DE VEICULOS FUNDO DE INVESTIMENTO (FIDC RENAULT)',
+    issuerName: 'VENDA DE VEICULOS FUNDO DE INVESTIMENTO',
     layoutName: 'Boleto Santander - FIDC Venda de Veículos / Renault / Eurovia (033)',
     confidenceScore: 0.99,
-    timesUsed: 215,
-    successCount: 215,
+    timesUsed: 235,
+    successCount: 235,
     avgExtractionTimeMs: 11,
     createdDate: '2026-03-01T10:00:00.000Z',
     lastUsedDate: new Date().toISOString(),
     privacySanitised: true,
     anchors: {
-      barcodePattern: '033994229',
+      barcodePattern: '03399',
       linhaDigitavelAnchor: '03399.42294',
       valorAnchor: 'Valor documento',
       vencimentoAnchor: 'Vencimento',
       beneficiarioAnchor: 'VENDA DE VEICULOS FUNDO DE INVESTIMENTO',
       seuNumeroAnchor: 'Número do documento',
-      nossoNumeroAnchor: 'Nosso número',
+      nossoNumeroAnchor: 'Carteira/Nosso número',
     },
     keywords: [
       'venda de veiculos fundo de investimento',
+      'venda de veiculos fundo',
       'fidc venda de veículos',
+      'fidc venda de veiculos',
       'renault',
-      'eurovia auto ltda',
+      'eurovia veiculos',
+      'eurovia veiculos s.a.',
       '21.126.275/0001-46',
       '21126275000146',
-      '60.933.323/0002-40',
+      '02.671.595',
       '03399.42294',
       '0339942294',
       '2271/4229967',
-      '2271',
-      '4229967',
+      '101-rcr',
+      '101 - rcr',
       'santander',
     ],
     fieldExtractors: {
-      linhaRegex: '0339942294\\d{37}',
-      valorRegex: '(?:Valor\\s+documento|Valor\\s+cobrado|Valor\\s+do\\s+Documento)\\s*[:\\s]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
-      vencimentoRegex: 'Vencimento\\s*[:\\s]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
-      favorecidoRegex: '(VENDA\\s+DE\\s+VEICULOS\\s+FUNDO\\s+DE\\s+INVESTIMENTO[^\r\n]*|FIDC\\s+VENDA\\s+DE\\s+VE[ÍI]CULOS[^\r\n]*)',
-      seuNumeroRegex: '(?:Número\\s+do\\s+documento|Nº\\s+documento|No\\s+documento)\\s*[:\\s]*([\\d]{8,15})',
+      linhaRegex: '03399[0-9\\s.-]{42,55}',
+      valorRegex: '(?:Valor\\s+documento|Valor\\s+cobrado|Valor\\s+do\\s+Documento|\\(=\\)\\s*Valor\\s+documento)\\s*[:\\s\r\n]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      vencimentoRegex: '(?:Vencimento)\\s*[:\\s\r\n]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
+      favorecidoRegex: '(VENDA\\s+DE\\s+VE[IÍ]CULOS\\s+FUNDO\\s+DE\\s+INVESTIMENTO[^\r\n]*)',
+      seuNumeroRegex: '(?:N[úu]mero\\s+do\\s+documento|N[ºo]\\s+documento|No\\s+documento|Carteira\\/Nosso\\s+n[úu]mero|Nosso\\s+n[úu]mero)\\s*[:\\s\r\n]*([\\d-]{6,25})',
     },
   },
   {
@@ -449,8 +452,8 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
     signature: 'SIG_033_SANTANDER_VEICULOS_OMODA',
     bankCode: '033',
     bankName: 'Banco Santander Brasil S.A.',
-    issuerName: 'OMODA & JAECOO BRAZIL AUTOMOBILE / VENDA DE VEICULOS FIDC',
-    layoutName: 'Boleto Santander - Omoda & Jaecoo / Venda de Veículos FIDC (033)',
+    issuerName: 'OMODA & JAECOO BRAZIL AUTOMOBILE LTDA',
+    layoutName: 'Boleto Santander - Omoda & Jaecoo (033)',
     confidenceScore: 0.99,
     timesUsed: 195,
     successCount: 195,
@@ -467,12 +470,12 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
       seuNumeroAnchor: 'No. do Documento',
       nossoNumeroAnchor: 'Nosso número',
     },
-    keywords: ['omoda & jaecoo', 'venda de veiculos fundo', '03399.42294', '03399.06737', '2271/4229967', '3689/0673504', 'santander'],
+    keywords: ['omoda & jaecoo', 'omoda', 'jaecoo', '03399.06737', '3689/0673504', 'santander'],
     fieldExtractors: {
-      linhaRegex: '03399\\d{42,43}',
+      linhaRegex: '03399[0-9\\s.-]{42,55}',
       valorRegex: '(?:Valor\\s+do\\s+Documento|Valor\\s+cobrado)\\s*[:\\s]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
       vencimentoRegex: 'Vencimento\\s*[:\\s]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
-      favorecidoRegex: '(OMODA\\s*&\\s*JAECOO[^\r\n]*|VENDA\\s+DE\\s+VEICULOS\\s+FUNDO[^\r\n]*)',
+      favorecidoRegex: '(OMODA\\s*&\\s*JAECOO[^\r\n]*)',
       seuNumeroRegex: '(?:No\\.\\s+do\\s+Documento|No\\s+documento)\\s*[:\\s]*([\\d]{8,15})',
     },
   },
@@ -703,17 +706,32 @@ export function loadLearnedLayouts(): LearnedLayoutPattern[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Auto-merge any missing factory default patterns
-        const existingIds = new Set(parsed.map((p: any) => p.id));
+        // Auto-merge & update any factory default patterns with latest keywords/regex
+        const defaultMap = new Map(DEFAULT_LEARNED_LAYOUTS.map((d) => [d.id, d]));
         let updated = false;
-        for (const def of DEFAULT_LEARNED_LAYOUTS) {
-          if (!existingIds.has(def.id)) {
-            parsed.push(def);
-            updated = true;
+
+        const merged = parsed.map((item: any) => {
+          if (defaultMap.has(item.id)) {
+            const def = defaultMap.get(item.id)!;
+            defaultMap.delete(item.id);
+            return {
+              ...def,
+              timesUsed: Math.max(item.timesUsed || 0, def.timesUsed),
+              successCount: Math.max(item.successCount || 0, def.successCount),
+              lastUsedDate: item.lastUsedDate || def.lastUsedDate,
+            };
           }
+          return item;
+        });
+
+        // Add any brand new default layouts
+        for (const remaining of defaultMap.values()) {
+          merged.push(remaining);
+          updated = true;
         }
-        if (updated) saveLearnedLayouts(parsed);
-        return parsed;
+
+        saveLearnedLayouts(merged);
+        return merged;
       }
     }
   } catch (e) {
@@ -821,7 +839,8 @@ export function generateLayoutSignature(text: string, bankCode?: string): string
   else if (normalizedText.includes('byd do brasil') || normalizedText.includes('17.140.820/0007-77') || normalizedText.includes('0339901241')) issuerToken = 'BYD_DO_BRASIL';
   else if (normalizedText.includes('bajaj') || normalizedText.includes('j.p.morgan') || normalizedText.includes('jpmorgan') || normalizedText.includes('45.859.932/0001-22')) issuerToken = 'JPMORGAN_BAJAJ_DO_BRASIL';
   else if (normalizedText.includes('banco fidis') || normalizedText.includes('fidc vita auto') || normalizedText.includes('fidc moab') || normalizedText.includes('fidc complementar auto ford')) issuerToken = 'BRADESCO_AUTO_FIDIS';
-  else if (normalizedText.includes('omoda') || normalizedText.includes('venda de veiculos fundo')) issuerToken = 'SANTANDER_VEICULOS_OMODA';
+  else if (normalizedText.includes('venda de veiculos fundo') || normalizedText.includes('21.126.275/0001-46') || normalizedText.includes('21126275000146')) issuerToken = 'SANTANDER_FIDC_RENAULT_VEICULOS';
+  else if (normalizedText.includes('omoda')) issuerToken = 'SANTANDER_VEICULOS_OMODA';
   else if (normalizedText.includes('financeira alfa') || normalizedText.includes('alfa s.a.') || normalizedText.includes('17.167.412/0001-13')) issuerToken = 'FINANCEIRA_ALFA';
   else if (normalizedText.includes('dae único') || normalizedText.includes('dae unico') || normalizedText.includes('licenciamento integrado') || normalizedText.includes('estado da bahia')) issuerToken = 'DAE_BAHIA_LICENCIAMENTO';
   else if (normalizedText.includes('paraíba') || normalizedText.includes('paraiba') || normalizedText.includes('sefaz-pb') || normalizedText.includes('dar - mod 2')) issuerToken = 'DAR_SEFAZ_PARAIBA_IPVA';

@@ -120,15 +120,15 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
               const ds = new DecompressionStream('deflate-raw');
               const writer = ds.writable.getWriter();
-              writer.write(rawDeflateData);
-              writer.close();
+              await writer.write(rawDeflateData);
+              await writer.close();
 
               const response = new Response(ds.readable);
               const decompressedArray = await response.arrayBuffer();
               const text = new TextDecoder('utf-8').decode(decompressedArray);
               if (text && text.length > 10) pageTexts.push(text);
             } catch {
-              // Stream skipped
+              // Ignore corrupted or non-standard flate stream chunks
             }
           }
 
@@ -144,12 +144,14 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
 
     // 2. Scan each page text for 47 and 48 digit linha digitável patterns
     const patterns = [
+      /03399[0-9.\s-]{40,65}/g,
       /\d{5}[\.\s-]*\d{5}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d{5}[\.\s-]*\d{6}[\.\s-]*\d[\.\s-]*\d{14}/g,
       /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
       /\d{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d/g,
       /(?:8\d{10}[-\s.]*\d\s*){4}/g,
       /\b\d{47,48}\b/g,
       /\b\d{44}\b/g,
+      /(?:0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})9[0-9.\s-]{40,65}/g,
     ];
 
     for (const textBlock of pageTexts) {
@@ -186,29 +188,39 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                 }
 
                 let docNumber = detected.autoInfracao || '';
-                let nossoNum = detected.seuNumero || '';
-                const numDocMatch = textBlock.match(/(?:Nº\s+de\s+Controle|Número\s+de\s+Controle|Nº\s+do\s+Documento|Número\s+do\s+Documento|Nº\s+Doc|Seu\s+Número|Compromisso)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
+                let nossoNum = detected.nossoNumero || detected.seuNumero || '';
+
+                // Capture document number with support for No. do Documento, Nº Doc, Número do Documento
+                const numDocMatch = textBlock.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|N[oº°]\.?\s*Doc|N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Seu\s+Número|Compromisso|Fatura|Nota\s+Fiscal|NF)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
                 if (numDocMatch && !docNumber) docNumber = numDocMatch[1].trim();
 
-                const nossoNumMatch = textBlock.match(/(?:Nosso\s+Número|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+Número|Nosso\s+Numero)\s*[:\s]*([\w\/\.-]{5,25})/i);
-                if (nossoNumMatch) nossoNum = nossoNumMatch[1].trim();
+                // Capture Nosso Número
+                const nossoNumMatch = textBlock.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+N[uú]mero|Nosso\s+Numero|Nosso\s+N[oº°]\.?)\s*[:\s\r\n]*([\w\/\.-]{5,25})/i);
+                if (nossoNumMatch && !nossoNum) nossoNum = nossoNumMatch[1].trim();
 
                 const finalFavorecido = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
                   ? detected.favorecidoNome
                   : extractFavorecidoFromText(textBlock || fullDocText, parsed.bancoNome);
 
+                const finalPagador = detected.pagador || 'Pagador Não Identificado';
+                const finalPagadorCnpj = detected.pagadorCnpjCpf || '';
+                const finalBeneficiarioCnpj = detected.favorecidoCnpjCpf || '';
+
+                // Fallback document reference: never use generic PDF-BROWSER-1 string
+                const uniqueRef = docNumber || nossoNum || detected.seuNumero || `BOL-${clean.substring(33, 47) || Date.now()}`;
+
                 boletosFound.push({
                   linhaDigitavel: clean,
                   codigoBarras: parsed.codigoBarras || clean,
                   favorecidoNome: finalFavorecido,
-                  favorecidoCnpjCpf: detected.favorecidoCnpjCpf || '',
-                  beneficiarioCnpjCpf: detected.favorecidoCnpjCpf || '',
-                  pagador: detected.pagador || '',
-                  pagadorCnpjCpf: detected.pagadorCnpjCpf || '',
+                  favorecidoCnpjCpf: finalBeneficiarioCnpj,
+                  beneficiarioCnpjCpf: finalBeneficiarioCnpj,
+                  pagador: finalPagador,
+                  pagadorCnpjCpf: finalPagadorCnpj,
                   valor: extractedValue,
                   dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
-                  numeroDocumento: docNumber || nossoNum,
-                  seuNumero: docNumber || nossoNum || detected.seuNumero || `PDF-BROWSER-${boletosFound.length + 1}`,
+                  numeroDocumento: docNumber || nossoNum || uniqueRef,
+                  seuNumero: uniqueRef,
                   nossoNumero: nossoNum,
                   bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
                   bancoNome: detected.bancoNome || parsed.bancoNome,
@@ -217,7 +229,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                   renavam: detected.renavam,
                   autoInfracao: detected.autoInfracao,
                   observacoes: detected.observacoes || 'Extraído via leitor de PDF local',
-                  confidence: 0.9,
+                  confidence: 0.95,
                 });
               }
             }

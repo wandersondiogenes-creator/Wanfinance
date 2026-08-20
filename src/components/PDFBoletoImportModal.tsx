@@ -205,10 +205,10 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     try {
       // 10% — Identificando e lendo documento
       updateItemState(itemId, {
-        progress: 10,
-        stepMessage: '10% — Identificando e lendo documento PDF',
+        progress: 15,
+        stepMessage: '15% — Lendo documento PDF',
       });
-      await delay(120);
+      await delay(15);
 
       // Convert file to Base64
       const fileBase64 = await new Promise<string>((resolve, reject) => {
@@ -218,14 +218,14 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         reader.readAsDataURL(file);
       });
 
-      // 25% — Identificando banco e layout (Consultando memória)
+      // 30% — Consultando padrões e memória local
       updateItemState(itemId, {
-        progress: 25,
-        stepMessage: '25% — Identificando banco e layout na memória',
+        progress: 30,
+        stepMessage: '30% — Analisando layout e campos',
       });
-      await delay(150);
+      await delay(15);
 
-      // Check Layout Engine Memory First (using file name and metadata, never raw base64 data)
+      // Check Layout Engine Memory First
       const memoryMatch = matchLayoutPattern(file.name);
       let isFastPathUsed = false;
       let layoutRecognized = false;
@@ -235,34 +235,18 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         layoutRecognized = true;
         layoutName = memoryMatch.pattern.layoutName;
         updateItemState(itemId, {
-          progress: 35,
-          stepMessage: `25% — 🧠 Layout reconhecido: ${layoutName}`,
+          progress: 45,
+          stepMessage: `45% — 🧠 Layout reconhecido: ${layoutName}`,
           layoutRecognized: true,
           layoutName: layoutName,
         });
-        await delay(100);
-      } else {
-        updateItemState(itemId, {
-          progress: 35,
-          stepMessage: '25% — 🆕 Novo layout identificado (Padrão será aprendido)',
-          layoutRecognized: false,
-          layoutName: 'Novo Padrão a Aprender',
-        });
-        await delay(100);
       }
-
-      // 40% — Localizando campos
-      updateItemState(itemId, {
-        progress: 40,
-        stepMessage: '40% — Localizando campos do documento',
-      });
-      await delay(150);
 
       let rawBoletos: any[] = [];
       let serverSuccess = false;
       let serverErrorMsg = '';
 
-      // Try Fast-Path via learned layout first if memory matched
+      // 1. Try Fast-Path via learned layout first if memory matched
       if (layoutRecognized && memoryMatch.pattern) {
         const fastRes = extractViaLearnedLayout(fileBase64, memoryMatch.pattern);
         if (fastRes.success && fastRes.boletos.length > 0) {
@@ -273,31 +257,42 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         }
       }
 
-      // 60% — Extraindo informações via IA se FastPath não rodou
+      // 2. Local-First High-Speed Extraction (Instant in-browser PDF parser ~20ms)
       if (rawBoletos.length === 0) {
         updateItemState(itemId, {
-          progress: 60,
-          stepMessage: '60% — Extraindo informações e linhas digitáveis',
+          progress: 55,
+          stepMessage: '55% — Extraindo dados do boleto instantaneamente',
+        });
+        await delay(15);
+
+        try {
+          const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
+          if (localExtracted && localExtracted.length > 0) {
+            rawBoletos = localExtracted;
+            technicalLogger.log({
+              step: 'Extração Local do Navegador',
+              fileName: file.name,
+              fileSize: file.size,
+              severity: 'info',
+              errorMessage: `Sucesso Local-First: ${localExtracted.length} boleto(s) extraído(s) em tempo recorde`,
+            });
+          }
+        } catch (localErr: any) {
+          console.warn('[PDF Import] Local extractor notice:', localErr);
+        }
+      }
+
+      // 3. Fallback to Server API / Gemini OCR ONLY if local parser found 0 boletos (e.g. scanned image/photo)
+      if (rawBoletos.length === 0) {
+        updateItemState(itemId, {
+          progress: 65,
+          stepMessage: '65% — Documento digitalizado: Processando via OCR Inteligente',
         });
 
         const base64Len = fileBase64.length;
         const reqStartTime = performance.now();
 
-        // Se o payload for maior que 3.5MB, redireciona diretamente para o extrator local para evitar erro 413 do Vercel
-        if (base64Len > 3_500_000) {
-          technicalLogger.log({
-            step: 'Verificação Limite Payload Vercel',
-            fileName: file.name,
-            fileSize: file.size,
-            severity: 'warn',
-            errorMessage: `Base64 (${(base64Len / 1024 / 1024).toFixed(2)} MB) excede limite seguro do Vercel (3.5MB). Redirecionando para extrator local do navegador.`,
-          });
-
-          const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
-          if (localExtracted && localExtracted.length > 0) {
-            rawBoletos = localExtracted;
-          }
-        } else {
+        if (base64Len <= 3_500_000) {
           try {
             technicalLogger.log({
               step: 'Chamada API Servidor (/api/extract-boleto-pdf)',
@@ -308,7 +303,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             });
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+            const timeoutId = setTimeout(() => controller.abort(), 35000);
 
             const response = await fetch('/api/extract-boleto-pdf', {
               method: 'POST',
@@ -328,83 +323,17 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
             if (response.ok && contentType.includes('application/json')) {
               const result = await response.json();
-              
-              if (result && typeof result.fileSizeReceivedBytes === 'number') {
-                technicalLogger.log({
-                  step: 'Auditoria Arquivo Servidor',
-                  fileName: file.name,
-                  fileSize: file.size,
-                  backendResponse: `Servidor recebeu ${result.fileSizeReceivedBytes} bytes (Original: ${file.size} bytes). Cabeçalho PDF válido: ${result.isPdfHeaderValid}`,
-                  severity: result.isPdfHeaderValid ? 'info' : 'warn',
-                });
-              }
-
               if (result && result.success && Array.isArray(result.boletos) && result.boletos.length > 0) {
                 rawBoletos = result.boletos;
                 serverSuccess = true;
-
-                technicalLogger.log({
-                  step: 'Resposta API Sucesso',
-                  fileName: file.name,
-                  endpoint: '/api/extract-boleto-pdf',
-                  httpStatus: response.status,
-                  processingTimeMs: reqTimeMs,
-                  severity: 'info',
-                  errorMessage: `Sucesso: ${result.boletos.length} boleto(s) extraído(s) via backend`,
-                });
               } else if (result && result.geminiApiError) {
                 serverErrorMsg = String(result.geminiApiError);
-                technicalLogger.log({
-                  step: 'Aviso API Backend (Gemini API)',
-                  fileName: file.name,
-                  endpoint: '/api/extract-boleto-pdf',
-                  httpStatus: response.status,
-                  backendResponse: serverErrorMsg,
-                  processingTimeMs: reqTimeMs,
-                  severity: 'warn',
-                  errorMessage: serverErrorMsg,
-                });
               }
             } else {
-              const responseText = await response.text();
-              serverErrorMsg = `Servidor retornou status ${response.status}`;
-              technicalLogger.log({
-                step: 'Erro Resposta Servidor (Status/HTML)',
-                fileName: file.name,
-                endpoint: '/api/extract-boleto-pdf',
-                httpStatus: response.status,
-                backendResponse: responseText.substring(0, 300),
-                processingTimeMs: reqTimeMs,
-                severity: 'error',
-                errorMessage: `Status HTTP ${response.status} retornado pelo Vercel/Servidor`,
-              });
+              serverErrorMsg = `Status HTTP ${response.status}`;
             }
           } catch (fetchErr: any) {
-            const reqTimeMs = Math.round(performance.now() - reqStartTime);
             serverErrorMsg = `Falha na requisição ao servidor: ${fetchErr?.message || fetchErr}`;
-            technicalLogger.log({
-              step: 'Falha Conexão API',
-              fileName: file.name,
-              endpoint: '/api/extract-boleto-pdf',
-              processingTimeMs: reqTimeMs,
-              severity: 'error',
-              errorMessage: serverErrorMsg,
-            });
-          }
-
-          // Client-Side Fallback Extractor se o servidor não retornou boletos
-          if (!serverSuccess || rawBoletos.length === 0) {
-            technicalLogger.log({
-              step: 'Iniciando Fallback Leitor Local',
-              fileName: file.name,
-              severity: 'info',
-              errorMessage: 'Servidor não extraiu boletos ou falhou. Utilizando varredura local do navegador.',
-            });
-
-            const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
-            if (localExtracted && localExtracted.length > 0) {
-              rawBoletos = localExtracted;
-            }
           }
         }
       }
@@ -955,17 +884,19 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       const hasValidRef = !isGenericRef(rawRef) && cnpj.length >= 11;
       const ref = hasValidRef ? `${rawRef}_${cnpj}` : '';
 
-      if (key && seenKeys.has(key)) {
-        ids.add(item.id);
-        continue;
+      if (key) {
+        if (seenKeys.has(key)) {
+          ids.add(item.id);
+          continue;
+        }
+        seenKeys.add(key);
+      } else if (ref) {
+        if (seenRefs.has(ref)) {
+          ids.add(item.id);
+          continue;
+        }
+        seenRefs.add(ref);
       }
-      if (ref && seenRefs.has(ref)) {
-        ids.add(item.id);
-        continue;
-      }
-
-      if (key) seenKeys.add(key);
-      if (ref) seenRefs.add(ref);
     }
 
     return ids;

@@ -33,6 +33,7 @@ export interface DetectedBoletoMetadata {
   dataVencimento?: string;
   valor?: number;
   seuNumero?: string;
+  nossoNumero?: string;
   observacoes?: string;
 }
 
@@ -149,11 +150,25 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     pagador = 'GRANVIA VEICULOS S/A';
     pagadorCnpjCpf = '012.946.886/0001-40';
   }
-  if (/EUROVIA\s+AUTO/i.test(rawText) || rawText.includes('60.933.323/0002-40') || rawText.includes('60933323000240')) {
+  if (/EUROVIA\s+VEICULOS/i.test(rawText) || rawText.includes('02.671.595') || rawText.includes('02671595')) {
+    pagador = 'EUROVIA VEICULOS S.A.';
+    const euroviaCnpj = rawText.match(/02\.671\.595\/\d{4}-\d{2}|02671595\d{6}/);
+    if (euroviaCnpj) {
+      const rawCnpj = euroviaCnpj[0].replace(/\D/g, '');
+      if (rawCnpj.length === 14) {
+        pagadorCnpjCpf = `${rawCnpj.slice(0, 2)}.${rawCnpj.slice(2, 5)}.${rawCnpj.slice(5, 8)}/${rawCnpj.slice(8, 12)}-${rawCnpj.slice(12, 14)}`;
+      } else {
+        pagadorCnpjCpf = euroviaCnpj[0];
+      }
+    }
+  } else if (/EUROVIA\s+AUTO/i.test(rawText) || rawText.includes('60.933.323/0002-40') || rawText.includes('60933323000240')) {
     pagador = 'EUROVIA AUTO LTDA';
     pagadorCnpjCpf = '60.933.323/0002-40';
   }
-  if (/VIA\s+SUL\s+VEICULOS/i.test(rawText) || rawText.includes('040.841.736/0022-31') || rawText.includes('040841736002231')) {
+  if (/VIA\s+SUL\s+AUTO/i.test(rawText) || rawText.includes('54.122.933/0001-80') || rawText.includes('54122933000180')) {
+    pagador = 'VIA SUL AUTO LTDA';
+    pagadorCnpjCpf = '54.122.933/0001-80';
+  } else if (/VIA\s+SUL\s+VEICULOS/i.test(rawText) || rawText.includes('040.841.736/0022-31') || rawText.includes('040841736002231')) {
     pagador = 'VIA SUL VEICULOS S/A';
     pagadorCnpjCpf = '040.841.736/0022-31';
   }
@@ -255,8 +270,13 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     bancoCodigo = '033';
     bancoNome = 'Banco Santander Brasil S.A.';
     if (!pagador || pagador.includes('Não identificado')) {
-      pagador = 'EUROVIA AUTO LTDA';
-      pagadorCnpjCpf = '60.933.323/0002-40';
+      if (rawText.includes('02.671.595') || /EUROVIA\s+VEICULOS/i.test(rawText)) {
+        pagador = 'EUROVIA VEICULOS S.A.';
+        const euroCnpj = rawText.match(/02\.671\.595\/\d{4}-\d{2}/);
+        if (euroCnpj) pagadorCnpjCpf = euroCnpj[0];
+      } else {
+        pagador = 'EUROVIA VEICULOS S.A.';
+      }
     }
   } else if (isBYDAuto) {
     tipoBoleto = 'titulo_bancario';
@@ -566,6 +586,22 @@ export function modulo10(digits: string): number {
 }
 
 /**
+ * Alternative Modulo 10 check (Left-to-Right weighting 2,1,2,1... used by Santander / legacy systems)
+ */
+export function modulo10LeftToRight(digits: string): number {
+  let sum = 0;
+  let weight = 2;
+  for (let i = 0; i < digits.length; i++) {
+    let mul = parseInt(digits[i], 10) * weight;
+    if (mul > 9) mul = Math.floor(mul / 10) + (mul % 10);
+    sum += mul;
+    weight = weight === 2 ? 1 : 2;
+  }
+  const remainder = sum % 10;
+  return remainder === 0 ? 0 : 10 - remainder;
+}
+
+/**
  * Modulo 11 check for Concessionaria / Tributos FEBRABAN
  */
 export function modulo11Concessionaria(digits: string): number {
@@ -658,15 +694,18 @@ export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
 
   const campo1Data = limpa47.substring(0, 9);
   const campo1DV = parseInt(limpa47.substring(9, 10), 10);
-  if (modulo10(campo1Data) !== campo1DV) return false;
+  const c1Valid = modulo10(campo1Data) === campo1DV || modulo10LeftToRight(campo1Data) === campo1DV;
+  if (!c1Valid) return false;
 
   const campo2Data = limpa47.substring(10, 20);
   const campo2DV = parseInt(limpa47.substring(20, 21), 10);
-  if (modulo10(campo2Data) !== campo2DV) return false;
+  const c2Valid = modulo10(campo2Data) === campo2DV || modulo10LeftToRight(campo2Data) === campo2DV;
+  if (!c2Valid) return false;
 
   const campo3Data = limpa47.substring(21, 31);
   const campo3DV = parseInt(limpa47.substring(31, 32), 10);
-  if (modulo10(campo3Data) !== campo3DV) return false;
+  const c3Valid = modulo10(campo3Data) === campo3DV || modulo10LeftToRight(campo3Data) === campo3DV;
+  if (!c3Valid) return false;
 
   return true;
 }
@@ -716,6 +755,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
     const dataVencimento = parseFatorVencimento(fatorVencimento);
     const valor = parseValor(valorRaw);
     const isMod10Valid = validateModulo10LinhaDigitavel(limpa);
+    const hasValidStructure = /^(0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})[89]/.test(limpa);
 
     return {
       linhaDigitavelLimpa: limpa,
@@ -724,7 +764,7 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       bancoNome: bankInfo.shortName,
       valor,
       dataVencimento: dataVencimento || new Date().toISOString().split('T')[0],
-      isValid: isMod10Valid,
+      isValid: isMod10Valid || hasValidStructure,
       tipo,
     };
   }

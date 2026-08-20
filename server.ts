@@ -144,12 +144,14 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
   // 3. Raw 47 or 48 contiguous digits
   // 4. Raw 44-digit barcodes
   const patterns = [
+    /03399[0-9.\s-]{40,65}/g,
     /\d{5}[\.\s]*\d{5}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d{5}[\.\s]*\d{6}[\.\s]*\d[\.\s]*\d{14}/g,
     /\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}[\.\s-]*\d{11,12}/g,
     /\d{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d\s+[\d]{11}[-\s.]+\d/g,
     /(?:8\d{10}[-\s.]*\d\s*){4}/g,
     /\b\d{47,48}\b/g,
     /\b\d{44}\b/g,
+    /(?:0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})9[0-9.\s-]{40,65}/g,
   ];
 
   for (const pattern of patterns) {
@@ -166,7 +168,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             let extractedValue = parsed.valor || 0;
 
             if (extractedValue <= 0) {
-              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+documento|Valor\s+do\s+[Dd]ocumento|VALOR\s+ORIGINAL|Valor\s+Original|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|\(=\)\s*Valor\s+documento)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
               if (valorMatch) {
                 const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
                 const parsedVal = parseFloat(valStr);
@@ -376,7 +378,7 @@ async function startServer() {
             try {
               console.log(`[Gemini API] Executando análise com modelo ${modelName}...`);
               
-              // 12s timeout for Gemini API call to prevent server/browser fetch timeout
+              // 8s timeout for each Gemini API model call to ensure fast fallback and never exceed total fetch timeout
               const generatePromise = ai.models.generateContent({
                 model: modelName,
                 contents: [
@@ -405,7 +407,7 @@ async function startServer() {
               });
 
               const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("Timeout Gemini API (12s)")), 12000)
+                setTimeout(() => reject(new Error(`Timeout Gemini API (8s) no modelo ${modelName}`)), 8000)
               );
 
               const response = await Promise.race([generatePromise, timeoutPromise]) as any;
