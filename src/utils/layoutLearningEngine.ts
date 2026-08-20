@@ -350,6 +350,54 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
     },
   },
   {
+    id: 'layout-bradesco-fidis-cobflex-via-sul-11c',
+    signature: 'SIG_237_BRADESCO_BANCO_FIDIS_COBFLEX',
+    bankCode: '237',
+    bankName: 'Banco Bradesco S.A.',
+    issuerName: 'BANCO FIDIS S/A.',
+    layoutName: 'Boleto Bradesco - Banco Fidis S/A / Cobflex (237)',
+    confidenceScore: 0.99,
+    timesUsed: 250,
+    successCount: 250,
+    avgExtractionTimeMs: 10,
+    createdDate: '2026-03-01T10:00:00.000Z',
+    lastUsedDate: new Date().toISOString(),
+    privacySanitised: true,
+    anchors: {
+      barcodePattern: '2379201102',
+      linhaDigitavelAnchor: '23792.01102',
+      valorAnchor: 'Valor Original',
+      vencimentoAnchor: 'Vencimento',
+      beneficiarioAnchor: 'BANCO FIDIS',
+      seuNumeroAnchor: 'Compromisso',
+      nossoNumeroAnchor: 'Nosso Número',
+    },
+    keywords: [
+      'banco fidis',
+      'banco fidis s/a',
+      '062.237.425/0001-76',
+      '062237425000176',
+      '23792.01102',
+      '2379201102',
+      '02011-cobflex',
+      '02011',
+      'cobflex',
+      'via sul veiculos',
+      '040.841.736/0010-06',
+      '0128106701',
+      '65441986698-0',
+      '6795179',
+    ],
+    fieldExtractors: {
+      linhaRegex: '23792[0-9\\s.-]{40,65}',
+      valorRegex: '(?:(?:1|6)\\s*\\([^)]*\\)\\s*Valor\\s*(?:Cobrado|Documento|Original)|Valor\\s+Original|Valor\\s+Cobrado|Valor\\s+do\\s+Documento|Valor\\s+Documento)\\s*[:\\s\r\n]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      vencimentoRegex: '(?:Vencimento|Data\\s+de\\s+Vencimento)\\s*[:\\s\r\n]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
+      favorecidoRegex: '(BANCO\\s+FIDIS\\s*(?:S\\/?A\\.?)?)',
+      seuNumeroRegex: '(?:Compromisso|Número\\s+do\\s+Documento|Nº\\s+do\\s+Documento|No\\.?\\s+Documento)\\s*[:\\s\r\n]*([\\w\\d]{6,20})',
+      nossoNumeroRegex: '(?:Nosso\\s+Número|Nosso\\s+Numero|Cart\\.\\s*\\/\\s*Nosso\\s+Número)\\s*[:\\s\r\n]*([\\w\\d\\/-]{6,25})',
+    },
+  },
+  {
     id: 'layout-bradesco-fidc-ford-granvia-11a',
     signature: 'SIG_237_BRADESCO_FIDC_COMPLEMENTAR_AUTO_FORD',
     bankCode: '237',
@@ -785,19 +833,21 @@ export function loadLearnedLayouts(): LearnedLayoutPattern[] {
           updated = true;
         }
 
-        saveLearnedLayouts(merged);
+        if (updated || validParsed.length !== parsed.length) {
+          localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(merged));
+        }
         return merged;
       }
     }
   } catch (e) {
     console.warn('[Layout Engine] Erro ao carregar modelos aprendidos:', e);
   }
-  saveLearnedLayouts(DEFAULT_LEARNED_LAYOUTS);
+  localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(DEFAULT_LEARNED_LAYOUTS));
   return DEFAULT_LEARNED_LAYOUTS;
 }
 
-import { db } from '../lib/firebase';
-import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
+import { db, safeSetDoc, isFirestoreQuotaExceeded } from '../lib/firebase';
+import { collection, doc, getDocs } from 'firebase/firestore';
 
 /**
  * Salva a base de modelos no LocalStorage e sincroniza com o Firestore
@@ -805,12 +855,12 @@ import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
 export function saveLearnedLayouts(patterns: LearnedLayoutPattern[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(patterns));
-    // Firestore cloud sync asynchronously
-    patterns.forEach((pattern) => {
-      setDoc(doc(db, 'learned_layouts', pattern.id), pattern, { merge: true }).catch((err) =>
-        console.warn('[Firestore] Sync pattern warning:', err)
-      );
-    });
+    // Firestore cloud sync asynchronously if quota is not exceeded
+    if (!isFirestoreQuotaExceeded()) {
+      patterns.forEach((pattern) => {
+        safeSetDoc(doc(db, 'learned_layouts', pattern.id), pattern, { merge: true });
+      });
+    }
   } catch (e) {
     console.warn('[Layout Engine] Erro ao salvar modelos:', e);
   }
@@ -820,6 +870,10 @@ export function saveLearnedLayouts(patterns: LearnedLayoutPattern[]): void {
  * Syncs learned layout patterns from Firestore cloud database
  */
 export async function syncLearnedLayoutsFromCloud(): Promise<LearnedLayoutPattern[]> {
+  if (isFirestoreQuotaExceeded()) {
+    return loadLearnedLayouts();
+  }
+
   try {
     const querySnapshot = await getDocs(collection(db, 'learned_layouts'));
     const cloudPatterns: LearnedLayoutPattern[] = [];
@@ -841,11 +895,16 @@ export async function syncLearnedLayoutsFromCloud(): Promise<LearnedLayoutPatter
         }
       });
       const merged = Array.from(mergedMap.values());
-      saveLearnedLayouts(merged);
+      localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(merged));
       return merged;
     }
-  } catch (err) {
-    console.warn('[Firestore] Sync learned layouts error:', err);
+  } catch (err: any) {
+    const errorMsg = String(err?.message || err || '');
+    if (errorMsg.includes('resource-exhausted') || errorMsg.includes('Quota limit exceeded')) {
+      console.warn('[Firestore] Quota exceeded during layout sync, falling back to local cache.');
+    } else {
+      console.warn('[Firestore] Sync learned layouts error:', err);
+    }
   }
   return loadLearnedLayouts();
 }

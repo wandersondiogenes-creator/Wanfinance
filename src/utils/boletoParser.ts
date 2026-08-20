@@ -185,9 +185,19 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   if (/VIA\s+SUL\s+AUTO/i.test(rawText) || rawText.includes('54.122.933/0001-80') || rawText.includes('54122933000180')) {
     pagador = 'VIA SUL AUTO LTDA';
     pagadorCnpjCpf = '54.122.933/0001-80';
-  } else if (/VIA\s+SUL\s+VEICULOS/i.test(rawText) || rawText.includes('040.841.736/0022-31') || rawText.includes('040841736002231')) {
+  } else if (/VIA\s+SUL\s+VEICULOS/i.test(rawText) || rawText.includes('040.841.736') || rawText.includes('040841736')) {
     pagador = 'VIA SUL VEICULOS S/A';
-    pagadorCnpjCpf = '040.841.736/0022-31';
+    const viaSulCnpjMatch = rawText.match(/040\.841\.736\/\d{4}-\d{2}|040841736\d{6}/);
+    if (viaSulCnpjMatch) {
+      const rawC = viaSulCnpjMatch[0].replace(/\D/g, '');
+      if (rawC.length === 14) {
+        pagadorCnpjCpf = `${rawC.slice(0, 2)}.${rawC.slice(2, 5)}.${rawC.slice(5, 8)}/${rawC.slice(8, 12)}-${rawC.slice(12, 14)}`;
+      } else {
+        pagadorCnpjCpf = viaSulCnpjMatch[0];
+      }
+    } else {
+      pagadorCnpjCpf = '040.841.736/0010-06';
+    }
   }
 
   // Extract Pagador / Proprietário (including format: "168.356.034-53 EVALDO OLIVEIRA PIO")
@@ -279,6 +289,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   const isBYDBrasil = textUpper.includes('BYD DO BRASIL') || textUpper.includes('17.140.820/0007-77') || textUpper.includes('03399.01241');
   const isFIDCVendaVeiculos = textUpper.includes('VENDA DE VEICULOS FUNDO') || textUpper.includes('VENDA DE VEÍCULOS FUNDO') || textUpper.includes('FIDC VENDA DE VEÍCULOS') || textUpper.includes('FIDC VENDA DE VEICULOS') || textUpper.includes('21.126.275/0001-46') || textUpper.includes('03399.42294');
   const isFIDCAutoFord = textUpper.includes('FIDC COMPLEMENTAR AUTO FORD') || textUpper.includes('FIDC AUTO FORD') || textUpper.includes('043.489.824/0001-80') || textUpper.includes('043489824000180') || textUpper.includes('GRANVIA VEICULOS') || textUpper.includes('23792.85634') || textUpper.includes('02856-COBFLEX');
+  const isBancoFidis = textUpper.includes('BANCO FIDIS') || textUpper.includes('062.237.425/0001-76') || textUpper.includes('062237425000176') || textUpper.includes('23792.01102') || textUpper.includes('2379201102') || textUpper.includes('02011-COBFLEX') || textUpper.includes('02011 - COBFLEX');
 
   if (isGNRE) {
     tipoBoleto = 'tributo';
@@ -292,6 +303,16 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     const emitName = emitenteMatch ? ` - ${emitenteMatch[1].trim()}` : '';
 
     favorecidoNome = `GNRE - Tributos Estaduais${ufStr}${emitName}`;
+  } else if (isBancoFidis) {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = 'BANCO FIDIS S/A.';
+    favorecidoCnpjCpf = '062.237.425/0001-76';
+    bancoCodigo = '237';
+    bancoNome = 'Banco Bradesco S.A.';
+    if (!pagador || pagador.includes('Não identificado')) {
+      pagador = 'VIA SUL VEICULOS S/A';
+      pagadorCnpjCpf = '040.841.736/0010-06';
+    }
   } else if (isBajaj) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BAJAJ DO BRASIL COMERCIO DE MOTOCICLETAS LTDA';

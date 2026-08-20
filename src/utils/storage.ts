@@ -1,6 +1,6 @@
 import { BoletoItem, CompanySettings, CompanyProfile, BankAccountProfile, CNABBatchHistory, AuthUser } from '../types';
-import { db } from '../lib/firebase';
-import { collection, doc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
+import { db, safeSetDoc, safeDeleteDoc, isFirestoreQuotaExceeded } from '../lib/firebase';
+import { collection, doc } from 'firebase/firestore';
 import {
   getSupabaseClient,
   syncCompanyProfilesToSupabase,
@@ -160,7 +160,8 @@ export function loadCompanyProfiles(): CompanyProfile[] {
         });
 
         const finalCompanies = sanitizeAndDeduplicateCompanies(merged);
-        saveCompanyProfiles(finalCompanies);
+        localStorage.setItem(STORAGE_KEYS.COMPANIES_V5, JSON.stringify(finalCompanies));
+        localStorage.setItem(STORAGE_KEYS.COMPANIES_V4, JSON.stringify(finalCompanies));
         return finalCompanies;
       }
     }
@@ -168,7 +169,8 @@ export function loadCompanyProfiles(): CompanyProfile[] {
     console.error('Failed to load company profiles:', e);
   }
 
-  saveCompanyProfiles(DEFAULT_COMPANIES);
+  localStorage.setItem(STORAGE_KEYS.COMPANIES_V5, JSON.stringify(DEFAULT_COMPANIES));
+  localStorage.setItem(STORAGE_KEYS.COMPANIES_V4, JSON.stringify(DEFAULT_COMPANIES));
   return DEFAULT_COMPANIES;
 }
 
@@ -178,12 +180,12 @@ export function saveCompanyProfiles(companies: CompanyProfile[]): void {
     localStorage.setItem(STORAGE_KEYS.COMPANIES_V5, JSON.stringify(cleanList));
     localStorage.setItem(STORAGE_KEYS.COMPANIES_V4, JSON.stringify(cleanList));
 
-    cleanList.forEach((c) => {
-      const firestoreData = cleanFirestoreData(c);
-      setDoc(doc(db, 'companies', c.id), firestoreData, { merge: true }).catch((err) =>
-        console.warn('[Firestore] Sync company warning:', err)
-      );
-    });
+    if (!isFirestoreQuotaExceeded()) {
+      cleanList.forEach((c) => {
+        const firestoreData = cleanFirestoreData(c);
+        safeSetDoc(doc(db, 'companies', c.id), firestoreData, { merge: true });
+      });
+    }
 
     syncCompanyProfilesToSupabase(cleanList).catch((err) =>
       console.warn('[Supabase] Sync companies warning:', err)
@@ -341,12 +343,12 @@ export function loadBoletos(): BoletoItem[] {
 export function saveBoletos(boletos: BoletoItem[]): void {
   try {
     localStorage.setItem(STORAGE_KEYS.BOLETOS, JSON.stringify(boletos));
-    boletos.forEach((b) => {
-      const firestoreData = cleanFirestoreData(b);
-      setDoc(doc(db, 'boletos', b.id), firestoreData, { merge: true }).catch((err) =>
-        console.warn('[Firestore] Sync boleto warning:', err)
-      );
-    });
+    if (!isFirestoreQuotaExceeded()) {
+      boletos.forEach((b) => {
+        const firestoreData = cleanFirestoreData(b);
+        safeSetDoc(doc(db, 'boletos', b.id), firestoreData, { merge: true });
+      });
+    }
 
     syncBoletosToSupabase(boletos).catch((err) =>
       console.warn('[Supabase] Sync boletos warning:', err)
@@ -379,11 +381,11 @@ export function purgeExpiredHistory(history: CNABBatchHistory[]): CNABBatchHisto
   }
 
   // Excluir registros expirados do Firestore
-  expiredIds.forEach((id) => {
-    deleteDoc(doc(db, 'cnab_history', id)).catch((err) =>
-      console.warn('[Firestore] Error deleting expired history record:', err)
-    );
-  });
+  if (!isFirestoreQuotaExceeded()) {
+    expiredIds.forEach((id) => {
+      safeDeleteDoc(doc(db, 'cnab_history', id));
+    });
+  }
 
   return validItems;
 }
@@ -424,12 +426,12 @@ export function saveHistory(history: CNABBatchHistory[]): void {
   try {
     const cleanHistory = purgeExpiredHistory(history);
     localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(cleanHistory));
-    cleanHistory.forEach((h) => {
-      const firestoreData = cleanFirestoreData(h);
-      setDoc(doc(db, 'cnab_history', h.id), firestoreData, { merge: true }).catch((err) =>
-        console.warn('[Firestore] Sync history warning:', err)
-      );
-    });
+    if (!isFirestoreQuotaExceeded()) {
+      cleanHistory.forEach((h) => {
+        const firestoreData = cleanFirestoreData(h);
+        safeSetDoc(doc(db, 'cnab_history', h.id), firestoreData, { merge: true });
+      });
+    }
 
     syncHistoryToSupabase(cleanHistory).catch((err) =>
       console.warn('[Supabase] Sync history warning:', err)
@@ -455,10 +457,10 @@ export function saveUserSession(user: AuthUser | null): void {
   try {
     if (user) {
       localStorage.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user));
-      const firestoreData = cleanFirestoreData(user);
-      setDoc(doc(db, 'users', user.id), firestoreData, { merge: true }).catch((err) =>
-        console.warn('[Firestore] Sync user session warning:', err)
-      );
+      if (!isFirestoreQuotaExceeded()) {
+        const firestoreData = cleanFirestoreData(user);
+        safeSetDoc(doc(db, 'users', user.id), firestoreData, { merge: true });
+      }
 
       const supabase = getSupabaseClient();
       if (supabase) {

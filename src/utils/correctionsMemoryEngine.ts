@@ -1,5 +1,5 @@
-import { db } from '../lib/firebase';
-import { collection, doc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
+import { db, safeSetDoc, safeDeleteDoc, isFirestoreQuotaExceeded } from '../lib/firebase';
+import { collection, doc, getDocs } from 'firebase/firestore';
 import { cleanFirestoreData } from './storage';
 
 export interface LearnedCorrection {
@@ -44,13 +44,13 @@ export function loadLearnedCorrections(): LearnedCorrection[] {
 export function saveLearnedCorrections(corrections: LearnedCorrection[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_CORRECTIONS, JSON.stringify(corrections));
-    // Asynchronous Firestore sync
-    corrections.forEach((c) => {
-      const firestoreData = cleanFirestoreData(c);
-      setDoc(doc(db, 'learned_corrections', c.id), firestoreData, { merge: true }).catch((err) =>
-        console.warn('[Firestore] Sync correction warning:', err)
-      );
-    });
+    // Asynchronous Firestore sync if quota is available
+    if (!isFirestoreQuotaExceeded()) {
+      corrections.forEach((c) => {
+        const firestoreData = cleanFirestoreData(c);
+        safeSetDoc(doc(db, 'learned_corrections', c.id), firestoreData, { merge: true });
+      });
+    }
   } catch (e) {
     console.warn('[Corrections Memory] Erro ao salvar correções:', e);
   }
@@ -60,6 +60,10 @@ export function saveLearnedCorrections(corrections: LearnedCorrection[]): void {
  * Syncs learned corrections from Firestore into local cache on boot
  */
 export async function syncLearnedCorrectionsFromCloud(): Promise<LearnedCorrection[]> {
+  if (isFirestoreQuotaExceeded()) {
+    return loadLearnedCorrections();
+  }
+
   try {
     const querySnapshot = await getDocs(collection(db, 'learned_corrections'));
     const cloudCorrections: LearnedCorrection[] = [];
@@ -81,11 +85,16 @@ export async function syncLearnedCorrectionsFromCloud(): Promise<LearnedCorrecti
         }
       });
       const merged = Array.from(mergedMap.values());
-      saveLearnedCorrections(merged);
+      localStorage.setItem(STORAGE_KEY_CORRECTIONS, JSON.stringify(merged));
       return merged;
     }
-  } catch (err) {
-    console.warn('[Firestore] Sync corrections error:', err);
+  } catch (err: any) {
+    const errorMsg = String(err?.message || err || '');
+    if (errorMsg.includes('resource-exhausted') || errorMsg.includes('Quota limit exceeded')) {
+      console.warn('[Firestore] Quota exceeded during corrections sync, falling back to local cache.');
+    } else {
+      console.warn('[Firestore] Sync corrections error:', err);
+    }
   }
   return loadLearnedCorrections();
 }
@@ -227,7 +236,7 @@ export function deleteLearnedCorrection(id: string): void {
   const corrections = loadLearnedCorrections();
   const updated = corrections.filter((c) => c.id !== id);
   saveLearnedCorrections(updated);
-  deleteDoc(doc(db, 'learned_corrections', id)).catch((err) =>
-    console.warn('[Firestore] Error deleting correction:', err)
-  );
+  if (!isFirestoreQuotaExceeded()) {
+    safeDeleteDoc(doc(db, 'learned_corrections', id));
+  }
 }
