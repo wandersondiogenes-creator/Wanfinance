@@ -1,5 +1,5 @@
 import { LearnedLayoutPattern, LayoutLearningMetrics, BoletoItem } from '../types';
-import { parseLinhaDigitavel, onlyNumbers, detectBoletoDetailsFromText } from './boletoParser.js';
+import { parseLinhaDigitavel, onlyNumbers, detectBoletoDetailsFromText, parseExtractedValor } from './boletoParser.js';
 import { getBankInfo } from './banks.js';
 
 const STORAGE_KEY_LAYOUTS = 'cnab_learned_layouts_v2';
@@ -482,16 +482,18 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
       '21.126.275/0001-46',
       '21126275000146',
       '02.671.595',
+      '02.671.595/0005-66',
       '03399.42294',
       '0339942294',
       '2271/4229967',
+      '100000199832',
       '101-rcr',
       '101 - rcr',
       'santander',
     ],
     fieldExtractors: {
       linhaRegex: '03399[0-9\\s.-]{42,55}',
-      valorRegex: '(?:Valor\\s+documento|Valor\\s+cobrado|Valor\\s+do\\s+Documento|\\(=\\)\\s*Valor\\s+documento)\\s*[:\\s\r\n]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      valorRegex: '(?:Valor\\s+documento|Valor\\s+cobrado|Valor\\s+do\\s+Documento|\\(=\\)\\s*Valor\\s+documento)\\s*[:\\s]*R?\\$?\\s*([0-9]{1,3}(?:[.\\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\\.[0-9]{2}))',
       vencimentoRegex: '(?:Vencimento)\\s*[:\\s\r\n]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
       favorecidoRegex: '(VENDA\\s+DE\\s+VE[IÍ]CULOS\\s+FUNDO\\s+DE\\s+INVESTIMENTO[^\r\n]*)',
       seuNumeroRegex: '(?:N[úu]mero\\s+do\\s+documento|N[ºo]\\s+documento|No\\s+documento|Carteira\\/Nosso\\s+n[úu]mero|Nosso\\s+n[úu]mero)\\s*[:\\s\r\n]*([\\d-]{6,25})',
@@ -798,56 +800,62 @@ const DEFAULT_METRICS: LayoutLearningMetrics = {
  */
 export function loadLearnedLayouts(): LearnedLayoutPattern[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_LAYOUTS);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // Auto-merge & update any factory default patterns with latest keywords/regex
-        const defaultMap = new Map(DEFAULT_LEARNED_LAYOUTS.map((d) => [d.id, d]));
-        let updated = false;
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(STORAGE_KEY_LAYOUTS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Auto-merge & update any factory default patterns with latest keywords/regex
+          const defaultMap = new Map(DEFAULT_LEARNED_LAYOUTS.map((d) => [d.id, d]));
+          let updated = false;
 
-        // Filter out any corrupted patterns with '000' or invalid data
-        const validParsed = parsed.filter((item: any) => {
-          if (!item || !item.id) return false;
-          if (item.bankCode === '000' || item.layoutName?.includes('000') || item.bankName?.includes('000')) return false;
-          return true;
-        });
+          // Filter out any corrupted patterns with '000' or invalid data
+          const validParsed = parsed.filter((item: any) => {
+            if (!item || !item.id) return false;
+            if (item.bankCode === '000' || item.layoutName?.includes('000') || item.bankName?.includes('000')) return false;
+            return true;
+          });
 
-        const merged = validParsed.map((item: any) => {
-          if (defaultMap.has(item.id)) {
-            const def = defaultMap.get(item.id)!;
-            defaultMap.delete(item.id);
-            return {
-              ...def,
-              timesUsed: Math.max(item.timesUsed || 0, def.timesUsed),
-              successCount: Math.max(item.successCount || 0, def.successCount),
-              lastUsedDate: item.lastUsedDate || def.lastUsedDate,
-            };
+          const merged = validParsed.map((item: any) => {
+            if (defaultMap.has(item.id)) {
+              const def = defaultMap.get(item.id)!;
+              defaultMap.delete(item.id);
+              return {
+                ...def,
+                timesUsed: Math.max(item.timesUsed || 0, def.timesUsed),
+                successCount: Math.max(item.successCount || 0, def.successCount),
+                lastUsedDate: item.lastUsedDate || def.lastUsedDate,
+              };
+            }
+            return item;
+          });
+
+          // Add any brand new default layouts
+          for (const remaining of defaultMap.values()) {
+            merged.push(remaining);
+            updated = true;
           }
-          return item;
-        });
 
-        // Add any brand new default layouts
-        for (const remaining of defaultMap.values()) {
-          merged.push(remaining);
-          updated = true;
+          if (updated || validParsed.length !== parsed.length) {
+            localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(merged));
+          }
+          return merged;
         }
-
-        if (updated || validParsed.length !== parsed.length) {
-          localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(merged));
-        }
-        return merged;
       }
     }
   } catch (e) {
     console.warn('[Layout Engine] Erro ao carregar modelos aprendidos:', e);
   }
-  localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(DEFAULT_LEARNED_LAYOUTS));
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(DEFAULT_LEARNED_LAYOUTS));
+    } catch {}
+  }
   return DEFAULT_LEARNED_LAYOUTS;
 }
 
-import { db, safeSetDoc, isFirestoreQuotaExceeded } from '../lib/firebase';
-import { collection, doc, getDocs } from 'firebase/firestore';
+import { db, safeSetDoc, safeGetDocs, isFirestoreQuotaExceeded } from '../lib/firebase';
+import { collection, doc } from 'firebase/firestore';
 
 /**
  * Salva a base de modelos no LocalStorage e sincroniza com o Firestore
@@ -875,7 +883,10 @@ export async function syncLearnedLayoutsFromCloud(): Promise<LearnedLayoutPatter
   }
 
   try {
-    const querySnapshot = await getDocs(collection(db, 'learned_layouts'));
+    const querySnapshot = await safeGetDocs(collection(db, 'learned_layouts'));
+    if (!querySnapshot) {
+      return loadLearnedLayouts();
+    }
     const cloudPatterns: LearnedLayoutPattern[] = [];
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data() as LearnedLayoutPattern;
@@ -1154,7 +1165,7 @@ export function extractViaLearnedLayout(
           const rx = new RegExp(pattern.fieldExtractors.valorRegex, 'i');
           const valMatch = rawText.match(rx);
           if (valMatch && valMatch[1]) {
-            const parsedVal = parseFloat(valMatch[1].replace(/\./g, '').replace(',', '.'));
+            const parsedVal = parseExtractedValor(valMatch[1]);
             if (!isNaN(parsedVal) && parsedVal > 0) extractedValue = parsedVal;
           }
         } catch {}

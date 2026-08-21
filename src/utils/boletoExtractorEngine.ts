@@ -1,5 +1,5 @@
 import { Type } from "@google/genai";
-import { parseLinhaDigitavel, onlyNumbers } from "./boletoParser.js";
+import { parseLinhaDigitavel, onlyNumbers, parseExtractedValor } from "./boletoParser.js";
 
 export interface ExtractedBoletoData {
   linhaDigitavel: string;
@@ -48,7 +48,7 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
 3. DADOS FINANCEIROS E CÓDIGOS DE BARRAS:
    - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos/DARF/GNRE/DAE/IPVA/DETRAN).
    - "codigoBarras": Código de barras numérico de 44 dígitos sem espaços.
-   - "valor": Valor numérico exato em Reais (R$). ATENÇÃO: Retorne O VALOR TOTAL FINAL COBRADO / VALOR DO DOCUMENTO que está codificado na linha digitável/código de barras. NUNCA retorne sub-totais ou itens individuais de tabelas de discriminação de débitos.
+   - "valor": Valor numérico exato em Reais (R$). ATENÇÃO MÁXIMA PARA FORMATAÇÃO DE MOEDA (CENTENAS DE MILHAR E CENTAVOS): Se o boleto tiver valor impresso como "R$ 118.267,52" (cento e dezoito mil, duzentos e sessenta e sete reais e cinquenta e dois centavos), o valor numérico JSON é 118267.52. NUNCA omita nenhum dígito, NUNCA divida por 10 e NUNCA confunda centenas de milhar com dezenas de milhar (ex: 118267.52 NUNCA deve virar 11826.75). Retorne O VALOR TOTAL FINAL COBRADO / VALOR DO DOCUMENTO codificado no título. NUNCA retorne sub-totais de tabelas de discriminação.
    - "dataVencimento": Data de Vencimento no formato YYYY-MM-DD.
    - "numeroDocumento": Número impresso no campo "Nº do Documento", "Nº de Controle" ou Nota Fiscal.
    - "nossoNumero": Código impresso no campo "Nosso Número".
@@ -154,7 +154,7 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
   let pagador = String(b.pagador || "").trim();
   let pagadorCnpjCpf = String(b.pagadorCnpjCpf || "").trim();
 
-  let valor = typeof b.valor === "number" ? b.valor : parseFloat(String(b.valor || "0")) || 0;
+  let valor = parseExtractedValor(b.valor, 0);
   let dataVencimento = String(b.dataVencimento || "").trim();
   let numeroDocumento = String(b.numeroDocumento || b.seuNumero || "").trim();
   let nossoNumero = String(b.nossoNumero || "").trim();
@@ -184,18 +184,28 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
 
   // 2. Validate Linha Digitavel
   if (linhaDigitavel.length >= 44) {
-    const parsed = parseLinhaDigitavel(linhaDigitavel);
+    const parsed = parseLinhaDigitavel(linhaDigitavel, valor);
     if (!codigoBarras || codigoBarras.length !== 44) {
       codigoBarras = parsed.codigoBarras || "";
     }
 
-    // ALWAYS enforce value from barcode if valid and > 0
+    // ALWAYS enforce value from barcode if valid and > 0, guarding against 10x/100x OCR truncation artifacts
     if (parsed.valor && parsed.valor > 0) {
       if (valor === 0 || Math.abs(valor - parsed.valor) > 0.01) {
-        if (valor > 0) {
-          alertas.push(`⚠️ Valor de R$ ${valor.toFixed(2)} ajustado para R$ ${parsed.valor.toFixed(2)} conforme valor exato codificado na linha digitável/código de barras.`);
+        // If parsed.valor is roughly 10x smaller than document valor (e.g. 11826.75 vs 118267.52 due to clipped last digit)
+        if (valor > 0 && Math.abs(valor / 10 - parsed.valor) < 1) {
+          // Document valor is the true unclipped value, keep valor
+          alertas.push(`⚠️ Linha digitável continha valor truncado (R$ ${parsed.valor.toFixed(2)}). Corrigido para o valor integral impresso: R$ ${valor.toFixed(2)}.`);
+        } else if (valor > 0 && Math.abs(parsed.valor / 10 - valor) < 1) {
+          // Parsed is the complete 10x value
+          alertas.push(`⚠️ Valor impresso truncado (R$ ${valor.toFixed(2)}) corrigido para R$ ${parsed.valor.toFixed(2)} conforme código de barras.`);
+          valor = parsed.valor;
+        } else {
+          if (valor > 0 && Math.abs(valor - parsed.valor) > 0.01) {
+            alertas.push(`⚠️ Valor de R$ ${valor.toFixed(2)} ajustado para R$ ${parsed.valor.toFixed(2)} conforme linha digitável/código de barras.`);
+          }
+          valor = parsed.valor;
         }
-        valor = parsed.valor;
       }
     }
 

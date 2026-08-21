@@ -1,4 +1,4 @@
-import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from './boletoParser.js';
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText, parseExtractedValor } from './boletoParser.js';
 import { technicalLogger } from './technicalLogger.js';
 
 /**
@@ -53,11 +53,6 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       try {
         const pdfjsLib = await import('pdfjs-dist');
         if (pdfjsLib) {
-          try {
-            if (pdfjsLib.GlobalWorkerOptions) {
-              pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version || '4.10.38'}/pdf.worker.min.mjs`;
-            }
-          } catch {}
           if ('verbosity' in pdfjsLib) {
             (pdfjsLib as any).verbosity = 0; // Silent verbosity mode
           }
@@ -65,10 +60,15 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
         const loadingTask = pdfjsLib.getDocument({
           data: bytes,
           stopAtErrors: false,
+          disableFontFace: true,
+          useSystemFonts: true,
         } as any);
-        const pdfDoc = await loadingTask.promise;
+        const pdfDoc = await Promise.race([
+          loadingTask.promise,
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('pdfjs timeout')), 3000)),
+        ]);
 
-        for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+        for (let pageNum = 1; pageNum <= Math.min(pdfDoc.numPages, 10); pageNum++) {
           const page = await pdfDoc.getPage(pageNum);
           const textContent = await page.getTextContent();
           const pageStrings = textContent.items.map((item: any) => (item as any)?.str || '');
@@ -193,17 +193,25 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
               seenLines.add(clean);
               seenLines.add(key44);
 
-              // Priority: Value decoded directly from barcode
+              // Priority: Value decoded directly from barcode with text scale verification
               let extractedValue = parsed.valor > 0 ? parsed.valor : (detected.valor || 0);
 
+              const valorMatch = textBlock.match(/(?:Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+Cobrado|VALOR\s+COBRADO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado)|Valor)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
+              let textDocVal = detected.valor || 0;
+              if (valorMatch) {
+                const parsedVal = parseExtractedValor(valorMatch[1]);
+                if (parsedVal > 0) {
+                  textDocVal = parsedVal;
+                }
+              }
+
               if (extractedValue <= 0) {
-                const valorMatch = textBlock.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+Documento|VALOR\s+ORIGINAL|Valor\s+Original|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|TOTAL|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado)|Valor)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
-                if (valorMatch) {
-                  const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
-                  const parsedVal = parseFloat(valStr);
-                  if (!isNaN(parsedVal) && parsedVal > 0) {
-                    extractedValue = parsedVal;
-                  }
+                extractedValue = textDocVal;
+              } else if (textDocVal > 0) {
+                if (Math.abs(textDocVal / 10 - extractedValue) < 1) {
+                  extractedValue = textDocVal;
+                } else if (Math.abs(extractedValue / 10 - textDocVal) < 1) {
+                  // extractedValue is full 10x value
                 }
               }
 

@@ -26,7 +26,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { BoletoItem, CNABBatchHistory } from '../types';
-import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate } from '../utils/boletoParser';
+import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate, parseExtractedValor } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate, getBoletoCleanKey, isGenericRef } from '../utils/duplicateDetector';
 import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
@@ -38,7 +38,7 @@ import {
   learnNewLayoutPattern,
   recordFastPathSuccess,
 } from '../utils/layoutLearningEngine';
-import { applyLearnedCorrectionsToBoleto } from '../utils/correctionsMemoryEngine';
+import { applyLearnedCorrectionsToBoleto, recordUserCorrection } from '../utils/correctionsMemoryEngine';
 
 export interface DetailedErrorInfo {
   errorType: string;
@@ -114,24 +114,6 @@ interface PDFBoletoImportModalProps {
   onImportBoletos: (boletos: BoletoItem[]) => void;
   existingBoletos?: BoletoItem[];
   history?: CNABBatchHistory[];
-}
-
-function parseExtractedValor(val: any, fallbackVal: number): number {
-  if (typeof val === 'number' && !isNaN(val) && val > 0) return val;
-  if (typeof val === 'string') {
-    const cleaned = val.replace(/[^\d.,]/g, '');
-    if (cleaned.includes(',')) {
-      const parts = cleaned.split(',');
-      const whole = parts[0].replace(/\./g, '');
-      const decimals = parts[1];
-      const num = parseFloat(`${whole}.${decimals}`);
-      if (!isNaN(num) && num > 0) return num;
-    } else {
-      const num = parseFloat(cleaned);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  }
-  return fallbackVal > 0 ? fallbackVal : 0;
 }
 
 export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
@@ -292,7 +274,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         const base64Len = fileBase64.length;
         const reqStartTime = performance.now();
 
-        if (base64Len <= 3_500_000) {
+        if (base64Len <= 35_000_000) {
           try {
             technicalLogger.log({
               step: 'Chamada API Servidor (/api/extract-boleto-pdf)',
@@ -303,7 +285,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             });
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 35000);
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
 
             const response = await fetch('/api/extract-boleto-pdf', {
               method: 'POST',
@@ -402,12 +384,19 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
       for (const b of rawBoletos) {
         const rawDigits = onlyNumbers(b.linhaDigitavel || b.codigoBarras || '');
+        const textVal = parseExtractedValor(b.valor, 0);
         let key44 = rawDigits;
-        if (rawDigits.length === 47 || rawDigits.length === 48) {
-          const parsed = parseLinhaDigitavel(rawDigits);
+        if (rawDigits.length === 47 || rawDigits.length === 48 || rawDigits.length === 46) {
+          const parsed = parseLinhaDigitavel(rawDigits, textVal);
           if (parsed.codigoBarras) key44 = parsed.codigoBarras;
           if (parsed.valor > 0) {
-            b.valor = parsed.valor;
+            if (textVal > 0 && Math.abs(textVal / 10 - parsed.valor) < 1) {
+              b.valor = textVal;
+            } else if (textVal > 0 && Math.abs(parsed.valor / 10 - textVal) < 1) {
+              b.valor = parsed.valor;
+            } else {
+              b.valor = parsed.valor;
+            }
           }
         }
         const nos = onlyNumbers(b.nossoNumero || b.seuNumero || '');
@@ -439,13 +428,25 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       const processedItems: PDFExtractedItem[] = rawBoletos.map((extracted, idx) => {
         const rawDigits = extracted.linhaDigitavel || extracted.codigoBarras || '';
         const cleanLinha = onlyNumbers(rawDigits);
-        const parsedCheck = parseLinhaDigitavel(cleanLinha);
+        const textVal = parseExtractedValor(extracted.valor, 0);
+        const parsedCheck = parseLinhaDigitavel(cleanLinha, textVal);
 
         const finalBancoCodigo = extracted.bancoCodigo || parsedCheck.bancoCodigo || '000';
         const bankInfo = getBankInfo(finalBancoCodigo);
         
-        // Prioritize barcode-decoded value when present for 100% precision
-        const finalValor = parsedCheck.valor > 0 ? parsedCheck.valor : parseExtractedValor(extracted.valor, 0);
+        // Prioritize barcode-decoded value when present for 100% precision with scale guarding
+        let finalValor = 0;
+        if (parsedCheck.valor > 0) {
+          if (textVal > 0 && Math.abs(textVal / 10 - parsedCheck.valor) < 1) {
+            finalValor = textVal;
+          } else if (textVal > 0 && Math.abs(parsedCheck.valor / 10 - textVal) < 1) {
+            finalValor = parsedCheck.valor;
+          } else {
+            finalValor = parsedCheck.valor;
+          }
+        } else {
+          finalValor = textVal;
+        }
 
         const finalFavorecido =
           extracted.favorecidoNome ||
@@ -719,6 +720,12 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       prev.map((item) => {
         if (item.id === id && item.data) {
           let updatedValue = value;
+          const origVal = (item.data as any)[field];
+
+          if (field === 'valor') {
+            updatedValue = typeof value === 'number' ? value : parseExtractedValor(value, item.data.valor);
+          }
+
           if (field === 'dataPagamento') {
             updatedValue = validateAndClampPaymentDate(value, item.data.dataVencimento, todayStr);
           }
@@ -736,7 +743,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           if (field === 'linhaDigitavel') {
             const parsed = parseLinhaDigitavel(value);
             if (parsed.isValid) {
-              if (!updatedData.valor) updatedData.valor = parsed.valor;
+              if (parsed.valor > 0) updatedData.valor = parsed.valor;
               if (parsed.dataVencimento) {
                 updatedData.dataVencimento = parsed.dataVencimento;
                 updatedData.dataPagamento = validateAndClampPaymentDate(
@@ -751,6 +758,22 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               }
             }
           }
+
+          // Continuously record user correction to memory engine so it persists
+          try {
+            if (origVal !== undefined && origVal !== updatedValue) {
+              recordUserCorrection(
+                field,
+                origVal,
+                updatedValue,
+                item.data.bancoCodigo,
+                item.data.favorecidoNome || item.data.beneficiario
+              );
+            }
+          } catch (e) {
+            console.warn('[Continuous Learning] Erro ao registrar correção do usuário:', e);
+          }
+
           return { ...item, data: updatedData };
         }
         return item;

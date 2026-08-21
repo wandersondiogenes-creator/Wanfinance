@@ -110,20 +110,32 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   // 5. Extracted Values (Valor Cobrado / Valor Documento / Valor Total)
   let valor: number | undefined;
-  const valorCobradoMatch = rawText.match(/(?:(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Cobrado|Documento)|(?:=\s*)?Valor\s+Cobrado|VALOR\s+COBRADO|(?:=\s*)?Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
-  if (valorCobradoMatch) {
-    const valStr = valorCobradoMatch[1].replace(/\./g, '').replace(',', '.');
-    const parsedVal = parseFloat(valStr);
-    if (!isNaN(parsedVal) && parsedVal > 0) {
+
+  // Specific regex for Valor Documento or Valor Cobrado on same line / immediate token
+  const valorDirectMatch = rawText.match(/(?:Valor\s+do\s+Documento|Valor\s+Documento|Valor\s+Cobrado|VALOR\s+DOCUMENTO|VALOR\s+COBRADO|VALOR\s+DO\s+DOCUMENTO|\(=\)\s*Valor\s+Cobrado|\(=\)\s*Valor\s+Documento)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
+  if (valorDirectMatch) {
+    const parsedVal = parseExtractedValor(valorDirectMatch[1]);
+    if (parsedVal > 0) {
       valor = parsedVal;
     }
-  } else {
+  }
+
+  if (!valor) {
+    const valorCobradoMatch = rawText.match(/(?:(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Cobrado|Documento)|(?:=\s*)?Valor\s+Cobrado|VALOR\s+COBRADO|(?:=\s*)?Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
+    if (valorCobradoMatch) {
+      const parsedVal = parseExtractedValor(valorCobradoMatch[1]);
+      if (parsedVal > 0) {
+        valor = parsedVal;
+      }
+    }
+  }
+
+  if (!valor) {
     // Secondary fallback (e.g. Total or generic Valor if no main header matched)
-    const fallbackValMatch = rawText.match(/(?:TOTAL|Valor\s+Original|VALOR)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
+    const fallbackValMatch = rawText.match(/(?:TOTAL|Valor\s+Original|VALOR)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
     if (fallbackValMatch) {
-      const valStr = fallbackValMatch[1].replace(/\./g, '').replace(',', '.');
-      const parsedVal = parseFloat(valStr);
-      if (!isNaN(parsedVal) && parsedVal > 0) {
+      const parsedVal = parseExtractedValor(fallbackValMatch[1]);
+      if (parsedVal > 0) {
         valor = parsedVal;
       }
     }
@@ -637,9 +649,86 @@ export function parseFatorVencimento(fatorStr: string): string {
  * Extracts numeric value in Reais (R$) from the 10-digit value field
  */
 export function parseValor(valorStr: string): number {
+  if (!valorStr) return 0;
+  // If already formatted or float-like
+  if (typeof valorStr === 'string' && (valorStr.includes(',') || valorStr.includes('.'))) {
+    return parseExtractedValor(valorStr);
+  }
   const num = parseInt(valorStr, 10);
   if (isNaN(num)) return 0;
   return num / 100;
+}
+
+/**
+ * Robust parser for extracted currency strings across Brazilian, US, and raw numeric formats.
+ * Prevents string truncation errors (e.g. 118.267,52 -> 118267.52).
+ */
+export function parseExtractedValor(val: any, fallbackVal: number = 0): number {
+  if (typeof val === 'number') {
+    return !isNaN(val) && val > 0 ? val : fallbackVal;
+  }
+  if (typeof val === 'string') {
+    let str = val.trim();
+    if (!str) return fallbackVal;
+
+    // Clean currency symbols, prefixes and non-breaking spaces
+    str = str.replace(/[R$\s\xa0]/gi, '').trim();
+
+    // If pure 10-digit zero-padded barcode format e.g. "0011826752"
+    if (/^\d{10}$/.test(str)) {
+      const num = parseInt(str, 10);
+      if (!isNaN(num) && num > 0) return num / 100;
+    }
+
+    // Brazilian format with comma as decimal separator (e.g. 118.267,52 or 118 267,52 or 118267,52)
+    if (str.includes(',')) {
+      const parts = str.split(',');
+      const whole = parts[0].replace(/[^0-9]/g, '');
+      const decimals = (parts[1] || '').replace(/[^0-9]/g, '').slice(0, 2);
+      const num = parseFloat(`${whole}.${decimals.padEnd(2, '0')}`);
+      if (!isNaN(num) && num > 0) return num;
+    }
+
+    // Format with dots
+    if (str.includes('.')) {
+      const parts = str.split('.');
+      if (parts.length > 2) {
+        // Multiple dots e.g. 118.267.52 where last part is 2 decimals
+        const lastPart = parts[parts.length - 1];
+        if (lastPart.length === 2) {
+          const whole = parts.slice(0, parts.length - 1).join('').replace(/[^0-9]/g, '');
+          const num = parseFloat(`${whole}.${lastPart}`);
+          if (!isNaN(num) && num > 0) return num;
+        } else {
+          // Thousand separators only e.g. 118.267.000
+          const whole = parts.join('').replace(/[^0-9]/g, '');
+          const num = parseFloat(whole);
+          if (!isNaN(num) && num > 0) return num;
+        }
+      } else if (parts.length === 2) {
+        const lastPart = parts[1].replace(/[^0-9]/g, '');
+        if (lastPart.length === 3) {
+          // In Brazilian format, a 3-digit group after a single dot without comma is a thousand separator e.g. 118.267 -> 118267
+          const whole = parts.join('').replace(/[^0-9]/g, '');
+          const num = parseFloat(whole);
+          if (!isNaN(num) && num > 0) return num;
+        } else {
+          const whole = parts[0].replace(/[^0-9]/g, '');
+          const decimals = lastPart.slice(0, 2);
+          const num = parseFloat(`${whole}.${decimals.padEnd(2, '0')}`);
+          if (!isNaN(num) && num > 0) return num;
+        }
+      }
+    }
+
+    // Digits only
+    const digits = str.replace(/[^0-9]/g, '');
+    if (digits) {
+      const num = parseFloat(digits);
+      if (!isNaN(num) && num > 0) return num;
+    }
+  }
+  return fallbackVal > 0 ? fallbackVal : 0;
 }
 
 /**
@@ -786,8 +875,8 @@ export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
 /**
  * Full parsing function for any user input Linha Digitável or Barcode
  */
-export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
-  const limpa = onlyNumbers(input);
+export function parseLinhaDigitavel(input: string, fallbackValorOrText?: number | string): ParsedBoletoInfo {
+  let limpa = onlyNumbers(input);
 
   if (!limpa) {
     return {
@@ -801,6 +890,30 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
       tipo: 'titulo_bancario',
       errorMessage: 'Linha digitável vazia',
     };
+  }
+
+  // Auto-repair for 46-digit truncated lines (e.g. right margin OCR clipping of the last value digit)
+  if (limpa.length === 46) {
+    // Check if the first 33 digits (blocks 1, 2, 3 + general check digit) form a valid Brazilian bank structure
+    const isBancoKnown = /^(0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})[89]/.test(limpa);
+    if (isBancoKnown) {
+      if (typeof fallbackValorOrText === 'number' && fallbackValorOrText > 0) {
+        const centsStr = String(Math.round(fallbackValorOrText * 100)).padStart(10, '0');
+        const candidate = limpa.substring(0, 37) + centsStr.slice(-10);
+        if (candidate.length === 47) {
+          limpa = candidate;
+        }
+      } else if (typeof fallbackValorOrText === 'string' && fallbackValorOrText) {
+        const num = parseExtractedValor(fallbackValorOrText);
+        if (num > 0) {
+          const centsStr = String(Math.round(num * 100)).padStart(10, '0');
+          const candidate = limpa.substring(0, 37) + centsStr.slice(-10);
+          if (candidate.length === 47) {
+            limpa = candidate;
+          }
+        }
+      }
+    }
   }
 
   if (limpa.length !== 47 && limpa.length !== 48 && limpa.length !== 44) {
@@ -822,12 +935,20 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
   if (tipo === 'titulo_bancario') {
     const bancoCodigo = limpa.substring(0, 3);
     const bankInfo = getBankInfo(bancoCodigo);
-    const fatorVencimento = limpa.substring(33, 37);
-    const valorRaw = limpa.substring(37, 47);
+    let fatorVencimento = '';
+    let valorRaw = '';
+
+    if (limpa.length === 47) {
+      fatorVencimento = limpa.substring(33, 37);
+      valorRaw = limpa.substring(37, 47);
+    } else if (limpa.length === 44) {
+      fatorVencimento = limpa.substring(5, 9);
+      valorRaw = limpa.substring(9, 19);
+    }
 
     const dataVencimento = parseFatorVencimento(fatorVencimento);
     const valor = parseValor(valorRaw);
-    const isMod10Valid = validateModulo10LinhaDigitavel(limpa);
+    const isMod10Valid = limpa.length === 47 ? validateModulo10LinhaDigitavel(limpa) : true;
     const bankFound = getBankInfo(bancoCodigo);
     const isKnownBank = bankFound.shortName !== 'Banco Não Identificado' && bancoCodigo !== '000';
     const hasValidStructure = isKnownBank && /^(0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})[89]/.test(limpa);

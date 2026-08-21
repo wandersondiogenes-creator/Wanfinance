@@ -1,15 +1,50 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, setDoc, deleteDoc, SetOptions } from 'firebase/firestore';
+import {
+  getFirestore,
+  doc,
+  getDocFromServer,
+  setDoc,
+  deleteDoc,
+  getDocs,
+  disableNetwork,
+  SetOptions,
+  Query,
+  QuerySnapshot,
+  DocumentData,
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
-// In-memory circuit breaker flag for Firestore quota exhaustion
-let firestoreQuotaExceeded = false;
+const STORAGE_QUOTA_KEY = 'FIRESTORE_QUOTA_EXHAUSTED_TIME';
+
+function checkInitialQuotaExceeded(): boolean {
+  try {
+    const saved = localStorage.getItem(STORAGE_QUOTA_KEY);
+    if (saved) {
+      const time = parseInt(saved, 10);
+      // Quotas reset daily. If marked within the last 12 hours, keep quota circuit breaker active.
+      if (!isNaN(time) && Date.now() - time < 12 * 60 * 60 * 1000) {
+        return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
+// In-memory & persistent circuit breaker flag for Firestore quota exhaustion
+let firestoreQuotaExceeded = checkInitialQuotaExceeded();
 let quotaWarningLogged = false;
+
+// If already exceeded on startup, disable network immediately to stop background retry storm
+if (firestoreQuotaExceeded) {
+  try {
+    disableNetwork(db).catch(() => {});
+  } catch (_) {}
+}
 
 export function isFirestoreQuotaExceeded(): boolean {
   return firestoreQuotaExceeded;
@@ -17,11 +52,19 @@ export function isFirestoreQuotaExceeded(): boolean {
 
 export function setFirestoreQuotaExceeded(exceeded: boolean) {
   firestoreQuotaExceeded = exceeded;
-  if (exceeded && !quotaWarningLogged) {
-    quotaWarningLogged = true;
-    console.warn(
-      '[Firestore Quota Breaker] Cota diária gratuita do Firestore atingida. O app continuará funcionando normalmente com persistência local (LocalStorage / Supabase).'
-    );
+  if (exceeded) {
+    try {
+      localStorage.setItem(STORAGE_QUOTA_KEY, Date.now().toString());
+    } catch (_) {}
+    if (!quotaWarningLogged) {
+      quotaWarningLogged = true;
+      console.warn(
+        '[Firestore Quota Breaker] Cota diária gratuita do Firestore atingida. Conexão pausada para evitar repetições. O app continuará funcionando normalmente com persistência local e Supabase.'
+      );
+    }
+    try {
+      disableNetwork(db).catch(() => {});
+    } catch (_) {}
   }
 }
 
@@ -76,6 +119,7 @@ export async function safeDeleteDoc(docRef: any): Promise<boolean> {
     if (
       errorMsg.includes('resource-exhausted') ||
       errorMsg.includes('Quota limit exceeded') ||
+      errorMsg.includes('Quota exceeded') ||
       error?.code === 'resource-exhausted'
     ) {
       setFirestoreQuotaExceeded(true);
@@ -83,6 +127,34 @@ export async function safeDeleteDoc(docRef: any): Promise<boolean> {
     }
     console.warn(`[Firestore] Delete error at ${docRef?.path || 'unknown'}:`, errorMsg);
     return false;
+  }
+}
+
+/**
+ * Safe wrapper for getDocs with quota checking
+ */
+export async function safeGetDocs(
+  queryObj: Query<DocumentData, DocumentData>
+): Promise<QuerySnapshot<DocumentData, DocumentData> | null> {
+  if (firestoreQuotaExceeded) {
+    return null;
+  }
+
+  try {
+    return await getDocs(queryObj);
+  } catch (error: any) {
+    const errorMsg = String(error?.message || error || '');
+    if (
+      errorMsg.includes('resource-exhausted') ||
+      errorMsg.includes('Quota limit exceeded') ||
+      errorMsg.includes('Quota exceeded') ||
+      error?.code === 'resource-exhausted'
+    ) {
+      setFirestoreQuotaExceeded(true);
+      return null;
+    }
+    console.warn('[Firestore] Query error:', errorMsg);
+    return null;
   }
 }
 

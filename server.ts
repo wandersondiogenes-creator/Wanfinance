@@ -5,7 +5,7 @@ import https from "https";
 import axios from "axios";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
-import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from "./src/utils/boletoParser";
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText, parseExtractedValor } from "./src/utils/boletoParser";
 import {
   SYSTEM_INSTRUCTION_BOLETO,
   PROMPT_BOLETO_EXTRACTION,
@@ -174,14 +174,20 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             seenLines.add(key44);
             let extractedValue = parsed.valor || 0;
 
+            const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+documento|Valor\s+do\s+[Dd]ocumento|VALOR\s+ORIGINAL|Valor\s+Original|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|\(=\)\s*Valor\s+documento)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
+            let textVal = 0;
+            if (valorMatch) {
+              const parsedVal = parseExtractedValor(valorMatch[1]);
+              if (parsedVal > 0) {
+                textVal = parsedVal;
+              }
+            }
+
             if (extractedValue <= 0) {
-              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+documento|Valor\s+do\s+[Dd]ocumento|VALOR\s+ORIGINAL|Valor\s+Original|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|\(=\)\s*Valor\s+documento)\s*[:\s]*R?\$?\s*([\d\.]+(?:,\d{2})?)/i);
-              if (valorMatch) {
-                const valStr = valorMatch[1].replace(/\./g, '').replace(',', '.');
-                const parsedVal = parseFloat(valStr);
-                if (!isNaN(parsedVal) && parsedVal > 0) {
-                  extractedValue = parsedVal;
-                }
+              extractedValue = textVal;
+            } else if (textVal > 0) {
+              if (Math.abs(textVal / 10 - extractedValue) < 1) {
+                extractedValue = textVal;
               }
             }
 
@@ -446,16 +452,16 @@ async function startServer() {
         const callGeminiWithRetryAndFallback = async () => {
           const modelsToTry = [
             "gemini-3.7-flash",
-            "gemini-flash-latest",
             "gemini-3.1-flash-lite",
+            "gemini-flash-latest",
           ];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
             try {
-              console.log(`[Gemini API] Executando análise com modelo ${modelName}...`);
+              console.log(`[Gemini API] Executando OCR/análise com modelo ${modelName}...`);
               
-              // 8s timeout for each Gemini API model call to ensure fast fallback and never exceed total fetch timeout
+              // 14s timeout for each Gemini API model call to ensure fast fallback and never exceed total fetch timeout
               const generatePromise = ai.models.generateContent({
                 model: modelName,
                 contents: [
@@ -478,13 +484,13 @@ async function startServer() {
                   systemInstruction: SYSTEM_INSTRUCTION_BOLETO,
                   temperature: 0.1,
                   responseMimeType: "application/json",
-                  maxOutputTokens: 8192,
+                  maxOutputTokens: 4096,
                   responseSchema: GEMINI_BOLETO_SCHEMA as any,
                 },
               });
 
               const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error(`Timeout Gemini API (20s) no modelo ${modelName}`)), 20000)
+                setTimeout(() => reject(new Error(`Timeout Gemini API (14s) no modelo ${modelName}`)), 14000)
               );
 
               const response = await Promise.race([generatePromise, timeoutPromise]) as any;
@@ -493,13 +499,11 @@ async function startServer() {
               lastError = err;
               const errMsg = String(err?.message || err);
               if (errMsg.includes("503") || errMsg.includes("high demand") || errMsg.includes("UNAVAILABLE")) {
-                console.info(`[Gemini API] Modelo ${modelName} em alta demanda (503). Alternando para modelo de reserva...`);
-                await new Promise((res) => setTimeout(res, 200));
+                console.info(`[Gemini API] Modelo ${modelName} em alta demanda (503). Alternando imediatamente para modelo de reserva...`);
               } else if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota exceeded")) {
-                console.info(`[Gemini API] Modelo ${modelName} com limite de requisições (429). Alternando para modelo de reserva...`);
-                await new Promise((res) => setTimeout(res, 200));
+                console.info(`[Gemini API] Modelo ${modelName} com limite de requisições (429). Alternando imediatamente para modelo de reserva...`);
               } else {
-                console.warn(`[Gemini API] Modelo ${modelName} indisponível: ${errMsg.substring(0, 100)}`);
+                console.warn(`[Gemini API] Modelo ${modelName} indisponível: ${errMsg.substring(0, 120)}`);
               }
             }
           }
