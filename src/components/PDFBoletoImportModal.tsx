@@ -170,6 +170,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     const startTime = performance.now();
     const itemId = `pdf-item-${Date.now()}-${fileIndex}-${Math.random().toString(36).substring(2, 7)}`;
 
+    console.log(`[PDF Upload Step 1/5] Arquivo recebido: "${file.name}" (${(file.size / 1024).toFixed(1)} KB)`);
+
     // 0% — Arquivo recebido (Mostra nome do arquivo IMEDIATAMENTE)
     const initialItem: PDFExtractedItem = {
       id: itemId,
@@ -190,7 +192,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         progress: 15,
         stepMessage: '15% — Lendo documento PDF',
       });
-      await delay(15);
+      await delay(10);
 
       // Convert file to Base64
       const fileBase64 = await new Promise<string>((resolve, reject) => {
@@ -200,12 +202,14 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         reader.readAsDataURL(file);
       });
 
+      console.log(`[PDF Upload Step 2/5] Base64 gerado (${fileBase64.length} caracteres). Analisando layout...`);
+
       // 30% — Consultando padrões e memória local
       updateItemState(itemId, {
         progress: 30,
         stepMessage: '30% — Analisando layout e campos',
       });
-      await delay(15);
+      await delay(10);
 
       // Check Layout Engine Memory First
       const memoryMatch = matchLayoutPattern(file.name);

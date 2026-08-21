@@ -65,7 +65,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
         } as any);
         const pdfDoc = await Promise.race([
           loadingTask.promise,
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('pdfjs timeout')), 3000)),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('pdfjs timeout (800ms)')), 800)),
         ]);
 
         for (let pageNum = 1; pageNum <= Math.min(pdfDoc.numPages, 10); pageNum++) {
@@ -75,12 +75,14 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
           const pageCombined = pageStrings.join(' ');
           pageTexts.push(pageCombined);
         }
+        console.log(`[PDF Local Extractor] pdfjs-dist extraiu ${pageTexts.length} página(s) de texto para "${fileName}"`);
       } catch (pdfJsErr: any) {
         const msg = String(pdfJsErr?.message || pdfJsErr);
+        console.log(`[PDF Local Extractor] pdfjs-dist indisponível para "${fileName}" (${msg.substring(0, 80)}). Prosseguindo para análise binária/OCR...`);
         technicalLogger.log({
           step: 'Aviso pdfjs-dist',
           fileName,
-          severity: 'warn',
+          severity: 'info',
           errorMessage: msg,
         });
       }
@@ -171,6 +173,9 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
         let match: RegExpExecArray | null;
         const regex = new RegExp(pattern.source, pattern.flags);
         while ((match = regex.exec(textBlock)) !== null) {
+          if (match.index === regex.lastIndex) {
+            regex.lastIndex++;
+          }
           const matchStr = match[1] || match[0];
           let clean = onlyNumbers(matchStr);
 

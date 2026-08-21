@@ -101,10 +101,21 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     const [d, m, y] = validoPagamentoMatch[1].split(/[/-]/);
     dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   } else {
-    const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+    const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
     if (vencMatch) {
       const [d, m, y] = vencMatch[1].split(/[/-]/);
       dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    } else {
+      // Search for dates near the Vencimento section/table row
+      const vencIdx = rawText.search(/VENCIMENTO|Vencimento/i);
+      if (vencIdx !== -1) {
+        const textAfterVenc = rawText.substring(vencIdx);
+        const nextDate = textAfterVenc.match(/\b(\d{2}[/-]\d{2}[/-]\d{4})\b/);
+        if (nextDate) {
+          const [d, m, y] = nextDate[1].split(/[/-]/);
+          dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+      }
     }
   }
 
@@ -131,6 +142,17 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   }
 
   if (!valor) {
+    // Check table-row format where "Valor documento" is at the end of the header row and number is at the end of next row
+    const tableValorMatch = rawText.match(/(?:Valor\s+(?:do\s+)?Documento|Valor\s+Cobrado|\(=\)\s*Valor\s+documento)[^\r\n]*\r?\n[^\r\n]*?R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))\s*$/im);
+    if (tableValorMatch) {
+      const parsedVal = parseExtractedValor(tableValorMatch[1]);
+      if (parsedVal > 0) {
+        valor = parsedVal;
+      }
+    }
+  }
+
+  if (!valor) {
     // Secondary fallback (e.g. Total or generic Valor if no main header matched)
     const fallbackValMatch = rawText.match(/(?:TOTAL|Valor\s+Original|VALOR)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
     if (fallbackValMatch) {
@@ -143,9 +165,35 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   // GNRE / Control Number / Nosso Numero / Numero do Documento / Compromisso
   let gnomeNum = '';
-  const gnreCtrlMatch = rawText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|Nº\s+do\s+Documento|N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Nosso\s+Número|NOSSO\s+NÚMERO|Nosso\s+Numero|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo|Compromisso)\s*[:\s\r\n]*([\w\d\/\.-]{5,30})/i);
-  if (gnreCtrlMatch) {
-    gnomeNum = gnreCtrlMatch[1].trim();
+  let nossoNumero = '';
+
+  // Extract Numero do Documento
+  const numDocDirect = rawText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|Nº\s+do\s+Documento|N[oº°]\.?\s*Doc)\s*[:\s\r\n]*([0-9]{4,25}[-\w]*)/i);
+  if (numDocDirect && !/^(?:CPF|CNPJ|Vencimento|Valor|Data|Esp[ée]cie|Aceite)/i.test(numDocDirect[1])) {
+    gnomeNum = numDocDirect[1].trim();
+  } else {
+    const tableHeaderNum = rawText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento)[^\r\n]*\r?\n\s*([0-9]{4,25})/i);
+    if (tableHeaderNum) {
+      gnomeNum = tableHeaderNum[1].trim();
+    }
+  }
+
+  // Extract Nosso Número
+  const nossoDirect = rawText.match(/(?:Nosso\s+N[úu]mero|NOSSO\s+N[ÚU]MERO|Nosso\s+Numero|Nosso\s+N[º°o]\.?|Cart\.\s*\/\s*Nosso\s+N[uú]mero)\s*[:\s\r\n]*([0-9]{4,25}(?:-[0-9A-Za-z]+)?)/i);
+  if (nossoDirect && !/^(?:Data|Uso|Valor|Esp[ée]cie|Carteira|Aceite)/i.test(nossoDirect[1])) {
+    nossoNumero = nossoDirect[1].trim();
+  } else {
+    const tableHeaderNosso = rawText.match(/Nosso\s+n[úu]mero[^\r\n]*\r?\n[^\r\n]*?([0-9]{4,25}(?:-[0-9A-Za-z]+)?)\s*$/im);
+    if (tableHeaderNosso) {
+      nossoNumero = tableHeaderNosso[1].trim();
+    }
+  }
+
+  if (!gnomeNum && !nossoNumero) {
+    const gnreCtrlMatch = rawText.match(/(?:N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo|Compromisso)\s*[:\s\r\n]*([0-9\/\.-]{5,30})/i);
+    if (gnreCtrlMatch && !/^(?:CPF|CNPJ|Vencimento|Valor|Data)/i.test(gnreCtrlMatch[1])) {
+      gnomeNum = gnreCtrlMatch[1].trim();
+    }
   }
 
   // Beneficiário & Pagador CNPJ/CPF and Name Extraction
@@ -455,6 +503,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     dataVencimento: dataVencimento || undefined,
     valor,
     seuNumero: seuNumero || undefined,
+    nossoNumero: nossoNumero || undefined,
     observacoes: obsParts.length > 0 ? obsParts.join(' | ') : undefined,
   };
 }

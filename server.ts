@@ -451,17 +451,17 @@ async function startServer() {
 
         const callGeminiWithRetryAndFallback = async () => {
           const modelsToTry = [
-            "gemini-3.7-flash",
             "gemini-3.1-flash-lite",
+            "gemini-3.7-flash",
             "gemini-flash-latest",
           ];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
             try {
-              console.log(`[Gemini API] Executando OCR/análise com modelo ${modelName}...`);
+              console.log(`[Gemini OCR API] [${new Date().toISOString()}] Tentando modelo ${modelName} para o arquivo "${fileName}"...`);
               
-              // 14s timeout for each Gemini API model call to ensure fast fallback and never exceed total fetch timeout
+              // 8s timeout for fast fallback
               const generatePromise = ai.models.generateContent({
                 model: modelName,
                 contents: [
@@ -490,20 +490,21 @@ async function startServer() {
               });
 
               const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error(`Timeout Gemini API (14s) no modelo ${modelName}`)), 14000)
+                setTimeout(() => reject(new Error(`Timeout Gemini API (8s) no modelo ${modelName}`)), 8000)
               );
 
               const response = await Promise.race([generatePromise, timeoutPromise]) as any;
+              console.log(`[Gemini OCR API] [${new Date().toISOString()}] Modelo ${modelName} respondeu com sucesso para "${fileName}"!`);
               return response;
             } catch (err: any) {
               lastError = err;
               const errMsg = String(err?.message || err);
               if (errMsg.includes("503") || errMsg.includes("high demand") || errMsg.includes("UNAVAILABLE")) {
-                console.info(`[Gemini API] Modelo ${modelName} em alta demanda (503). Alternando imediatamente para modelo de reserva...`);
+                console.info(`[Gemini OCR API] Modelo ${modelName} em alta demanda (503). Alternando para próximo modelo de reserva...`);
               } else if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota exceeded")) {
-                console.info(`[Gemini API] Modelo ${modelName} com limite de requisições (429). Alternando imediatamente para modelo de reserva...`);
+                console.info(`[Gemini OCR API] Modelo ${modelName} com limite de cota (429). Alternando para próximo modelo de reserva...`);
               } else {
-                console.warn(`[Gemini API] Modelo ${modelName} indisponível: ${errMsg.substring(0, 120)}`);
+                console.warn(`[Gemini OCR API] Modelo ${modelName} aviso: ${errMsg.substring(0, 150)}`);
               }
             }
           }
