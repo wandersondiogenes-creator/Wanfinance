@@ -26,10 +26,10 @@ import {
   Copy,
 } from 'lucide-react';
 import { BoletoItem, CNABBatchHistory } from '../types';
-import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate, parseExtractedValor } from '../utils/boletoParser';
+import { parseLinhaDigitavel, formatCurrencyBRL, onlyNumbers, validateAndClampPaymentDate } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
 import { detectBoletoDuplicate, getBoletoCleanKey, isGenericRef } from '../utils/duplicateDetector';
-import { extractBoletosLocallyInBrowser } from '../utils/pdfLocalExtractor';
+import { extractBoletosLocallyInBrowser, extractRawTextFromPDFInBrowser } from '../utils/pdfLocalExtractor';
 import { technicalLogger } from '../utils/technicalLogger';
 
 import {
@@ -38,7 +38,7 @@ import {
   learnNewLayoutPattern,
   recordFastPathSuccess,
 } from '../utils/layoutLearningEngine';
-import { applyLearnedCorrectionsToBoleto, recordUserCorrection } from '../utils/correctionsMemoryEngine';
+import { applyLearnedCorrectionsToBoleto } from '../utils/correctionsMemoryEngine';
 
 export interface DetailedErrorInfo {
   errorType: string;
@@ -89,6 +89,8 @@ export interface PDFExtractedItem {
     observacoes: string;
     desconto?: number;
     jurosMulta?: number;
+    valorDocumento?: number;
+    valorCobrado?: number;
     confidence: number;
     confianca?: number;
     alertas?: string[];
@@ -104,6 +106,7 @@ export interface PDFExtractedItem {
     tipoBoleto?: string;
     placa?: string;
     renavam?: string;
+    chassi?: string;
     autoInfracao?: string;
   };
 }
@@ -114,6 +117,24 @@ interface PDFBoletoImportModalProps {
   onImportBoletos: (boletos: BoletoItem[]) => void;
   existingBoletos?: BoletoItem[];
   history?: CNABBatchHistory[];
+}
+
+function parseExtractedValor(val: any, fallbackVal: number): number {
+  if (typeof val === 'number' && !isNaN(val) && val > 0) return val;
+  if (typeof val === 'string') {
+    const cleaned = val.replace(/[^\d.,]/g, '');
+    if (cleaned.includes(',')) {
+      const parts = cleaned.split(',');
+      const whole = parts[0].replace(/\./g, '');
+      const decimals = parts[1];
+      const num = parseFloat(`${whole}.${decimals}`);
+      if (!isNaN(num) && num > 0) return num;
+    } else {
+      const num = parseFloat(cleaned);
+      if (!isNaN(num) && num > 0) return num;
+    }
+  }
+  return fallbackVal > 0 ? fallbackVal : 0;
 }
 
 export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
@@ -131,11 +152,39 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [learnedCountInSession, setLearnedCountInSession] = useState(0);
   const [reusedCountInSession, setReusedCountInSession] = useState(0);
+  const [savedModelIds, setSavedModelIds] = useState<Set<string>>(new Set());
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [copiedLogs, setCopiedLogs] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileMapRef = useRef<Map<string, File>>(new Map());
+
+  const handleSaveLayoutModel = (item: PDFExtractedItem) => {
+    if (!item.data) return;
+    try {
+      const d = item.data;
+      const cleanLinha = onlyNumbers(d.linhaDigitavel || d.codigoBarras || '');
+      const textToLearn = `${d.favorecidoNome || ''} ${d.bancoNome || ''} ${cleanLinha} ${item.fileName || ''} ${d.seuNumero || ''} ${d.nossoNumero || ''}`;
+      
+      const learnRes = learnNewLayoutPattern(textToLearn, {
+        linhaDigitavel: cleanLinha,
+        bancoCodigo: d.bancoCodigo,
+        favorecidoNome: d.favorecidoNome,
+        valor: d.valor,
+        dataVencimento: d.dataVencimento,
+      });
+
+      setSavedModelIds((prev) => new Set([...prev, item.id]));
+      setLearnedCountInSession((c) => c + 1);
+
+      updateItemState(item.id, {
+        layoutRecognized: true,
+        layoutName: learnRes.pattern?.layoutName || item.layoutName || 'Modelo Aprendido',
+      });
+    } catch (e) {
+      console.warn('[Continuous Learning] Erro ao salvar modelo manualmente:', e);
+    }
+  };
 
   const handleApplyBatchPaymentDate = (date: string) => {
     const todayStr = new Date().toISOString().split('T')[0];
@@ -170,8 +219,6 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     const startTime = performance.now();
     const itemId = `pdf-item-${Date.now()}-${fileIndex}-${Math.random().toString(36).substring(2, 7)}`;
 
-    console.log(`[PDF Upload Step 1/5] Arquivo recebido: "${file.name}" (${(file.size / 1024).toFixed(1)} KB)`);
-
     // 0% — Arquivo recebido (Mostra nome do arquivo IMEDIATAMENTE)
     const initialItem: PDFExtractedItem = {
       id: itemId,
@@ -192,7 +239,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         progress: 15,
         stepMessage: '15% — Lendo documento PDF',
       });
-      await delay(10);
+      await delay(15);
 
       // Convert file to Base64
       const fileBase64 = await new Promise<string>((resolve, reject) => {
@@ -202,17 +249,21 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         reader.readAsDataURL(file);
       });
 
-      console.log(`[PDF Upload Step 2/5] Base64 gerado (${fileBase64.length} caracteres). Analisando layout...`);
+      // Extract full document text in browser for layout matching and fast-path
+      let docText = '';
+      try {
+        docText = await extractRawTextFromPDFInBrowser(fileBase64, file.name);
+      } catch {}
 
       // 30% — Consultando padrões e memória local
       updateItemState(itemId, {
         progress: 30,
         stepMessage: '30% — Analisando layout e campos',
       });
-      await delay(10);
+      await delay(15);
 
-      // Check Layout Engine Memory First
-      const memoryMatch = matchLayoutPattern(file.name);
+      // Check Layout Engine Memory First with extracted text or filename
+      const memoryMatch = matchLayoutPattern(docText || file.name);
       let isFastPathUsed = false;
       let layoutRecognized = false;
       let layoutName = 'Layout Desconhecido';
@@ -233,8 +284,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       let serverErrorMsg = '';
 
       // 1. Try Fast-Path via learned layout first if memory matched
-      if (layoutRecognized && memoryMatch.pattern) {
-        const fastRes = extractViaLearnedLayout(fileBase64, memoryMatch.pattern);
+      if (layoutRecognized && memoryMatch.pattern && docText) {
+        const fastRes = extractViaLearnedLayout(docText, memoryMatch.pattern);
         if (fastRes.success && fastRes.boletos.length > 0) {
           rawBoletos = fastRes.boletos;
           isFastPathUsed = true;
@@ -278,7 +329,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         const base64Len = fileBase64.length;
         const reqStartTime = performance.now();
 
-        if (base64Len <= 35_000_000) {
+        if (base64Len <= 70_000_000) {
           try {
             technicalLogger.log({
               step: 'Chamada API Servidor (/api/extract-boleto-pdf)',
@@ -341,8 +392,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           errorType: 'Linha Digitável / Código de Barras Não Identificado',
           stepWhereOccurred: 'Localizando campos (Etapa 40%-60%)',
           unidentifiedFields: ['Linha Digitável', 'Código de Barras'],
-          probableCause: serverErrorMsg.includes('429')
-            ? 'Cota temporária da API Gemini atingida. O leitor local não encontrou texto em formato digital.'
+          probableCause: serverErrorMsg
+            ? `Detalhe do processamento: ${serverErrorMsg}`
             : 'PDF digitalizado como imagem sem camada de texto ou arquivo corrompido.',
           partialExtracted: {
             banco: false,
@@ -372,41 +423,54 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         return [errorItem];
       }
 
-      // Filter out table-row sub-items if a valid primary boleto with 47/48-digit linha exists
+      // Filter out table-row sub-items or invalid partial lines if a valid primary boleto exists
       const validLinhas = rawBoletos.filter((b) => {
         const d = onlyNumbers(b.linhaDigitavel || b.codigoBarras || '');
-        return d.length === 47 || d.length === 48;
+        if (d.length === 47 && d.startsWith('8')) return false; // Arrecadação deve ter 48 dígitos
+        const parsed = parseLinhaDigitavel(d);
+        return (d.length === 47 && !d.startsWith('8') && parsed.isValid) || (d.length === 48 && d.startsWith('8')) || d.length === 44;
       });
 
       if (validLinhas.length > 0) {
         rawBoletos = validLinhas;
       }
 
-      // Deduplicate rawBoletos strictly by 44-digit barcode key
+      // If a 48-digit concessionária/tributo line exists, purge any residual 47-digit substring false positives
+      const has48 = rawBoletos.some((b) => onlyNumbers(b.linhaDigitavel || b.codigoBarras || '').length === 48);
+      if (has48) {
+        const full48Digits = rawBoletos
+          .filter((b) => onlyNumbers(b.linhaDigitavel || b.codigoBarras || '').length === 48)
+          .map((b) => onlyNumbers(b.linhaDigitavel || b.codigoBarras || ''));
+
+        rawBoletos = rawBoletos.filter((b) => {
+          const d = onlyNumbers(b.linhaDigitavel || b.codigoBarras || '');
+          if (d.length === 48) return true;
+          // Discard any 47-digit line that is a substring/subsequence of a 48-digit line
+          return !full48Digits.some((f48) => f48.includes(d.substring(0, 30)) || f48.includes(d.slice(-30)));
+        });
+      }
+
+      // Deduplicate rawBoletos strictly by 44-digit barcode key or Nosso Número
       const seenRawKeys = new Map<string, any>();
       const uniqueRawBoletos: any[] = [];
 
       for (const b of rawBoletos) {
         const rawDigits = onlyNumbers(b.linhaDigitavel || b.codigoBarras || '');
-        const textVal = parseExtractedValor(b.valor, 0);
         let key44 = rawDigits;
-        if (rawDigits.length === 47 || rawDigits.length === 48 || rawDigits.length === 46) {
-          const parsed = parseLinhaDigitavel(rawDigits, textVal);
+        if (rawDigits.length === 47 || rawDigits.length === 48) {
+          const parsed = parseLinhaDigitavel(rawDigits);
           if (parsed.codigoBarras) key44 = parsed.codigoBarras;
-          if (parsed.valor > 0) {
-            if (textVal > 0 && Math.abs(textVal / 10 - parsed.valor) < 1) {
-              b.valor = textVal;
-            } else if (textVal > 0 && Math.abs(parsed.valor / 10 - textVal) < 1) {
-              b.valor = parsed.valor;
-            } else {
-              b.valor = parsed.valor;
-            }
+          // For 47-digit bank boletos, barcode nominal value is authoritative
+          if (rawDigits.length === 47 && !rawDigits.startsWith('8') && parsed.valor > 0) {
+            b.valor = parsed.valor;
+          } else if ((!b.valor || b.valor <= 0) && parsed.valor > 0) {
+            b.valor = parsed.valor;
           }
         }
         const nos = onlyNumbers(b.nossoNumero || b.seuNumero || '');
         const venc = String(b.dataVencimento || '').trim();
 
-        const finalKey = key44.length >= 40 ? key44 : (nos || venc ? `${nos}_${venc}` : '');
+        const finalKey = key44.length >= 40 ? key44 : (nos || venc ? `${nos}_${venc}` : `DOC_${uniqueRawBoletos.length}`);
 
         if (finalKey) {
           if (!seenRawKeys.has(finalKey)) {
@@ -414,7 +478,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             uniqueRawBoletos.push(b);
           } else {
             const existing = seenRawKeys.get(finalKey);
-            if ((b.valor || 0) > (existing.valor || 0)) {
+            // Keep the one with a more complete Favorecido or non-default valor
+            if ((b.valor || 0) > 0 && ((existing.valor || 0) <= 0 || (b.favorecidoNome && b.favorecidoNome !== 'Beneficiário / Cedente'))) {
               const idx = uniqueRawBoletos.indexOf(existing);
               if (idx !== -1) {
                 uniqueRawBoletos[idx] = b;
@@ -432,24 +497,24 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       const processedItems: PDFExtractedItem[] = rawBoletos.map((extracted, idx) => {
         const rawDigits = extracted.linhaDigitavel || extracted.codigoBarras || '';
         const cleanLinha = onlyNumbers(rawDigits);
-        const textVal = parseExtractedValor(extracted.valor, 0);
-        const parsedCheck = parseLinhaDigitavel(cleanLinha, textVal);
+        const parsedCheck = parseLinhaDigitavel(cleanLinha);
 
         const finalBancoCodigo = extracted.bancoCodigo || parsedCheck.bancoCodigo || '000';
         const bankInfo = getBankInfo(finalBancoCodigo);
         
-        // Prioritize barcode-decoded value when present for 100% precision with scale guarding
+        // Value resolution:
+        // 1. For 47-digit bank boletos with parsedCheck.valor > 0, barcode nominal value is authoritative
+        // 2. For 48-digit concessionárias/tributos or when barcode has no value, use extracted.valor
         let finalValor = 0;
-        if (parsedCheck.valor > 0) {
-          if (textVal > 0 && Math.abs(textVal / 10 - parsedCheck.valor) < 1) {
-            finalValor = textVal;
-          } else if (textVal > 0 && Math.abs(parsedCheck.valor / 10 - textVal) < 1) {
-            finalValor = parsedCheck.valor;
-          } else {
-            finalValor = parsedCheck.valor;
-          }
-        } else {
-          finalValor = textVal;
+        if (cleanLinha.length === 47 && !cleanLinha.startsWith('8') && parsedCheck.valor > 0) {
+          finalValor = parsedCheck.valor;
+        } else if (typeof extracted.valor === 'number' && extracted.valor > 0) {
+          finalValor = extracted.valor;
+        } else if (typeof extracted.valor === 'string') {
+          finalValor = parseExtractedValor(extracted.valor, 0);
+        }
+        if (finalValor <= 0 && parsedCheck.valor > 0) {
+          finalValor = parsedCheck.valor;
         }
 
         const finalFavorecido =
@@ -467,8 +532,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
         // 90% — Armazenando aprendizado na memória
         try {
+          const textToLearn = docText || `${finalFavorecido} ${finalBancoNome} ${cleanLinha} ${file.name} ${finalSeuNumero}`;
           const learnRes = learnNewLayoutPattern(
-            `${finalFavorecido} ${finalBancoNome} ${cleanLinha} ${file.name}`,
+            textToLearn,
             {
               linhaDigitavel: cleanLinha,
               bancoCodigo: finalBancoCodigo,
@@ -539,6 +605,12 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             pagadorCnpjCpf: extracted.pagadorCnpjCpf || '',
             pagadorNome: extracted.pagador || extracted.pagadorNome || '',
             valor: finalValor,
+            valorDocumento: typeof extracted.valorDocumento === 'number' && extracted.valorDocumento > 0 ? extracted.valorDocumento : finalValor,
+            valorCobrado: typeof extracted.valorCobrado === 'number' && extracted.valorCobrado > 0 ? extracted.valorCobrado : finalValor,
+            desconto: typeof extracted.desconto === 'number' ? extracted.desconto : 0,
+            juros: typeof extracted.juros === 'number' ? extracted.juros : 0,
+            multa: typeof extracted.multa === 'number' ? extracted.multa : 0,
+            jurosMulta: typeof extracted.jurosMulta === 'number' ? extracted.jurosMulta : (((typeof extracted.juros === 'number' ? extracted.juros : 0) + (typeof extracted.multa === 'number' ? extracted.multa : 0)) || 0),
             dataVencimento:
               extracted.dataVencimento ||
               parsedCheck.dataVencimento ||
@@ -687,7 +759,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
   const handleFilesAdded = async (filesList: FileList | File[]) => {
     const files = Array.from(filesList).filter(
-      (f) => f.type.includes('pdf') || f.type.includes('image') || f.name.toLowerCase().endsWith('.pdf')
+      (f) => f.type.includes('pdf') || f.type.includes('image') || /\.(pdf|png|jpe?g|webp|bmp|tiff)$/i.test(f.name)
     );
 
     if (files.length === 0) return;
@@ -724,12 +796,6 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       prev.map((item) => {
         if (item.id === id && item.data) {
           let updatedValue = value;
-          const origVal = (item.data as any)[field];
-
-          if (field === 'valor') {
-            updatedValue = typeof value === 'number' ? value : parseExtractedValor(value, item.data.valor);
-          }
-
           if (field === 'dataPagamento') {
             updatedValue = validateAndClampPaymentDate(value, item.data.dataVencimento, todayStr);
           }
@@ -747,7 +813,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           if (field === 'linhaDigitavel') {
             const parsed = parseLinhaDigitavel(value);
             if (parsed.isValid) {
-              if (parsed.valor > 0) updatedData.valor = parsed.valor;
+              if (!updatedData.valor) updatedData.valor = parsed.valor;
               if (parsed.dataVencimento) {
                 updatedData.dataVencimento = parsed.dataVencimento;
                 updatedData.dataPagamento = validateAndClampPaymentDate(
@@ -762,22 +828,6 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
               }
             }
           }
-
-          // Continuously record user correction to memory engine so it persists
-          try {
-            if (origVal !== undefined && origVal !== updatedValue) {
-              recordUserCorrection(
-                field,
-                origVal,
-                updatedValue,
-                item.data.bancoCodigo,
-                item.data.favorecidoNome || item.data.beneficiario
-              );
-            }
-          } catch (e) {
-            console.warn('[Continuous Learning] Erro ao registrar correção do usuário:', e);
-          }
-
           return { ...item, data: updatedData };
         }
         return item;
@@ -804,6 +854,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       pagador: d.pagador || d.pagadorNome || 'Pagador Não Identificado',
       pagadorCnpjCpf: d.pagadorCnpjCpf,
       valor: d.valor,
+      valorDocumento: d.valorDocumento || d.valor,
+      valorCobrado: d.valorCobrado || d.valor,
       dataVencimento: d.dataVencimento,
       dataPagamento: d.dataPagamento || d.dataVencimento,
       seuNumero: d.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`,
@@ -811,7 +863,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       nossoNumero: d.nossoNumero,
       agenciaConta: d.agenciaConta,
       desconto: d.desconto || 0,
-      jurosMulta: d.jurosMulta || 0,
+      juros: d.juros || 0,
+      multa: d.multa || 0,
+      jurosMulta: d.jurosMulta || ((d.juros || 0) + (d.multa || 0)) || 0,
       observacoes: d.observacoes,
       confianca: d.confianca || Math.round((d.confidence || 0.95) * 100),
       alertas: d.alertas || [],
@@ -850,6 +904,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         pagador: d.pagador || d.pagadorNome || 'Pagador Não Identificado',
         pagadorCnpjCpf: d.pagadorCnpjCpf,
         valor: d.valor,
+        valorDocumento: d.valorDocumento || d.valor,
+        valorCobrado: d.valorCobrado || d.valor,
         dataVencimento: d.dataVencimento,
         dataPagamento: d.dataPagamento || d.dataVencimento,
         seuNumero: d.seuNumero || `DOC-${Math.floor(Math.random() * 89999 + 10000)}`,
@@ -857,7 +913,9 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         nossoNumero: d.nossoNumero,
         agenciaConta: d.agenciaConta,
         desconto: d.desconto || 0,
-        jurosMulta: d.jurosMulta || 0,
+        juros: d.juros || 0,
+        multa: d.multa || 0,
+        jurosMulta: d.jurosMulta || ((d.juros || 0) + (d.multa || 0)) || 0,
         observacoes: d.observacoes,
         confianca: d.confianca || Math.round((d.confidence || 0.95) * 100),
         alertas: d.alertas || [],
@@ -1394,6 +1452,11 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                 <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
                                   Arquivo {idx + 1} de {totalFiles}
                                 </span>
+                                {item.totalInFile && item.totalInFile > 1 && (
+                                  <span className="text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-xs">
+                                    📑 Boleto {item.boletoIndex || 1} de {item.totalInFile} (no mesmo arquivo)
+                                  </span>
+                                )}
                               </div>
                               <span key={`step-status-${item.progress}`} className="text-[11px] font-bold text-blue-700 block mt-0.5">
                                 Status: {item.stepMessage}
@@ -1401,7 +1464,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                             </div>
                           </div>
 
-                          <div className="flex items-center space-x-2 shrink-0">
+                          <div className="flex items-center space-x-2 shrink-0 flex-wrap gap-y-1">
                             {dupInfo?.isDuplicate && (
                               <span className="text-xs text-white bg-orange-500 px-3 py-1 rounded-full border border-orange-600 flex items-center space-x-1 font-black shadow-xs" title={dupInfo.duplicateReason}>
                                 <AlertTriangle className="w-3.5 h-3.5 text-white" />
@@ -1427,7 +1490,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                             )}
 
                             {(item.status === 'success' || item.status === 'partial') && (
-                              <div key="status-badge-success" className="flex items-center space-x-2">
+                              <div key="status-badge-success" className="flex items-center space-x-2 flex-wrap gap-y-1">
                                 <span
                                   className={`text-xs px-2.5 py-1 rounded-full border flex items-center space-x-1 font-bold ${
                                     item.status === 'success'
@@ -1440,6 +1503,21 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                     {item.status === 'success' ? 'Extraído 100%' : 'Extraído com Pendências'}
                                   </span>
                                 </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveLayoutModel(item)}
+                                  className={`text-xs font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer border shadow-xs ${
+                                    savedModelIds.has(item.id) || item.layoutRecognized
+                                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                  title="Salvar layout e regras de extração deste modelo para processamentos futuros"
+                                >
+                                  <Brain className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>{savedModelIds.has(item.id) || item.layoutRecognized ? 'Modelo Salvo' : 'Salvar Modelo'}</span>
+                                </button>
+
                                 <button
                                   type="button"
                                   onClick={() => handleImportSingleItem(item)}
@@ -1823,6 +1901,54 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                   max={item.data.dataVencimento && item.data.dataVencimento >= new Date().toISOString().split('T')[0] ? item.data.dataVencimento : undefined}
                                   onChange={(e) => handleFieldChange(item.id, 'dataPagamento', e.target.value)}
                                   className="w-full bg-slate-50 border border-slate-200 text-blue-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
+                                />
+                              </div>
+
+                              {/* Juros / Multa */}
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Juros / Mora (R$)
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.data.juros || 0}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    handleFieldChange(item.id, 'juros', val);
+                                    handleFieldChange(item.id, 'jurosMulta', Number((val + (item.data?.multa || 0)).toFixed(2)));
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Multa (R$)
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.data.multa || 0}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    handleFieldChange(item.id, 'multa', val);
+                                    handleFieldChange(item.id, 'jurosMulta', Number(((item.data?.juros || 0) + val).toFixed(2)));
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                                  Desconto (R$)
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.data.desconto || 0}
+                                  onChange={(e) => handleFieldChange(item.id, 'desconto', parseFloat(e.target.value) || 0)}
+                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
                                 />
                               </div>
                             </div>

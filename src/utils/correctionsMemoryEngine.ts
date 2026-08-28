@@ -1,7 +1,6 @@
 import { db, safeSetDoc, safeDeleteDoc, safeGetDocs, isFirestoreQuotaExceeded } from '../lib/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { cleanFirestoreData } from './storage';
-import { parseExtractedValor } from './boletoParser.js';
 
 export interface LearnedCorrection {
   id: string;
@@ -21,35 +20,6 @@ export interface LearnedCorrection {
 
 const STORAGE_KEY_CORRECTIONS = 'cnab_learned_corrections_v1';
 
-export const DEFAULT_LEARNED_CORRECTIONS: LearnedCorrection[] = [
-  {
-    id: 'corr-default-fidc-veiculos-santander',
-    scope: 'BENEFICIARY',
-    bankCode: '033',
-    beneficiarioNomeKey: 'VENDA DE VEICULOS FUNDO DE INVESTIMENTO',
-    field: 'favorecidoNome',
-    originalExtractedValue: 'Beneficiário / Cedente',
-    correctedValue: 'VENDA DE VEICULOS FUNDO DE INVESTIMENTO',
-    confirmationCount: 120,
-    stage: 'CONSOLIDADO',
-    createdDate: '2026-03-01T10:00:00.000Z',
-    lastUpdatedDate: new Date().toISOString(),
-  },
-  {
-    id: 'corr-default-suhai-bradesco',
-    scope: 'BENEFICIARY',
-    bankCode: '237',
-    beneficiarioNomeKey: 'SUHAI SEGURADORA SA',
-    field: 'favorecidoNome',
-    originalExtractedValue: 'Beneficiário / Cedente',
-    correctedValue: 'SUHAI SEGURADORA S/A',
-    confirmationCount: 85,
-    stage: 'CONSOLIDADO',
-    createdDate: '2026-03-01T10:00:00.000Z',
-    lastUpdatedDate: new Date().toISOString(),
-  }
-];
-
 /**
  * Loads learned corrections from LocalStorage and syncs with Firestore
  */
@@ -58,18 +28,14 @@ export function loadLearnedCorrections(): LearnedCorrection[] {
     const raw = localStorage.getItem(STORAGE_KEY_CORRECTIONS);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // Merge with defaults if missing
-        const map = new Map<string, LearnedCorrection>();
-        DEFAULT_LEARNED_CORRECTIONS.forEach((d) => map.set(d.id, d));
-        parsed.forEach((p) => map.set(p.id, p));
-        return Array.from(map.values());
+      if (Array.isArray(parsed)) {
+        return parsed;
       }
     }
   } catch (e) {
     console.warn('[Corrections Memory] Erro ao carregar correções locais:', e);
   }
-  return [...DEFAULT_LEARNED_CORRECTIONS];
+  return [];
 }
 
 /**
@@ -257,11 +223,7 @@ export function applyLearnedCorrectionsToBoleto(
       const currentVal = String(copy[field] || '').trim();
 
       if (currentVal === corr.originalExtractedValue) {
-        if (field === 'valor') {
-          copy[field] = parseExtractedValor(corr.correctedValue, copy.valor);
-        } else {
-          copy[field] = corr.correctedValue;
-        }
+        copy[field] = corr.correctedValue;
         applied.push(`Campo '${field}' ajustado via memória aprendida [${corr.stage}]: ${corr.correctedValue}`);
       }
     }

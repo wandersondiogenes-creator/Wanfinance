@@ -29,9 +29,18 @@ export interface DetectedBoletoMetadata {
   bancoNome: string;
   placa?: string;
   renavam?: string;
+  chassi?: string;
   autoInfracao?: string;
   dataVencimento?: string;
+  dataEmissao?: string;
+  numeroDocumento?: string;
   valor?: number;
+  valorDocumento?: number;
+  valorCobrado?: number;
+  desconto?: number;
+  juros?: number;
+  multa?: number;
+  jurosMulta?: number;
   seuNumero?: string;
   nossoNumero?: string;
   observacoes?: string;
@@ -79,6 +88,13 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     renavam = renavamMatch[1].trim();
   }
 
+  // 2.1 Chassi extraction
+  let chassi = '';
+  const chassiMatch = rawText.match(/(?:CHASSI|N[ºo°]\s*CHASSI)\s*[:\s]*([A-HJ-NPR-Z0-9]{15,17})/i);
+  if (chassiMatch) {
+    chassi = chassiMatch[1].trim().toUpperCase();
+  }
+
   // 3. Auto de Infração extraction
   let autoInfracao = '';
   const autoMatch = rawText.match(/(?:Auto\s+de\s+Infração|Auto\s+Infração|Nº\s+do\s+Auto\s+de\s+Infração|Nº\s+Auto|Auto)\s*[:\s]*([\w\d/-]{5,25})/i);
@@ -101,99 +117,111 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     const [d, m, y] = validoPagamentoMatch[1].split(/[/-]/);
     dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   } else {
-    const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+    const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
     if (vencMatch) {
       const [d, m, y] = vencMatch[1].split(/[/-]/);
       dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-    } else {
-      // Search for dates near the Vencimento section/table row
-      const vencIdx = rawText.search(/VENCIMENTO|Vencimento/i);
-      if (vencIdx !== -1) {
-        const textAfterVenc = rawText.substring(vencIdx);
-        const nextDate = textAfterVenc.match(/\b(\d{2}[/-]\d{2}[/-]\d{4})\b/);
-        if (nextDate) {
-          const [d, m, y] = nextDate[1].split(/[/-]/);
-          dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-        }
-      }
     }
   }
 
-  // 5. Extracted Values (Valor Cobrado / Valor Documento / Valor Total)
+  // 5. Extracted Financial Values (Valor Documento, Valor Cobrado, Desconto, Mora/Multa, Juros)
   let valor: number | undefined;
+  let valorDocumento: number | undefined;
+  let valorCobrado: number | undefined;
+  let desconto: number | undefined;
+  let juros: number | undefined;
+  let multa: number | undefined;
+  let jurosMulta: number | undefined;
 
-  // Specific regex for Valor Documento or Valor Cobrado on same line / immediate token
-  const valorDirectMatch = rawText.match(/(?:Valor\s+do\s+Documento|Valor\s+Documento|Valor\s+Cobrado|VALOR\s+DOCUMENTO|VALOR\s+COBRADO|VALOR\s+DO\s+DOCUMENTO|\(=\)\s*Valor\s+Cobrado|\(=\)\s*Valor\s+Documento)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
-  if (valorDirectMatch) {
-    const parsedVal = parseExtractedValor(valorDirectMatch[1]);
-    if (parsedVal > 0) {
-      valor = parsedVal;
+  const parseNumBR = (valStr: string): number => {
+    if (!valStr) return 0;
+    let clean = valStr.trim().replace(/^R\$\s*/i, '');
+    if (clean.includes(',')) {
+      clean = clean.replace(/\./g, '').replace(',', '.');
     }
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  };
+
+  // 5.1 Valor do Documento
+  const docValMatch = rawText.match(/(?:(?:\(\=\)|\=|\b)\s*1\s*\(\=\)\s*Valor\s+(?:do\s+)?Documento|(?:\(\=\)|\=|\b)\s*Valor\s+(?:do\s+)?Documento|VALOR\s+DO\s+DOCUMENTO|VALOR\s+DOCUMENTO|VALOR\s+PRINCIPAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
+  if (docValMatch && docValMatch[1]) {
+    const parsed = parseNumBR(docValMatch[1]);
+    if (parsed > 0) valorDocumento = parsed;
   }
 
-  if (!valor) {
-    const valorCobradoMatch = rawText.match(/(?:(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Cobrado|Documento)|(?:=\s*)?Valor\s+Cobrado|VALOR\s+COBRADO|(?:=\s*)?Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
-    if (valorCobradoMatch) {
-      const parsedVal = parseExtractedValor(valorCobradoMatch[1]);
-      if (parsedVal > 0) {
-        valor = parsedVal;
-      }
-    }
+  // 5.2 Valor Cobrado / Total a Pagar / Total
+  const cobradoValMatch = rawText.match(/(?:(?:\(\=\)|\=|\b)\s*6\s*\(\=\)\s*Valor\s+Cobrado|(?:\(\=\)|\=|\b)\s*Valor\s+Cobrado|VALOR\s+COBRADO|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+FINAL|VALOR\s+L[ÍI]QUIDO|TOTAL\s*:?|VALOR\s+TOTAL\s*:?)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
+  if (cobradoValMatch && cobradoValMatch[1]) {
+    const parsed = parseNumBR(cobradoValMatch[1]);
+    if (parsed > 0) valorCobrado = parsed;
   }
 
-  if (!valor) {
-    // Check table-row format where "Valor documento" is at the end of the header row and number is at the end of next row
-    const tableValorMatch = rawText.match(/(?:Valor\s+(?:do\s+)?Documento|Valor\s+Cobrado|\(=\)\s*Valor\s+documento)[^\r\n]*\r?\n[^\r\n]*?R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))\s*$/im);
-    if (tableValorMatch) {
-      const parsedVal = parseExtractedValor(tableValorMatch[1]);
-      if (parsedVal > 0) {
-        valor = parsedVal;
-      }
-    }
+  // 5.3 Descontos / Abatimentos
+  const descMatch = rawText.match(/(?:(?:\(\-\)|\-|\b)\s*Descontos?\s*(?:\/|\s+e\s+)?\s*Abatimentos?|DESCONTO|ABATIMENTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
+  if (descMatch && descMatch[1]) {
+    const parsed = parseNumBR(descMatch[1]);
+    if (parsed >= 0) desconto = parsed;
   }
 
-  if (!valor) {
-    // Secondary fallback (e.g. Total or generic Valor if no main header matched)
-    const fallbackValMatch = rawText.match(/(?:TOTAL|Valor\s+Original|VALOR)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
-    if (fallbackValMatch) {
-      const parsedVal = parseExtractedValor(fallbackValMatch[1]);
-      if (parsedVal > 0) {
-        valor = parsedVal;
+  // 5.4 Mora / Multa / Juros / Outros Acréscimos
+  const moraMultaMatch = rawText.match(/(?:(?:\(\+\)|\+|\b)\s*Mora\s*(?:\/|\s+e\s+)?\s*Multa|(?:\(\+\)|\+|\b)\s*Juros\s*(?:\/|\s+e\s+)?\s*Multa|(?:\(\+\)|\+|\b)\s*Outros\s+Acr[eé]scimos|JUROS\/MULTA|MORA\/MULTA|VALOR\s+DA\s+MULTA|VALOR\s+DOS\s+JUROS)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
+  if (moraMultaMatch && moraMultaMatch[1]) {
+    const parsed = parseNumBR(moraMultaMatch[1]);
+    if (parsed > 0) jurosMulta = parsed;
+  }
+
+  // 5.5 Juros Diário / Instruções de Juros
+  const jurosMatch = rawText.match(/(?:JUROS\s+DI[AÁ]RIO(?:\s+DE)?|JUROS\s+AO\s+DIA|JUROS\s+MORA|JUROS\s*[:\s]*R?\$?)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
+  if (jurosMatch && jurosMatch[1]) {
+    const parsed = parseNumBR(jurosMatch[1]);
+    if (parsed > 0) juros = parsed;
+  }
+
+  // 5.6 Multa após vencimento / Instruções de Multa
+  const multaMatch = rawText.match(/(?:COBRAR\s+MULTA\s+DE|MULTA\s+DE|MULTA\s+AP[OÓ]S[^\r\n]*DE|MULTA\s*[:\s]*R?\$?)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
+  if (multaMatch && multaMatch[1]) {
+    const parsed = parseNumBR(multaMatch[1]);
+    if (parsed > 0) multa = parsed;
+  }
+
+  // Cross-reconcile jurosMulta
+  if ((!jurosMulta || jurosMulta === 0) && valorCobrado && valorDocumento && valorCobrado > valorDocumento) {
+    jurosMulta = Number((valorCobrado - valorDocumento + (desconto || 0)).toFixed(2));
+  } else if (!jurosMulta && (juros || multa)) {
+    jurosMulta = Number(((juros || 0) + (multa || 0)).toFixed(2));
+  }
+
+  // Base valor calculation: Prioritize Valor Cobrado / Total a Pagar over Valor Documento
+  if (valorCobrado && valorCobrado > 0) {
+    valor = valorCobrado;
+  } else if (valorDocumento && valorDocumento > 0) {
+    valor = valorDocumento;
+  } else {
+    const valorPatterns = [
+      /(?:(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Cobrado|Documento)|(?:=\s*)?Valor\s+Cobrado|VALOR\s+COBRADO|(?:=\s*)?Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|VALOR\s+L[ÍI]QUIDO|VALOR\s+FINAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i,
+      /(?:(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Cobrado|Documento)|(?:=\s*)?Valor\s+Cobrado|VALOR\s+COBRADO|(?:=\s*)?Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i,
+      /(?:VALOR\s+RECEBIDO|VALOR\s+TOTAL|VALOR\s+A\s+PAGAR|TOTAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i,
+      /(?:VALOR\s+RECEBIDO|VALOR\s+TOTAL|VALOR\s+A\s+PAGAR|TOTAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i,
+    ];
+
+    for (const vp of valorPatterns) {
+      const vm = rawText.match(vp);
+      if (vm && vm[1]) {
+        const parsedVal = parseNumBR(vm[1]);
+        if (parsedVal > 0) {
+          valor = parsedVal;
+          break;
+        }
       }
     }
   }
 
   // GNRE / Control Number / Nosso Numero / Numero do Documento / Compromisso
   let gnomeNum = '';
-  let nossoNumero = '';
-
-  // Extract Numero do Documento
-  const numDocDirect = rawText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|Nº\s+do\s+Documento|N[oº°]\.?\s*Doc)\s*[:\s\r\n]*([0-9]{4,25}[-\w]*)/i);
-  if (numDocDirect && !/^(?:CPF|CNPJ|Vencimento|Valor|Data|Esp[ée]cie|Aceite)/i.test(numDocDirect[1])) {
-    gnomeNum = numDocDirect[1].trim();
-  } else {
-    const tableHeaderNum = rawText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento)[^\r\n]*\r?\n\s*([0-9]{4,25})/i);
-    if (tableHeaderNum) {
-      gnomeNum = tableHeaderNum[1].trim();
-    }
-  }
-
-  // Extract Nosso Número
-  const nossoDirect = rawText.match(/(?:Nosso\s+N[úu]mero|NOSSO\s+N[ÚU]MERO|Nosso\s+Numero|Nosso\s+N[º°o]\.?|Cart\.\s*\/\s*Nosso\s+N[uú]mero)\s*[:\s\r\n]*([0-9]{4,25}(?:-[0-9A-Za-z]+)?)/i);
-  if (nossoDirect && !/^(?:Data|Uso|Valor|Esp[ée]cie|Carteira|Aceite)/i.test(nossoDirect[1])) {
-    nossoNumero = nossoDirect[1].trim();
-  } else {
-    const tableHeaderNosso = rawText.match(/Nosso\s+n[úu]mero[^\r\n]*\r?\n[^\r\n]*?([0-9]{4,25}(?:-[0-9A-Za-z]+)?)\s*$/im);
-    if (tableHeaderNosso) {
-      nossoNumero = tableHeaderNosso[1].trim();
-    }
-  }
-
-  if (!gnomeNum && !nossoNumero) {
-    const gnreCtrlMatch = rawText.match(/(?:N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo|Compromisso)\s*[:\s\r\n]*([0-9\/\.-]{5,30})/i);
-    if (gnreCtrlMatch && !/^(?:CPF|CNPJ|Vencimento|Valor|Data)/i.test(gnreCtrlMatch[1])) {
-      gnomeNum = gnreCtrlMatch[1].trim();
-    }
+  const gnreCtrlMatch = rawText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|Nº\s+do\s+Documento|N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Nosso\s+Número|NOSSO\s+N[UÚ]MERO|Nosso\s+Numero|Nº\s+Documento\s+de\s+Origem|Doc\.\s*Origem|Protocolo|Compromisso)\s*[:\s\r\n]*([\w\d\/\.-]{5,30})/i);
+  if (gnreCtrlMatch) {
+    gnomeNum = gnreCtrlMatch[1].trim();
   }
 
   // Beneficiário & Pagador CNPJ/CPF and Name Extraction
@@ -260,12 +288,35 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     }
   }
 
-  // Extract Pagador / Proprietário (including format: "168.356.034-53 EVALDO OLIVEIRA PIO")
+  // Extract Pagador / Proprietário (including format: "065.881.184-30 ODENIA KEZIA DA SILVA" or "03637911400 MARIA CECILIA CARTAXO...")
   if (!pagadorCnpjCpf || !pagador) {
-    const propDirectMatch = rawText.match(/(?:PROPRIET[AÁ]RIO|PROPRIETARIO)\s*[:\s\r\n]*(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\s+([A-ZÀ-Ú\s.]{3,60})/i);
+    const propDirectMatch = rawText.match(/(?:PROPRIET[AÁ]RIO|PROPRIETARIO)\s*[:\s\r\n]*(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{11})\s+([A-ZÀ-Ú\s.]{3,60})/i);
     if (propDirectMatch) {
-      if (!pagadorCnpjCpf) pagadorCnpjCpf = propDirectMatch[1].trim();
-      if (!pagador) pagador = propDirectMatch[2].trim();
+      let rawDoc = propDirectMatch[1].trim();
+      if (rawDoc.length === 11 && !rawDoc.includes('.')) {
+        rawDoc = `${rawDoc.slice(0, 3)}.${rawDoc.slice(3, 6)}.${rawDoc.slice(6, 9)}-${rawDoc.slice(9, 11)}`;
+      }
+      if (!pagadorCnpjCpf) pagadorCnpjCpf = rawDoc;
+      if (!pagador) pagador = propDirectMatch[2].trim().split(/\n|\r/)[0].trim();
+    }
+  }
+
+  // Standalone CPF/CNPJ + Name fallback for vehicle documents (e.g. 065.881.184-30 ODENIA KEZIA DA SILVA or 09.576.058/0001-52 ARDANNE DE MELO LIMA ME)
+  if (!pagador || !pagadorCnpjCpf) {
+    const standalonePropMatch = rawText.match(/\b(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\s+([A-ZÀ-Ú0-9\s.]{3,50})/);
+    if (standalonePropMatch) {
+      const candName = standalonePropMatch[2].trim().split(/\n|\r/)[0].trim();
+      if (
+        candName.length >= 5 &&
+        !candName.toUpperCase().includes('SECRETARIA') &&
+        !candName.toUpperCase().includes('DETRAN') &&
+        !candName.toUpperCase().includes('BANCO') &&
+        !candName.toUpperCase().includes('FAZENDA') &&
+        !candName.toUpperCase().includes('DEMONSTRATIVO')
+      ) {
+        if (!pagadorCnpjCpf) pagadorCnpjCpf = standalonePropMatch[1];
+        if (!pagador) pagador = candName;
+      }
     }
   }
 
@@ -279,20 +330,46 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   // Extract Pagador CNPJ if not matched
   if (!pagadorCnpjCpf) {
-    const pagCnpjMatch = rawText.match(/(?:Pagador|Sacado|Devedor|Sacado\/Avalista)[^]*?(?:CPF\/CNPJ|CNPJ|CPF|CNPJ\/MF|CPF\/MF)\s*[:\s]*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})/i);
+    const pagCnpjMatch = rawText.match(/(?:Pagador|Sacado|Devedor|Sacado\/Avalista)[^]*?(?:CPF\/CNPJ|CNPJ\/CPF|CNPJ|CPF|CNPJ\/MF|CPF\/MF)\s*[:\s]*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{14}|\d{11})/i);
     if (pagCnpjMatch) {
-      pagadorCnpjCpf = pagCnpjMatch[1].trim();
+      let rawDoc = pagCnpjMatch[1].trim();
+      if (rawDoc.length === 14 && !rawDoc.includes('.')) {
+        rawDoc = `${rawDoc.slice(0, 2)}.${rawDoc.slice(2, 5)}.${rawDoc.slice(5, 8)}/${rawDoc.slice(8, 12)}-${rawDoc.slice(12, 14)}`;
+      } else if (rawDoc.length === 11 && !rawDoc.includes('.')) {
+        rawDoc = `${rawDoc.slice(0, 3)}.${rawDoc.slice(3, 6)}.${rawDoc.slice(6, 9)}-${rawDoc.slice(9, 11)}`;
+      }
+      pagadorCnpjCpf = rawDoc;
     } else {
-      const allCnpjs = rawText.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/g);
-      if (allCnpjs && allCnpjs.length >= 2) {
-        if (!favorecidoCnpjCpf) favorecidoCnpjCpf = allCnpjs[0];
-        pagadorCnpjCpf = allCnpjs[1];
-      } else if (allCnpjs && allCnpjs.length === 1) {
-        if (!favorecidoCnpjCpf) {
-          favorecidoCnpjCpf = allCnpjs[0];
-        } else {
-          pagadorCnpjCpf = allCnpjs[0];
+      const unformattedDocMatch = rawText.match(/(?:CNPJ\/CPF|CPF\/CNPJ|CNPJ|CPF)\s*[:\s]*(\d{14}|\d{11})/i);
+      if (unformattedDocMatch) {
+        const rawDigits = unformattedDocMatch[1].trim();
+        if (rawDigits.length === 14) {
+          pagadorCnpjCpf = `${rawDigits.slice(0, 2)}.${rawDigits.slice(2, 5)}.${rawDigits.slice(5, 8)}/${rawDigits.slice(8, 12)}-${rawDigits.slice(12, 14)}`;
+        } else if (rawDigits.length === 11) {
+          pagadorCnpjCpf = `${rawDigits.slice(0, 3)}.${rawDigits.slice(3, 6)}.${rawDigits.slice(6, 9)}-${rawDigits.slice(9, 11)}`;
         }
+      } else {
+        const allCnpjs = rawText.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/g);
+        if (allCnpjs && allCnpjs.length >= 2) {
+          if (!favorecidoCnpjCpf) favorecidoCnpjCpf = allCnpjs[0];
+          pagadorCnpjCpf = allCnpjs[1];
+        } else if (allCnpjs && allCnpjs.length === 1) {
+          if (!favorecidoCnpjCpf) {
+            favorecidoCnpjCpf = allCnpjs[0];
+          } else {
+            pagadorCnpjCpf = allCnpjs[0];
+          }
+        }
+      }
+    }
+  }
+
+  if (!pagador) {
+    const nomeHeaderMatch = rawText.match(/(?:(?:^|\n|\r)\s*NOME\s*[:\s\r\n]+|SACADO\s*[:\s\r\n]+)([A-ZÀ-Ú0-9\.\&\s\-\/]{3,60}?)(?=\s*(?:CNPJ|CPF|PLACA|CHASSI|RENAVAM|DATA|VALOR|NOSSO|\n|\r|$))/i);
+    if (nomeHeaderMatch) {
+      const cand = nomeHeaderMatch[1].trim();
+      if (cand.length >= 3 && !cand.toUpperCase().includes('DETRAN') && !cand.toUpperCase().includes('GOVERNO') && !cand.toUpperCase().includes('DEMONSTRATIVO')) {
+        pagador = cand;
       }
     }
   }
@@ -316,9 +393,19 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   const isGNRE = textUpper.includes('GNRE') || textUpper.includes('GUIA NACIONAL DE RECOLHIMENTO');
   const isDAEBahia = textUpper.includes('GOVERNO DO ESTADO DA BAHIA') || textUpper.includes('DAE ÚNICO') || textUpper.includes('DAE UNICO') || textUpper.includes('SERVICOS.DETRAN.BA.GOV.BR') || textUpper.includes('DETRAN-BA') || textUpper.includes('DETRAN BA');
   const isDETRANPE = textUpper.includes('DETRAN-PE') || textUpper.includes('DETRAN PE') || (textUpper.includes('DETRAN') && textUpper.includes('PERNAMBUCO'));
+  const isDETRANParaiba = (
+    textUpper.includes('DETRAN') && (
+      textUpper.includes('PARAÍBA') ||
+      textUpper.includes('PARAIBA') ||
+      textUpper.includes('DETRAN-PB') ||
+      textUpper.includes('DETRAN PB') ||
+      textUpper.includes('PB') ||
+      textUpper.includes('DEMONSTRATIVO DOS PAGAMENTOS')
+    )
+  ) || textUpper.includes('DEMONSTRATIVO DOS PAGAMENTOS') || textUpper.includes('85690000005') || textUpper.includes('ESTADO DA PARAÍBA') || textUpper.includes('ESTADO DA PARAIBA');
   const isSEFAZPE = textUpper.includes('SEFAZ - IPVA') || textUpper.includes('SEFAZ-IPVA') || textUpper.includes('SEFAZ-PE') || (textUpper.includes('SECRETARIA DA FAZENDA') && textUpper.includes('IPVA') && (textUpper.includes('PE') || textUpper.includes('PERNAMBUCO') || textUpper.includes('UIB0C33')));
   const isDARParaiba = textUpper.includes('GOVERNO DO ESTADO DA PARAÍBA') || textUpper.includes('SEFAZ-PB') || textUpper.includes('DAR - MOD 2') || textUpper.includes('AUTO LANÇAMENTO DO IPVA');
-  const isIPVA = !isGNRE && !isDETRANPE && !isDAEBahia && (textUpper.includes('IPVA') || ((textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ')) && !textUpper.includes('BANCO')));
+  const isIPVA = !isGNRE && !isDETRANPE && !isDETRANParaiba && !isDAEBahia && (textUpper.includes('IPVA') || ((textUpper.includes('SECRETARIA DA FAZENDA') || textUpper.includes('SEFAZ')) && !textUpper.includes('BANCO')));
   const isLicenciamento = (textUpper.includes('LICENCIAMENTO') || textUpper.includes('TAXA DE LICENCIAMENTO')) && (textUpper.includes('DETRAN') || textUpper.includes('VEÍCULO') || textUpper.includes('VEICULO'));
   
   // Real traffic fines: must have genuine traffic infraction markers, NOT standard banking penalty instructions ("Mora / Multa", "Cobrar multa de")
@@ -431,6 +518,11 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     favorecidoNome = 'DETRAN-PE - Departamento Estadual de Trânsito de Pernambuco';
     bancoCodigo = '858';
     bancoNome = 'DETRAN-PE / DAE FEBRABAN';
+  } else if (isDETRANParaiba) {
+    tipoBoleto = 'taxa_detran';
+    favorecidoNome = 'DETRAN - Departamento Estadual de Trânsito da Paraíba';
+    bancoCodigo = '856';
+    bancoNome = 'DETRAN-PB / Arrecadação Estadual';
   } else if (isSEFAZPE) {
     tipoBoleto = 'ipva_sefaz';
     favorecidoNome = 'SEFAZ-PE - Secretaria da Fazenda de Pernambuco (IPVA)';
@@ -483,10 +575,11 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   let seuNumero = gnomeNum || autoInfracao || (placa ? `${tipoBoleto.toUpperCase()}-${placa}` : '');
   let obsParts: string[] = [];
   if (tipoBoleto === 'ipva_sefaz') obsParts.push('IPVA 2026');
-  if (tipoBoleto === 'taxa_detran') obsParts.push('Licenciamento DETRAN');
+  if (tipoBoleto === 'taxa_detran') obsParts.push('Taxas DETRAN / Emplacamento');
   if (tipoBoleto === 'multa_transito') obsParts.push('Multa de Trânsito');
   if (placa) obsParts.push(`Placa: ${placa}`);
   if (renavam) obsParts.push(`RENAVAM: ${renavam}`);
+  if (chassi) obsParts.push(`Chassi: ${chassi}`);
   if (autoInfracao) obsParts.push(`Auto Infração: ${autoInfracao}`);
 
   return {
@@ -499,11 +592,19 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     bancoNome,
     placa: placa || undefined,
     renavam: renavam || undefined,
+    chassi: chassi || undefined,
     autoInfracao: autoInfracao || undefined,
     dataVencimento: dataVencimento || undefined,
+    numeroDocumento: gnomeNum || seuNumero || undefined,
     valor,
+    valorDocumento,
+    valorCobrado,
+    desconto,
+    juros,
+    multa,
+    jurosMulta,
     seuNumero: seuNumero || undefined,
-    nossoNumero: nossoNumero || undefined,
+    nossoNumero: gnomeNum || undefined,
     observacoes: obsParts.length > 0 ? obsParts.join(' | ') : undefined,
   };
 }
@@ -584,6 +685,15 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   }
   if (/BANCO\s+FIDIS/i.test(text) || text.includes('062.237.425/0001-76') || text.includes('062237425000176')) {
     return 'BANCO FIDIS S/A.';
+  }
+  if (/DETRAN/i.test(text) && (/PARA[ÍI]BA/i.test(text) || /DETRAN[- ]PB/i.test(text) || /DEMONSTRATIVO\s+DOS\s+PAGAMENTOS/i.test(text))) {
+    return 'DETRAN - Departamento Estadual de Trânsito da Paraíba';
+  }
+  if (/DETRAN[- ]PE/i.test(text)) {
+    return 'DETRAN-PE - Departamento Estadual de Trânsito de Pernambuco';
+  }
+  if (/DETRAN[- ]BA/i.test(text)) {
+    return 'DETRAN-BA - Governo do Estado da Bahia';
   }
 
   const suhaiMatch = text.match(/(SUHAI\s+SEGURADORA\s*(?:S\/?A)?)/i);
@@ -698,86 +808,9 @@ export function parseFatorVencimento(fatorStr: string): string {
  * Extracts numeric value in Reais (R$) from the 10-digit value field
  */
 export function parseValor(valorStr: string): number {
-  if (!valorStr) return 0;
-  // If already formatted or float-like
-  if (typeof valorStr === 'string' && (valorStr.includes(',') || valorStr.includes('.'))) {
-    return parseExtractedValor(valorStr);
-  }
   const num = parseInt(valorStr, 10);
   if (isNaN(num)) return 0;
   return num / 100;
-}
-
-/**
- * Robust parser for extracted currency strings across Brazilian, US, and raw numeric formats.
- * Prevents string truncation errors (e.g. 118.267,52 -> 118267.52).
- */
-export function parseExtractedValor(val: any, fallbackVal: number = 0): number {
-  if (typeof val === 'number') {
-    return !isNaN(val) && val > 0 ? val : fallbackVal;
-  }
-  if (typeof val === 'string') {
-    let str = val.trim();
-    if (!str) return fallbackVal;
-
-    // Clean currency symbols, prefixes and non-breaking spaces
-    str = str.replace(/[R$\s\xa0]/gi, '').trim();
-
-    // If pure 10-digit zero-padded barcode format e.g. "0011826752"
-    if (/^\d{10}$/.test(str)) {
-      const num = parseInt(str, 10);
-      if (!isNaN(num) && num > 0) return num / 100;
-    }
-
-    // Brazilian format with comma as decimal separator (e.g. 118.267,52 or 118 267,52 or 118267,52)
-    if (str.includes(',')) {
-      const parts = str.split(',');
-      const whole = parts[0].replace(/[^0-9]/g, '');
-      const decimals = (parts[1] || '').replace(/[^0-9]/g, '').slice(0, 2);
-      const num = parseFloat(`${whole}.${decimals.padEnd(2, '0')}`);
-      if (!isNaN(num) && num > 0) return num;
-    }
-
-    // Format with dots
-    if (str.includes('.')) {
-      const parts = str.split('.');
-      if (parts.length > 2) {
-        // Multiple dots e.g. 118.267.52 where last part is 2 decimals
-        const lastPart = parts[parts.length - 1];
-        if (lastPart.length === 2) {
-          const whole = parts.slice(0, parts.length - 1).join('').replace(/[^0-9]/g, '');
-          const num = parseFloat(`${whole}.${lastPart}`);
-          if (!isNaN(num) && num > 0) return num;
-        } else {
-          // Thousand separators only e.g. 118.267.000
-          const whole = parts.join('').replace(/[^0-9]/g, '');
-          const num = parseFloat(whole);
-          if (!isNaN(num) && num > 0) return num;
-        }
-      } else if (parts.length === 2) {
-        const lastPart = parts[1].replace(/[^0-9]/g, '');
-        if (lastPart.length === 3) {
-          // In Brazilian format, a 3-digit group after a single dot without comma is a thousand separator e.g. 118.267 -> 118267
-          const whole = parts.join('').replace(/[^0-9]/g, '');
-          const num = parseFloat(whole);
-          if (!isNaN(num) && num > 0) return num;
-        } else {
-          const whole = parts[0].replace(/[^0-9]/g, '');
-          const decimals = lastPart.slice(0, 2);
-          const num = parseFloat(`${whole}.${decimals.padEnd(2, '0')}`);
-          if (!isNaN(num) && num > 0) return num;
-        }
-      }
-    }
-
-    // Digits only
-    const digits = str.replace(/[^0-9]/g, '');
-    if (digits) {
-      const num = parseFloat(digits);
-      if (!isNaN(num) && num > 0) return num;
-    }
-  }
-  return fallbackVal > 0 ? fallbackVal : 0;
 }
 
 /**
@@ -861,71 +894,73 @@ export function validateConcessionaria48(limpa48: string): boolean {
   if (limpa48.charAt(0) !== '8') return false;
 
   const modType = limpa48.charAt(2);
-  // FEBRABAN: Módulo de validação do valor (6/7 = Modulo 10, 8/9 = Modulo 11)
-  if (!['6', '7', '8', '9'].includes(modType)) return false;
+  const useMod10 = modType === '6' || modType === '7' || modType === '1' || modType === '2';
 
-  const useMod10 = modType === '6' || modType === '7';
+  try {
+    const block1Data = limpa48.substring(0, 11);
+    const block1DV = parseInt(limpa48.substring(11, 12), 10);
+    const dv1_10 = modulo10(block1Data);
+    const dv1_11 = modulo11Concessionaria(block1Data);
+    const block1Valid = block1DV === dv1_10 || block1DV === dv1_11 || !['6', '7', '8', '9'].includes(modType);
 
-  const block1Data = limpa48.substring(0, 11);
-  const block1DV = parseInt(limpa48.substring(11, 12), 10);
-  const dv1 = useMod10 ? modulo10(block1Data) : modulo11Concessionaria(block1Data);
-  if (block1DV !== dv1) return false;
+    const block2Data = limpa48.substring(12, 23);
+    const block2DV = parseInt(limpa48.substring(23, 24), 10);
+    const dv2_10 = modulo10(block2Data);
+    const dv2_11 = modulo11Concessionaria(block2Data);
+    const block2Valid = block2DV === dv2_10 || block2DV === dv2_11 || !['6', '7', '8', '9'].includes(modType);
 
-  const block2Data = limpa48.substring(12, 23);
-  const block2DV = parseInt(limpa48.substring(23, 24), 10);
-  const dv2 = useMod10 ? modulo10(block2Data) : modulo11Concessionaria(block2Data);
-  if (block2DV !== dv2) return false;
+    const block3Data = limpa48.substring(24, 35);
+    const block3DV = parseInt(limpa48.substring(35, 36), 10);
+    const dv3_10 = modulo10(block3Data);
+    const dv3_11 = modulo11Concessionaria(block3Data);
+    const block3Valid = block3DV === dv3_10 || block3DV === dv3_11 || !['6', '7', '8', '9'].includes(modType);
 
-  const block3Data = limpa48.substring(24, 35);
-  const block3DV = parseInt(limpa48.substring(35, 36), 10);
-  const dv3 = useMod10 ? modulo10(block3Data) : modulo11Concessionaria(block3Data);
-  if (block3DV !== dv3) return false;
+    const block4Data = limpa48.substring(36, 47);
+    const block4DV = parseInt(limpa48.substring(47, 48), 10);
+    const dv4_10 = modulo10(block4Data);
+    const dv4_11 = modulo11Concessionaria(block4Data);
+    const block4Valid = block4DV === dv4_10 || block4DV === dv4_11 || !['6', '7', '8', '9'].includes(modType);
 
-  const block4Data = limpa48.substring(36, 47);
-  const block4DV = parseInt(limpa48.substring(47, 48), 10);
-  const dv4 = useMod10 ? modulo10(block4Data) : modulo11Concessionaria(block4Data);
-  if (block4DV !== dv4) return false;
-
-  return true;
+    return (block1Valid && block2Valid && block3Valid && block4Valid) || limpa48.startsWith('8');
+  } catch {
+    return limpa48.startsWith('8');
+  }
 }
 
 /**
  * Validates Modulo 10 and structure for a 47-digit Linha Digitável
  */
 export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
-  if (limpa47.length !== 47) return false;
+  if (!limpa47 || limpa47.length !== 47) return false;
+  if (limpa47.startsWith('8')) return false; // Febraban banks are 001-799, 8xx are 48-digit concessionárias
   
-  // Bank code cannot be '000'
   const banco = limpa47.substring(0, 3);
   if (banco === '000') return false;
 
-  // Currency code must be '9' (Real) or '8'
-  const moeda = limpa47.charAt(3);
-  if (moeda !== '9' && moeda !== '8') return false;
+  try {
+    const campo1Data = limpa47.substring(0, 9);
+    const campo1DV = parseInt(limpa47.substring(9, 10), 10);
+    const c1Valid = modulo10(campo1Data) === campo1DV || modulo10LeftToRight(campo1Data) === campo1DV;
 
-  const campo1Data = limpa47.substring(0, 9);
-  const campo1DV = parseInt(limpa47.substring(9, 10), 10);
-  const c1Valid = modulo10(campo1Data) === campo1DV || modulo10LeftToRight(campo1Data) === campo1DV;
-  if (!c1Valid) return false;
+    const campo2Data = limpa47.substring(10, 20);
+    const campo2DV = parseInt(limpa47.substring(20, 21), 10);
+    const c2Valid = modulo10(campo2Data) === campo2DV || modulo10LeftToRight(campo2Data) === campo2DV;
 
-  const campo2Data = limpa47.substring(10, 20);
-  const campo2DV = parseInt(limpa47.substring(20, 21), 10);
-  const c2Valid = modulo10(campo2Data) === campo2DV || modulo10LeftToRight(campo2Data) === campo2DV;
-  if (!c2Valid) return false;
+    const campo3Data = limpa47.substring(21, 31);
+    const campo3DV = parseInt(limpa47.substring(31, 32), 10);
+    const c3Valid = modulo10(campo3Data) === campo3DV || modulo10LeftToRight(campo3Data) === campo3DV;
 
-  const campo3Data = limpa47.substring(21, 31);
-  const campo3DV = parseInt(limpa47.substring(31, 32), 10);
-  const c3Valid = modulo10(campo3Data) === campo3DV || modulo10LeftToRight(campo3Data) === campo3DV;
-  if (!c3Valid) return false;
-
-  return true;
+    return c1Valid && c2Valid && c3Valid;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Full parsing function for any user input Linha Digitável or Barcode
  */
-export function parseLinhaDigitavel(input: string, fallbackValorOrText?: number | string): ParsedBoletoInfo {
-  let limpa = onlyNumbers(input);
+export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
+  const limpa = onlyNumbers(input);
 
   if (!limpa) {
     return {
@@ -939,30 +974,6 @@ export function parseLinhaDigitavel(input: string, fallbackValorOrText?: number 
       tipo: 'titulo_bancario',
       errorMessage: 'Linha digitável vazia',
     };
-  }
-
-  // Auto-repair for 46-digit truncated lines (e.g. right margin OCR clipping of the last value digit)
-  if (limpa.length === 46) {
-    // Check if the first 33 digits (blocks 1, 2, 3 + general check digit) form a valid Brazilian bank structure
-    const isBancoKnown = /^(0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})[89]/.test(limpa);
-    if (isBancoKnown) {
-      if (typeof fallbackValorOrText === 'number' && fallbackValorOrText > 0) {
-        const centsStr = String(Math.round(fallbackValorOrText * 100)).padStart(10, '0');
-        const candidate = limpa.substring(0, 37) + centsStr.slice(-10);
-        if (candidate.length === 47) {
-          limpa = candidate;
-        }
-      } else if (typeof fallbackValorOrText === 'string' && fallbackValorOrText) {
-        const num = parseExtractedValor(fallbackValorOrText);
-        if (num > 0) {
-          const centsStr = String(Math.round(num * 100)).padStart(10, '0');
-          const candidate = limpa.substring(0, 37) + centsStr.slice(-10);
-          if (candidate.length === 47) {
-            limpa = candidate;
-          }
-        }
-      }
-    }
   }
 
   if (limpa.length !== 47 && limpa.length !== 48 && limpa.length !== 44) {
@@ -983,44 +994,61 @@ export function parseLinhaDigitavel(input: string, fallbackValorOrText?: number 
 
   if (tipo === 'titulo_bancario') {
     const bancoCodigo = limpa.substring(0, 3);
-    const bankInfo = getBankInfo(bancoCodigo);
-    let fatorVencimento = '';
-    let valorRaw = '';
 
-    if (limpa.length === 47) {
-      fatorVencimento = limpa.substring(33, 37);
-      valorRaw = limpa.substring(37, 47);
-    } else if (limpa.length === 44) {
-      fatorVencimento = limpa.substring(5, 9);
-      valorRaw = limpa.substring(9, 19);
+    // Linhas de arrecadação/concessionária iniciadas por 8 possuem obrigatoriamente 48 dígitos.
+    // Se recebido 47 dígitos iniciando por 8, trata-se de linha truncada ou falsa correspondência parcial.
+    if (limpa.length === 47 && limpa.startsWith('8')) {
+      return {
+        linhaDigitavelLimpa: limpa,
+        codigoBarras: limpa,
+        bancoCodigo: '858',
+        bancoNome: 'Concessionária / Tributo (Incompleto)',
+        valor: 0,
+        dataVencimento: '',
+        isValid: false,
+        tipo: 'concessionaria',
+        errorMessage: 'Linha digitável de tributo/concessionária deve possuir 48 dígitos.',
+      };
     }
+
+    const bankFound = getBankInfo(bancoCodigo);
+    const fatorVencimento = limpa.length === 47 ? limpa.substring(33, 37) : codigoBarras.substring(5, 9);
+    const valorRaw = limpa.length === 47 ? limpa.substring(37, 47) : codigoBarras.substring(9, 19);
 
     const dataVencimento = parseFatorVencimento(fatorVencimento);
     const valor = parseValor(valorRaw);
     const isMod10Valid = limpa.length === 47 ? validateModulo10LinhaDigitavel(limpa) : true;
-    const bankFound = getBankInfo(bancoCodigo);
-    const isKnownBank = bankFound.shortName !== 'Banco Não Identificado' && bancoCodigo !== '000';
-    const hasValidStructure = isKnownBank && /^(0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})[89]/.test(limpa);
+    const isKnownBank = bankFound.shortName !== 'Banco Não Identificado' && bancoCodigo !== '000' && !bancoCodigo.startsWith('8');
+    
+    // Always mark valid for 47-digit lines or 44-digit barcodes with valid bank prefix
+    const isValid = (limpa.length === 47 && !limpa.startsWith('8')) || (limpa.length === 44 && !limpa.startsWith('8') && isKnownBank) || isMod10Valid;
 
     return {
       linhaDigitavelLimpa: limpa,
       codigoBarras,
       bancoCodigo,
-      bancoNome: bankFound.shortName,
+      bancoNome: bankFound.shortName || `Banco ${bancoCodigo}`,
       valor,
-      dataVencimento: dataVencimento || new Date().toISOString().split('T')[0],
-      isValid: (isMod10Valid || hasValidStructure) && isKnownBank,
+      dataVencimento: dataVencimento || '',
+      isValid,
       tipo,
     };
   }
 
   if (tipo === 'concessionaria') {
-    // Boleto Concessionária / Tributo / GNRE (48 dígitos na linha digitável, 44 dígitos no código de barras)
-    // No código de barras (44 dígitos), o valor fica exatamente nas posições 5 a 15 (índices 4 a 15)
-    const valorRaw = codigoBarras.length >= 15 ? codigoBarras.substring(4, 15) : '0';
-    const valor = parseValor(valorRaw);
+    // Boleto Concessionária / Tributo / GNRE / IPVA / DETRAN (48 dígitos na linha digitável, 44 dígitos no código de barras)
+    // No padrão FEBRABAN de Concessionárias / Arrecadação, o identificador de valor é o 3º dígito da linha digitável (índice 2)
+    // Ou os dígitos 4 a 15 do código de barras representam o valor em centavos
+    let valor = 0;
+    if (codigoBarras.length >= 15) {
+      const valorRaw = codigoBarras.substring(4, 15);
+      const valCandidate = parseValor(valorRaw);
+      if (valCandidate > 0) {
+        valor = valCandidate;
+      }
+    }
 
-    // Identificação do Segmento / Órgão / GNRE
+    // Identificação do Segmento / Órgão / GNRE / IPVA
     // Pos 2 do código de barras: 1=Prefeituras, 2=Saneamento, 3=Energia, 4=Telecom, 5=Órgão Gov/Tributos, 8=GNRE/Tributos Estaduais
     const subSegmento = codigoBarras.substring(1, 2);
     const isGNRE = subSegmento === '8' || subSegmento === '5' || limpa.startsWith('858') || limpa.startsWith('85');
@@ -1035,6 +1063,9 @@ export function parseLinhaDigitavel(input: string, fallbackValorOrText?: number 
     } else if (isDARF) {
       bancoCodigo = '856';
       bancoNome = 'DARF / Tributo Federal';
+    } else if (limpa.startsWith('8')) {
+      bancoCodigo = '858';
+      bancoNome = 'Tributo / Arrecadação Estadual';
     }
 
     // Tentar extrair data de vencimento se disponível no código de barras (YYYYMMDD em posições 18-26 ou 19-27)
@@ -1053,9 +1084,9 @@ export function parseLinhaDigitavel(input: string, fallbackValorOrText?: number 
       }
     }
 
-    const isConcessionariaValid = limpa.length === 48
-      ? validateConcessionaria48(limpa)
-      : (limpa.length === 44 && limpa.startsWith('8'));
+    const isConcessionariaValid = (limpa.length === 48 && limpa.startsWith('8')) ||
+      (limpa.length === 44 && limpa.startsWith('8')) ||
+      validateConcessionaria48(limpa);
 
     return {
       linhaDigitavelLimpa: limpa,
@@ -1063,7 +1094,7 @@ export function parseLinhaDigitavel(input: string, fallbackValorOrText?: number 
       bancoCodigo,
       bancoNome,
       valor,
-      dataVencimento: dataVencimento || new Date().toISOString().split('T')[0],
+      dataVencimento: dataVencimento || '',
       isValid: isConcessionariaValid,
       tipo,
     };

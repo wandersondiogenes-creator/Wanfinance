@@ -220,6 +220,16 @@ CREATE TABLE IF NOT EXISTS public.user_sessions (
     login_time VARCHAR(50)
 );
 
+-- Seed de Usuários Autorizados Corporativos (Via1 / Detran)
+INSERT INTO public.user_sessions (id, user_id, name, email, role, login_time)
+VALUES 
+    ('usr-pagamento-detran', 'usr-pagamento-detran', 'Pagamento Detran', 'pagamentodetran@grupovia1.com.br', 'Gestor Financeiro / Detran (Grupo Via1)', NOW()::text),
+    ('usr-admin-wanfinance', 'usr-admin-wanfinance', 'Administrador Wanfinance', 'admin@wanfinance.com.br', 'Super Admin', NOW()::text)
+ON CONFLICT (id) DO UPDATE SET 
+    name = EXCLUDED.name,
+    email = EXCLUDED.email,
+    role = EXCLUDED.role;
+
 -- Habilitar/Ajustar RLS (Row Level Security)
 ALTER TABLE public.companies DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.boletos DISABLE ROW LEVEL SECURITY;

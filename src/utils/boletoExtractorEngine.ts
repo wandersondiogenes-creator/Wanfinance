@@ -1,5 +1,5 @@
 import { Type } from "@google/genai";
-import { parseLinhaDigitavel, onlyNumbers, parseExtractedValor } from "./boletoParser.js";
+import { parseLinhaDigitavel, onlyNumbers } from "./boletoParser.js";
 
 export interface ExtractedBoletoData {
   linhaDigitavel: string;
@@ -15,6 +15,8 @@ export interface ExtractedBoletoData {
   pagadorCnpjCpf: string;
   sacadorAvalista?: string;
   valor: number;
+  valorDocumento?: number;
+  valorCobrado?: number;
   dataVencimento: string; // YYYY-MM-DD
   numeroDocumento: string; // Nº do Documento impresso
   seuNumero: string;
@@ -23,6 +25,7 @@ export interface ExtractedBoletoData {
   desconto: number;
   juros: number;
   multa: number;
+  jurosMulta: number;
   tipoDocumento: string; // 'boleto', 'darf', 'gnre', 'carnet', 'tributo', 'concessionaria'
   confianca: number; // 0 a 100
   alertas: string[];
@@ -48,17 +51,20 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
 3. DADOS FINANCEIROS E CÓDIGOS DE BARRAS:
    - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos/DARF/GNRE/DAE/IPVA/DETRAN).
    - "codigoBarras": Código de barras numérico de 44 dígitos sem espaços.
-   - "valor": Valor numérico exato em Reais (R$). ATENÇÃO MÁXIMA PARA FORMATAÇÃO DE MOEDA (CENTENAS DE MILHAR E CENTAVOS): Se o boleto tiver valor impresso como "R$ 118.267,52" (cento e dezoito mil, duzentos e sessenta e sete reais e cinquenta e dois centavos), o valor numérico JSON é 118267.52. NUNCA omita nenhum dígito, NUNCA divida por 10 e NUNCA confunda centenas de milhar com dezenas de milhar (ex: 118267.52 NUNCA deve virar 11826.75). Retorne O VALOR TOTAL FINAL COBRADO / VALOR DO DOCUMENTO codificado no título. NUNCA retorne sub-totais de tabelas de discriminação.
+   - "valor": Valor numérico exato em Reais (R$). ATENÇÃO: Retorne O VALOR TOTAL FINAL COBRADO / VALOR DO DOCUMENTO que está codificado na linha digitável/código de barras. NUNCA retorne sub-totais ou itens individuais de tabelas de discriminação de débitos.
    - "dataVencimento": Data de Vencimento no formato YYYY-MM-DD.
    - "numeroDocumento": Número impresso no campo "Nº do Documento", "Nº de Controle" ou Nota Fiscal.
    - "nossoNumero": Código impresso no campo "Nosso Número".
    - "agenciaConta": Agência e Conta do Beneficiário se visível.
 4. REGRA DE MÁXIMA SEGURANÇA E NÃO-INVENÇÃO:
    - SE UM CAMPO NÃO ESTIVER PRESENTE NO BOLETO OU SE HOUVER DÚVIDA, RETORNE EXATAMENTE A STRING "Não identificado com segurança" PARA CAMPOS DE TEXTO E 0 PARA NÚMEROS. NUNCA CHUTE, NUNCA INVENTE E NUNCA ADIVINHE DADOS.
-5. CARNÊS E LOTES MULTI-PÁGINAS COM MÚLTIPLOS DOCUMENTOS/VEÍCULOS DISTINTOS:
-   - Se o arquivo PDF contiver múltiplas páginas e cada página contiver uma guia/boleto de um veículo ou débito diferente (ex: Página 1 com IPVA Placa QYH7D57, Página 2 com IPVA Placa SOE9J44, Página 3 com IPVA Placa SNL2D75, Página 4 com IPVA Placa RZS1I93), EXTRAIA CADA UMA DAS GUIAS INDIVIDUALMENTE e retorne todas no array "boletos" (um objeto por guia/página).
+5. ARQUIVOS COM DOIS OU MAIS BOLETOS/GUIAS NO MESMO ARQUIVO (MESMA PÁGINA OU PÁGINAS DIFERENTES):
+   - Se o arquivo PDF contiver 2 ou mais boletos ou guias de pagamento (ex: 1ª e 2ª parcela, Cota Única e Parcela, IPVA e Taxa de Licenciamento DETRAN/SEFAZ, dois boletos bancários com linhas digitáveis distintas, ou carnê multi-páginas de veículos/seguros):
+   - EXTRAIA CADA BOLETO/GUIA INDIVIDUALMENTE e retorne TODOS os boletos encontrados no array "boletos" (um objeto para cada linha digitável / boleto distinto).
+   - Cada boleto do array deve conter sua respectiva linhaDigitavel, seu valor exato individual, seu vencimento e seu favorecido/beneficiário correspondente.
+   - NUNCA descarte o segundo boleto e NUNCA retorne apenas o primeiro se houver dois ou mais boletos distintos no documento.
 6. DOCUMENTOS COM VÁRIAS VIAS REPETIDAS DA MESMA GUIA NA MESMA PÁGINA (VIA USUÁRIO / VIA BANCO):
-   - Se na mesma página houver 2 vias idênticas (ex: topo "VIA USUÁRIO" e rodapé "VIA BANCO") com o mesmo código de barras, trata-se de 1 único boleto para aquele veículo. Retorne apenas 1 item para essa página.
+   - Se na mesma página houver 2 vias com a MESMA linha digitável e mesmo código de barras (ex: topo "VIA USUÁRIO" e rodapé "VIA BANCO"), trata-se de 1 único boleto. Retorne apenas 1 item para essa guia repetida. Mas se as linhas digitáveis forem diferentes (dois boletos distintos), retorne ambos no array.
 7. EXCEÇÃO CRÍTICA PARA GUIAS GNRE, TRIBUTOS E ARRECADAÇÃO (DOCUMENTO VÁLIDO PARA PAGAMENTO):
    - Em guias de arrecadação GNRE, DARF, DAE, Tributos Estaduais/Federais e Concessionárias: se o documento contiver o campo "Documento Válido para pagamento", "Válido para pagamento até" ou similar especificando uma data (exemplo: "Documento Válido para pagamento 07/08/2026"), CONSIDERE OBRIGATORIAMENTE ESTA DATA FINAL (ex: 2026-08-07) como a "dataVencimento" oficial do boleto.
    - Esta data limite de pagamento/validade TEM PRECEDÊNCIA ABSOLUTA sobre qualquer outra data presente no campo "Data de Vencimento" ou codificada no código de barras.
@@ -120,6 +126,9 @@ export const GEMINI_BOLETO_SCHEMA = {
           desconto: { type: Type.NUMBER },
           juros: { type: Type.NUMBER },
           multa: { type: Type.NUMBER },
+          jurosMulta: { type: Type.NUMBER },
+          valorDocumento: { type: Type.NUMBER },
+          valorCobrado: { type: Type.NUMBER },
           tipoDocumento: { type: Type.STRING },
           confianca: { type: Type.NUMBER },
           alertas: {
@@ -143,22 +152,92 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
   const camposDivergentes: string[] = [];
   let score = typeof b.confianca === 'number' && b.confianca > 0 ? b.confianca : 100;
 
-  // 1. Sanitize string fields
-  let linhaDigitavel = onlyNumbers(String(b.linhaDigitavel || b.codigoBarras || ""));
-  let codigoBarras = onlyNumbers(String(b.codigoBarras || ""));
-  let bancoCodigo = String(b.bancoCodigo || "").trim();
-  let bancoNome = String(b.bancoNome || b.banco || "").trim();
+  // 1. Sanitize string fields from all possible Gemini property variations
+  const rawObj = b as any;
+  let rawLinha = String(
+    b.linhaDigitavel ||
+    rawObj.linha_digitavel ||
+    rawObj.linha ||
+    rawObj.codigoBarras ||
+    rawObj.codigo_barras ||
+    rawObj.codigo_de_barras ||
+    rawObj.codigo ||
+    ""
+  );
+  let linhaDigitavel = onlyNumbers(rawLinha);
+  let codigoBarras = onlyNumbers(String(b.codigoBarras || rawObj.codigo_barras || rawObj.codigo_de_barras || ""));
+  let bancoCodigo = String(b.bancoCodigo || rawObj.banco_codigo || "").trim();
+  let bancoNome = String(b.bancoNome || b.banco || rawObj.banco_nome || "").trim();
 
-  let beneficiario = String(b.beneficiario || b.favorecidoNome || "").trim();
-  let beneficiarioCnpjCpf = String(b.beneficiarioCnpjCpf || b.favorecidoCnpjCpf || "").trim();
-  let pagador = String(b.pagador || "").trim();
-  let pagadorCnpjCpf = String(b.pagadorCnpjCpf || "").trim();
+  let beneficiario = String(
+    b.beneficiario ||
+    b.favorecidoNome ||
+    rawObj.beneficiario_nome ||
+    rawObj.favorecido_nome ||
+    rawObj.cedente ||
+    rawObj.cedente_nome ||
+    rawObj.emissor ||
+    ""
+  ).trim();
+  let beneficiarioCnpjCpf = String(
+    b.beneficiarioCnpjCpf ||
+    b.favorecidoCnpjCpf ||
+    rawObj.beneficiario_cnpj_cpf ||
+    rawObj.favorecido_cnpj_cpf ||
+    rawObj.cnpj_beneficiario ||
+    ""
+  ).trim();
+  let pagador = String(
+    b.pagador ||
+    rawObj.pagador_nome ||
+    rawObj.sacado ||
+    rawObj.sacado_nome ||
+    rawObj.cliente ||
+    rawObj.cliente_nome ||
+    ""
+  ).trim();
+  let pagadorCnpjCpf = String(
+    b.pagadorCnpjCpf ||
+    rawObj.pagador_cnpj_cpf ||
+    rawObj.sacado_cnpj_cpf ||
+    rawObj.cpf_cnpj_pagador ||
+    ""
+  ).trim();
 
-  let valor = parseExtractedValor(b.valor, 0);
-  let dataVencimento = String(b.dataVencimento || "").trim();
-  let numeroDocumento = String(b.numeroDocumento || b.seuNumero || "").trim();
-  let nossoNumero = String(b.nossoNumero || "").trim();
-  let agenciaConta = String(b.agenciaConta || "").trim();
+  const parseNum = (val: any): number => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    let clean = String(val).trim().replace(/^R\$\s*/i, '');
+    if (clean.includes(',')) {
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    }
+    const n = parseFloat(clean);
+    return isNaN(n) ? 0 : n;
+  };
+
+  let rawVal = b.valor !== undefined ? b.valor : (rawObj.valor_total || rawObj.valor_documento || rawObj.valor_cobrado || rawObj.total || 0);
+  let valor = parseNum(rawVal);
+  let valorDocumento = parseNum(b.valorDocumento || rawObj.valor_documento || rawObj.valorDocumento || rawObj.valor_nominal || rawObj.valorOriginal);
+  let valorCobrado = parseNum(b.valorCobrado || rawObj.valor_cobrado || rawObj.valorCobrado || rawObj.total_a_pagar || rawObj.valor_a_pagar);
+  let desconto = parseNum(b.desconto || rawObj.desconto || rawObj.descontos || rawObj.descontos_abatimentos || rawObj.desconto_abatimento || rawObj.abatimento);
+  let juros = parseNum(b.juros || rawObj.juros || rawObj.juros_mora || rawObj.juros_diario || rawObj.mora);
+  let multa = parseNum(b.multa || rawObj.multa || rawObj.multa_atraso || rawObj.valor_multa);
+  let jurosMulta = parseNum(b.jurosMulta || rawObj.jurosMulta || rawObj.juros_multa || rawObj.mora_multa || rawObj.moraMulta || rawObj.acrescimos || rawObj.outros_acrescimos);
+
+  // Financial cross-reconciliation
+  if (jurosMulta === 0 && (juros > 0 || multa > 0)) {
+    jurosMulta = Number((juros + multa).toFixed(2));
+  }
+  if (jurosMulta === 0 && valorCobrado > 0 && valor > 0 && valorCobrado > valor) {
+    jurosMulta = Number((valorCobrado - valor + desconto).toFixed(2));
+  } else if (jurosMulta === 0 && valorCobrado > 0 && valorDocumento > 0 && valorCobrado > valorDocumento) {
+    jurosMulta = Number((valorCobrado - valorDocumento + desconto).toFixed(2));
+  }
+
+  let dataVencimento = String(b.dataVencimento || rawObj.data_vencimento || rawObj.vencimento || rawObj.data_limite || "").trim();
+  let numeroDocumento = String(b.numeroDocumento || b.seuNumero || rawObj.numero_documento || rawObj.seu_numero || rawObj.documento || "").trim();
+  let nossoNumero = String(b.nossoNumero || rawObj.nosso_numero || "").trim();
+  let agenciaConta = String(b.agenciaConta || rawObj.agencia_conta || rawObj.agencia || "").trim();
 
   // Known Institution Recognition
   if (
@@ -184,29 +263,27 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
 
   // 2. Validate Linha Digitavel
   if (linhaDigitavel.length >= 44) {
-    const parsed = parseLinhaDigitavel(linhaDigitavel, valor);
+    const parsed = parseLinhaDigitavel(linhaDigitavel);
     if (!codigoBarras || codigoBarras.length !== 44) {
       codigoBarras = parsed.codigoBarras || "";
     }
 
-    // ALWAYS enforce value from barcode if valid and > 0, guarding against 10x/100x OCR truncation artifacts
-    if (parsed.valor && parsed.valor > 0) {
-      if (valor === 0 || Math.abs(valor - parsed.valor) > 0.01) {
-        // If parsed.valor is roughly 10x smaller than document valor (e.g. 11826.75 vs 118267.52 due to clipped last digit)
-        if (valor > 0 && Math.abs(valor / 10 - parsed.valor) < 1) {
-          // Document valor is the true unclipped value, keep valor
-          alertas.push(`⚠️ Linha digitável continha valor truncado (R$ ${parsed.valor.toFixed(2)}). Corrigido para o valor integral impresso: R$ ${valor.toFixed(2)}.`);
-        } else if (valor > 0 && Math.abs(parsed.valor / 10 - valor) < 1) {
-          // Parsed is the complete 10x value
-          alertas.push(`⚠️ Valor impresso truncado (R$ ${valor.toFixed(2)}) corrigido para R$ ${parsed.valor.toFixed(2)} conforme código de barras.`);
-          valor = parsed.valor;
-        } else {
-          if (valor > 0 && Math.abs(valor - parsed.valor) > 0.01) {
-            alertas.push(`⚠️ Valor de R$ ${valor.toFixed(2)} ajustado para R$ ${parsed.valor.toFixed(2)} conforme linha digitável/código de barras.`);
-          }
-          valor = parsed.valor;
+    // Value resolution:
+    // For standard 47-digit bank slips (Títulos Bancários: Bradesco, Itaú, Santander, BB, etc.),
+    // the value in the barcode is mathematically authoritative and represents the total aglutinated/official amount.
+    // For 48-digit concessionárias/tributos (starting with 8), text-detected amount takes priority.
+    if (parsed.tipo === 'titulo_bancario' && parsed.valor && parsed.valor > 0) {
+      if (valor === 0 || isNaN(valor) || Math.abs(valor - parsed.valor) > 0.01) {
+        if (valor > 0 && Math.abs(valor - parsed.valor) > 0.01) {
+          alertas.push(`ℹ️ Valor ajustado para R$ ${parsed.valor.toFixed(2)} conforme código de barras oficial do título bancário (valor textual anterior: R$ ${valor.toFixed(2)}).`);
         }
+        valor = parsed.valor;
       }
+    } else if ((valor === 0 || isNaN(valor)) && parsed.valor && parsed.valor > 0) {
+      valor = parsed.valor;
+    } else if (parsed.valor && parsed.valor > 0 && valor > 0 && Math.abs(valor - parsed.valor) > 0.01) {
+      // Keep valor as official boleto value (Valor Cobrado / Total a Pagar do documento)
+      alertas.push(`ℹ️ Valor da guia/arrecadação (R$ ${valor.toFixed(2)}) mantido como valor oficial a pagar (Código de barras nominal: R$ ${parsed.valor.toFixed(2)}).`);
     }
 
     if (parsed.isValid) {
@@ -303,14 +380,17 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
     pagadorCnpjCpf,
     sacadorAvalista: b.sacadorAvalista || "",
     valor,
+    valorDocumento: valorDocumento > 0 ? valorDocumento : valor,
+    valorCobrado: valorCobrado > 0 ? valorCobrado : valor,
     dataVencimento,
     numeroDocumento,
     seuNumero: numeroDocumento !== "Não identificado com segurança" ? numeroDocumento : (b.seuNumero || ""),
     nossoNumero,
     agenciaConta,
-    desconto: typeof b.desconto === "number" ? b.desconto : 0,
-    juros: typeof b.juros === "number" ? b.juros : 0,
-    multa: typeof b.multa === "number" ? b.multa : 0,
+    desconto,
+    juros,
+    multa,
+    jurosMulta,
     tipoDocumento: b.tipoDocumento || "boleto",
     confianca: score,
     alertas,

@@ -70,20 +70,34 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
   const [showBoletosManager, setShowBoletosManager] = useState(false);
   const [downloadSuccessMessage, setDownloadSuccessMessage] = useState<string | null>(null);
 
+  const initialNsa = company.bancoCodigo === '033' && (company.nsa || 1) < 11 ? 11 : (company.nsa || 1);
+  const [customNsa, setCustomNsa] = useState<number>(initialNsa);
+
+  // Sync customNsa when company changes
+  React.useEffect(() => {
+    const defaultNsa = company.bancoCodigo === '033' && (company.nsa || 1) < 11 ? 11 : (company.nsa || 1);
+    setCustomNsa(defaultNsa);
+  }, [company.id, company.nsa, company.bancoCodigo]);
+
   if (!isOpen) return null;
 
   const validBoletos = boletos.filter((b) => b.selected && b.isValid);
 
+  const effectiveCompany: CompanySettings = {
+    ...company,
+    nsa: customNsa,
+  };
+
   const result =
-    company.padraoCNAB === '400'
-      ? generateCNAB400(company, validBoletos)
-      : generateCNAB240(company, validBoletos);
+    effectiveCompany.padraoCNAB === '400'
+      ? generateCNAB400(effectiveCompany, validBoletos)
+      : generateCNAB240(effectiveCompany, validBoletos);
 
   const lines = result.fileContent.split('\r\n');
 
   // Filename formatting (ex: CB300701.REM)
   const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '').slice(2); // YYMMDD
-  const defaultFilename = `CB${todayStr}${String(company.nsa).padStart(2, '0')}.REM`;
+  const defaultFilename = `CB${todayStr}${String(customNsa).padStart(2, '0')}.REM`;
 
   const currentCompanyProfile = companies.find((c) => c.id === activeCompanyId) || companies[0];
   const companyBanks = currentCompanyProfile ? currentCompanyProfile.bancos : [];
@@ -107,7 +121,7 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
       result.totalBoletos,
       result.totalValor,
       defaultFilename,
-      company.nsa,
+      customNsa,
       formattedAnalyst,
       removeProcessed
     );
@@ -206,6 +220,37 @@ export const CNABPreviewModal: React.FC<CNABPreviewModalProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* NSA Sequential Controller */}
+            <div className="flex items-center space-x-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-300 shadow-2xs" title="Número Sequencial do Arquivo (Remessa). Altere para evitar duplicidade de sequencial no banco.">
+              <span className="font-bold text-slate-700">NSA (Remessa):</span>
+              <button
+                type="button"
+                onClick={() => setCustomNsa((prev) => Math.max(company.bancoCodigo === '033' ? 11 : 1, prev - 1))}
+                className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center cursor-pointer text-xs"
+                title="Diminuir sequencial"
+              >
+                -
+              </button>
+              <input
+                type="number"
+                min={company.bancoCodigo === '033' ? 11 : 1}
+                value={customNsa}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val)) setCustomNsa(val);
+                }}
+                className="w-16 text-center font-mono font-bold text-slate-900 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setCustomNsa((prev) => prev + 1)}
+                className="w-5 h-5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold flex items-center justify-center cursor-pointer text-xs"
+                title="Incrementar sequencial (+1)"
+              >
+                +
+              </button>
             </div>
           </div>
 

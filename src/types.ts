@@ -20,6 +20,8 @@ export interface BoletoItem {
   pagador?: string; // Nome / Razão Social do Pagador / Sacado
   pagadorCnpjCpf?: string; // CPF / CNPJ do Pagador
   valor: number;
+  valorDocumento?: number;
+  valorCobrado?: number;
   dataVencimento: string; // YYYY-MM-DD
   dataPagamento: string; // YYYY-MM-DD
   seuNumero: string; // ID interno / Referência do pagamento (ex: NF 1234)
@@ -271,6 +273,10 @@ export interface LearnedLayoutPattern {
     pagadorRegex?: string;
     seuNumeroRegex?: string;
     nossoNumeroRegex?: string;
+    descontoRegex?: string;
+    jurosRegex?: string;
+    multaRegex?: string;
+    jurosMultaRegex?: string;
   };
 }
 

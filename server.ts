@@ -5,7 +5,7 @@ import https from "https";
 import axios from "axios";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
-import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText, parseExtractedValor } from "./src/utils/boletoParser";
+import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBoletoDetailsFromText } from "./src/utils/boletoParser";
 import {
   SYSTEM_INSTRUCTION_BOLETO,
   PROMPT_BOLETO_EXTRACTION,
@@ -146,16 +146,18 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
   const patterns = [
     // 1. Santander specific prefix
     /03399[0-9.\s-]{35,65}/g,
-    // 2. Standard 47-digit Linha Digitável (5 blocks: 5.5  5.6  5.6  1  14)
-    /\d{5}[\.\s-]*\d{5}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d[\s-]+\d{14}/g,
-    // 3. Flexible 47-digit pattern
-    /\d{5}[\.\s-]*\d{5}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d\s*[\.\s-]*\d{14}/g,
-    // 4. Standard 48-digit Concessionária/Tributo (4 blocks of 11.1 or 12)
+    // 2. Standard 47-digit Linha Digitável (5 blocks: 5.5  5.6  5.6  1  14) - Banks 001-799
+    /[0-7]\d{4}[\.\s-]*\d{5}[\s-]+[0-7]?\d{4,5}[\.\s-]*\d{6}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d[\s-]+\d{14}/g,
+    // 3. Flexible 47-digit pattern - Banks 001-799
+    /[0-7]\d{4}[\.\s-]*\d{5}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d\s*[\.\s-]*\d{14}/g,
+    // 4. Standard 48-digit Concessionária/Tributo/SEFAZ/IPVA/DETRAN (4 blocks of 11.1 or 12)
+    /8\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d/g,
     /\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d/g,
     /\d{12}[\s-]+\d{12}[\s-]+\d{12}[\s-]+\d{12}/g,
     /(?:8\d{10}[-\s.]*\d\s*){4}/g,
-    // 5. Contiguous digits
-    /\b\d{47,48}\b/g,
+    // 5. Contiguous digits (48 for concessionárias, 47 for banks 0-7)
+    /\b8\d{47}\b/g,
+    /\b[0-7]\d{46}\b/g,
     /\b\d{44}\b/g,
     // 6. Generic Brazilian bank line digitavel
     /(?:0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})9[0-9.\s-]{40,65}/g,
@@ -166,37 +168,48 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
     if (matches) {
       for (const matchStr of matches) {
         const clean = onlyNumbers(matchStr);
+        if (clean.length === 47 && clean.startsWith('8')) {
+          continue; // Tributos must have 48 digits
+        }
         if (clean.length === 47 || clean.length === 48 || clean.length === 44) {
           const parsed = parseLinhaDigitavel(clean);
+          if (!parsed.isValid && clean.length !== 48) {
+            continue;
+          }
           const key44 = parsed.codigoBarras || clean;
-          if (parsed.isValid && !seenLines.has(clean) && !seenLines.has(key44)) {
+          if (!seenLines.has(clean) && !seenLines.has(key44)) {
             seenLines.add(clean);
             seenLines.add(key44);
-            let extractedValue = parsed.valor || 0;
-
-            const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+documento|Valor\s+do\s+[Dd]ocumento|VALOR\s+ORIGINAL|Valor\s+Original|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|\(=\)\s*Valor\s+documento)\s*[:\s]*R?\$?\s*([0-9]{1,3}(?:[.\s][0-9]{3})*(?:,[0-9]{2})|[0-9]+(?:,[0-9]{2})|[0-9]+(?:\.[0-9]{2}))/i);
-            let textVal = 0;
-            if (valorMatch) {
-              const parsedVal = parseExtractedValor(valorMatch[1]);
-              if (parsedVal > 0) {
-                textVal = parsedVal;
-              }
+            const detected = detectBoletoDetailsFromText(rawText, parsed.bancoNome);
+            let extractedValue = 0;
+            if (clean.length === 47 && !clean.startsWith('8') && parsed.valor > 0) {
+              extractedValue = parsed.valor;
+            } else if (detected.valor && detected.valor > 0) {
+              extractedValue = detected.valor;
+            } else if (parsed.valor > 0) {
+              extractedValue = parsed.valor;
             }
 
             if (extractedValue <= 0) {
-              extractedValue = textVal;
-            } else if (textVal > 0) {
-              if (Math.abs(textVal / 10 - extractedValue) < 1) {
-                extractedValue = textVal;
+              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+documento|Valor\s+do\s+[Dd]ocumento|VALOR\s+ORIGINAL|Valor\s+Original|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|\(=\)\s*Valor\s+documento|TOTAL\s*:?)\s*[:\s]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i);
+              if (valorMatch) {
+                let valStr = valorMatch[1].trim();
+                if (valStr.includes(',')) {
+                  valStr = valStr.replace(/\./g, '').replace(',', '.');
+                }
+                const parsedVal = parseFloat(valStr);
+                if (!isNaN(parsedVal) && parsedVal > 0) {
+                  extractedValue = parsedVal;
+                }
               }
             }
-
-            const detected = detectBoletoDetailsFromText(rawText, parsed.bancoNome);
             let favorecidoNome = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
               ? detected.favorecidoNome
               : extractFavorecidoFromText(rawText, parsed.bancoNome);
 
-            if (parsed.bancoCodigo === '858' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
+            if (rawText.toUpperCase().includes('DETRAN') && (rawText.toUpperCase().includes('PARAÍBA') || rawText.toUpperCase().includes('PARAIBA') || rawText.toUpperCase().includes('DETRAN-PB') || rawText.toUpperCase().includes('DEMONSTRATIVO'))) {
+              favorecidoNome = 'DETRAN - Departamento Estadual de Trânsito da Paraíba';
+            } else if (parsed.bancoCodigo === '858' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
               favorecidoNome = 'SECRETARIA DA FAZENDA - SEFAZ IPVA';
             } else if (parsed.bancoCodigo === '856' && (!favorecidoNome || favorecidoNome === 'Beneficiário / Cedente')) {
               favorecidoNome = 'Receita Federal - DARF';
@@ -214,7 +227,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               valor: extractedValue,
               dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split("T")[0],
               seuNumero: docNum,
-              nossoNumero: detected.seuNumero || "",
+              nossoNumero: detected.nossoNumero || detected.seuNumero || "",
               bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
               bancoNome: detected.bancoNome || parsed.bancoNome,
               tipoBoleto: detected.tipoBoleto,
@@ -451,22 +464,22 @@ async function startServer() {
 
         const callGeminiWithRetryAndFallback = async () => {
           const modelsToTry = [
-            "gemini-3.1-flash-lite",
             "gemini-3.7-flash",
-            "gemini-flash-latest",
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-3.1-pro-preview",
           ];
           let lastError: any = null;
 
           for (const modelName of modelsToTry) {
-            try {
-              console.log(`[Gemini OCR API] [${new Date().toISOString()}] Tentando modelo ${modelName} para o arquivo "${fileName}"...`);
-              
-              // 8s timeout for fast fallback
-              const generatePromise = ai.models.generateContent({
-                model: modelName,
-                contents: [
-                  {
-                    role: "user",
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              try {
+                console.log(`[Gemini API] Executando análise multimodal com modelo ${modelName} (tentativa ${attempt})...`);
+                
+                // Official @google/genai SDK multimodal payload structure with { parts: [...] }
+                const generatePromise = ai.models.generateContent({
+                  model: modelName,
+                  contents: {
                     parts: [
                       {
                         inlineData: {
@@ -479,32 +492,31 @@ async function startServer() {
                       },
                     ],
                   },
-                ],
-                config: {
-                  systemInstruction: SYSTEM_INSTRUCTION_BOLETO,
-                  temperature: 0.1,
-                  responseMimeType: "application/json",
-                  maxOutputTokens: 4096,
-                  responseSchema: GEMINI_BOLETO_SCHEMA as any,
-                },
-              });
+                  config: {
+                    systemInstruction: SYSTEM_INSTRUCTION_BOLETO,
+                    temperature: 0.1,
+                    responseMimeType: "application/json",
+                  },
+                });
 
-              const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error(`Timeout Gemini API (8s) no modelo ${modelName}`)), 8000)
-              );
+                const timeoutPromise = new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error(`Timeout Gemini API (25s) no modelo ${modelName}`)), 25000)
+                );
 
-              const response = await Promise.race([generatePromise, timeoutPromise]) as any;
-              console.log(`[Gemini OCR API] [${new Date().toISOString()}] Modelo ${modelName} respondeu com sucesso para "${fileName}"!`);
-              return response;
-            } catch (err: any) {
-              lastError = err;
-              const errMsg = String(err?.message || err);
-              if (errMsg.includes("503") || errMsg.includes("high demand") || errMsg.includes("UNAVAILABLE")) {
-                console.info(`[Gemini OCR API] Modelo ${modelName} em alta demanda (503). Alternando para próximo modelo de reserva...`);
-              } else if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota exceeded")) {
-                console.info(`[Gemini OCR API] Modelo ${modelName} com limite de cota (429). Alternando para próximo modelo de reserva...`);
-              } else {
-                console.warn(`[Gemini OCR API] Modelo ${modelName} aviso: ${errMsg.substring(0, 150)}`);
+                const response = await Promise.race([generatePromise, timeoutPromise]) as any;
+                return response;
+              } catch (err: any) {
+                lastError = err;
+                const errMsg = String(err?.message || err);
+                console.warn(`[Gemini API] Modelo ${modelName} tentativa ${attempt} falhou: ${errMsg.substring(0, 120)}`);
+                
+                if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("Quota")) {
+                  // Wait 1.5s on 429 quota before next attempt or switching model
+                  await new Promise((res) => setTimeout(res, 1500));
+                } else {
+                  await new Promise((res) => setTimeout(res, 250));
+                  break; // Non-quota error, move to next model
+                }
               }
             }
           }
@@ -513,12 +525,14 @@ async function startServer() {
 
         try {
           const response = await callGeminiWithRetryAndFallback();
-          const rawText = response?.text || "{}";
+          const rawText = response?.text || (response?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || "").join("")) || "{}";
           const parsedData = repairAndParseJson(rawText);
 
           if (Array.isArray(parsedData.boletos) && parsedData.boletos.length > 0) {
             boletosExtracted = parsedData.boletos;
-          } else if (parsedData && (parsedData.linhaDigitavel || parsedData.favorecidoNome)) {
+          } else if (Array.isArray(parsedData) && parsedData.length > 0) {
+            boletosExtracted = parsedData;
+          } else if (parsedData && (parsedData.linhaDigitavel || (parsedData as any).linha_digitavel || parsedData.favorecidoNome || parsedData.beneficiario)) {
             boletosExtracted = [parsedData];
           }
         } catch (geminiError: any) {
@@ -566,7 +580,7 @@ async function startServer() {
       // Filter out table-row sub-items if a valid primary boleto with 47/48-digit linha exists
       const validLinhaBoletos = boletosExtracted.filter((b) => {
         const d = onlyNumbers(String(b.linhaDigitavel || b.codigoBarras || ""));
-        return d.length === 47 || d.length === 48;
+        return d.length === 47 || d.length === 48 || d.length === 44;
       });
 
       if (validLinhaBoletos.length > 0) {
@@ -586,8 +600,8 @@ async function startServer() {
         if (cleanDigits.length === 47 || cleanDigits.length === 48) {
           const parsed = parseLinhaDigitavel(cleanDigits);
           if (parsed.codigoBarras) cleanKey = parsed.codigoBarras;
-          // Ensure authoritative value from barcode is used if parsed.valor > 0
-          if (parsed.valor > 0) {
+          // Use barcode parsed valor if b.valor is not yet populated
+          if ((!b.valor || b.valor <= 0) && parsed.valor > 0) {
             b.valor = parsed.valor;
           }
           if (parsed.dataVencimento && (!b.dataVencimento || b.dataVencimento.startsWith("Não"))) {
