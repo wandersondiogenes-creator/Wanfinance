@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { CompanyProfile, BoletoItem, CNABBatchHistory } from '../types';
+import { CompanyProfile, BoletoItem, CNABBatchHistory, LearnedLayoutPattern } from '../types';
 
 const SUPABASE_CONFIG_KEY = 'wanfinance_supabase_credentials';
 
@@ -378,4 +378,115 @@ export async function syncHistoryToSupabase(
     return { success: false, error: e.message || String(e), count: 0 };
   }
 }
+
+export async function syncLearnedLayoutToSupabase(
+  pattern: LearnedLayoutPattern
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Supabase client não configurado' };
+  try {
+    const record = {
+      id: pattern.id,
+      signature: pattern.signature,
+      bank_code: pattern.bankCode || '000',
+      bank_name: pattern.bankName || 'Banco',
+      issuer_name: pattern.issuerName || '',
+      layout_name: pattern.layoutName || 'Layout Aprendido',
+      confidence_score: pattern.confidenceScore || 0.95,
+      times_used: pattern.timesUsed || 1,
+      success_count: pattern.successCount || 1,
+      avg_extraction_time_ms: pattern.avgExtractionTimeMs || 20,
+      created_date: pattern.createdDate || new Date().toISOString(),
+      last_used_date: pattern.lastUsedDate || new Date().toISOString(),
+      anchors: pattern.anchors || {},
+      keywords: pattern.keywords || [],
+      field_extractors: pattern.fieldExtractors || {},
+      privacy_sanitised: pattern.privacySanitised ?? true,
+    };
+
+    const { error } = await supabase.from('learned_layouts').upsert(record);
+    if (error) {
+      console.warn('[Supabase] Aviso ao sincronizar layout aprendido:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (e: any) {
+    console.warn('[Supabase] Exceção ao sincronizar layout:', e);
+    return { success: false, error: e.message || String(e) };
+  }
+}
+
+export async function syncLearnedLayoutsToSupabase(
+  patterns: LearnedLayoutPattern[]
+): Promise<{ success: boolean; error?: string; count: number }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Supabase client não configurado', count: 0 };
+  if (!patterns || patterns.length === 0) return { success: true, count: 0 };
+  try {
+    const records = patterns.map((pattern) => ({
+      id: pattern.id,
+      signature: pattern.signature,
+      bank_code: pattern.bankCode || '000',
+      bank_name: pattern.bankName || 'Banco',
+      issuer_name: pattern.issuerName || '',
+      layout_name: pattern.layoutName || 'Layout Aprendido',
+      confidence_score: pattern.confidenceScore || 0.95,
+      times_used: pattern.timesUsed || 1,
+      success_count: pattern.successCount || 1,
+      avg_extraction_time_ms: pattern.avgExtractionTimeMs || 20,
+      created_date: pattern.createdDate || new Date().toISOString(),
+      last_used_date: pattern.lastUsedDate || new Date().toISOString(),
+      anchors: pattern.anchors || {},
+      keywords: pattern.keywords || [],
+      field_extractors: pattern.fieldExtractors || {},
+      privacy_sanitised: pattern.privacySanitised ?? true,
+    }));
+
+    const { error } = await supabase.from('learned_layouts').upsert(records);
+    if (error) {
+      console.warn('[Supabase] Aviso ao sincronizar lista de layouts:', error.message);
+      return { success: false, error: error.message, count: 0 };
+    }
+    return { success: true, count: records.length };
+  } catch (e: any) {
+    console.warn('[Supabase] Exceção ao sincronizar lista de layouts:', e);
+    return { success: false, error: e.message || String(e), count: 0 };
+  }
+}
+
+export async function fetchLearnedLayoutsFromSupabase(): Promise<LearnedLayoutPattern[] | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.from('learned_layouts').select('*');
+    if (error) {
+      console.warn('[Supabase] Aviso ao buscar layouts aprendidos:', error.message);
+      return null;
+    }
+    if (data && data.length > 0) {
+      return data.map((row: any) => ({
+        id: row.id,
+        signature: row.signature,
+        bankCode: row.bank_code,
+        bankName: row.bank_name,
+        issuerName: row.issuer_name,
+        layoutName: row.layout_name,
+        confidenceScore: typeof row.confidence_score === 'number' ? row.confidence_score : parseFloat(row.confidence_score || '0.95'),
+        timesUsed: row.times_used || 1,
+        successCount: row.success_count || 1,
+        avgExtractionTimeMs: row.avg_extraction_time_ms || 20,
+        createdDate: row.created_date || new Date().toISOString(),
+        lastUsedDate: row.last_used_date || new Date().toISOString(),
+        privacySanitised: row.privacy_sanitised ?? true,
+        anchors: typeof row.anchors === 'object' && row.anchors ? row.anchors : {},
+        keywords: Array.isArray(row.keywords) ? row.keywords : [],
+        fieldExtractors: typeof row.field_extractors === 'object' && row.field_extractors ? row.field_extractors : {},
+      }));
+    }
+  } catch (e) {
+    console.warn('[Supabase] Exceção ao buscar layouts aprendidos:', e);
+  }
+  return null;
+}
+
 

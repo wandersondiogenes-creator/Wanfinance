@@ -2,7 +2,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { SmartDocCategory, SmartExtractedDocument } from './smartDocTypes';
 import { classifySmartDocument } from './smartClassifier';
 import { validateExtractedDocument } from './smartValidator';
-import { matchSmartLayout } from './smartLayoutMemory';
+import { matchSmartLayout, learnSmartDocLayout } from './smartLayoutMemory';
 import { parseAutomotiveDocument } from './parsers/automotiveParser';
 import { parseStandardBoletoDocument } from './parsers/standardBoletoParser';
 import { parseDetranIpvaDocument } from './parsers/detranIpvaParser';
@@ -185,6 +185,19 @@ export async function processSmartDocument(
       validation,
       selected: true,
     };
+
+    // Auto-memorize layout immediately in database and memory
+    if (fullDoc.linhaDigitavel || (fullDoc.favorecidoNome && fullDoc.favorecidoNome !== 'Beneficiário / Cedente')) {
+      try {
+        const learned = learnSmartDocLayout(fullDoc, fullText);
+        if (learned) {
+          fullDoc.layoutName = learned.layoutName;
+          fullDoc.isLearnedLayout = true;
+        }
+      } catch (e) {
+        console.warn('[SmartExtractionEngine] Auto-learn notice:', e);
+      }
+    }
 
     return fullDoc;
   } catch (err: any) {

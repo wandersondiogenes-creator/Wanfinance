@@ -1000,13 +1000,24 @@ export function loadLearnedLayouts(): LearnedLayoutPattern[] {
 
 import { db, safeSetDoc, safeGetDocs, isFirestoreQuotaExceeded } from '../lib/firebase';
 import { collection, doc } from 'firebase/firestore';
+import {
+  syncLearnedLayoutToSupabase,
+  syncLearnedLayoutsToSupabase,
+  fetchLearnedLayoutsFromSupabase,
+} from '../lib/supabase';
 
 /**
- * Salva a base de modelos no LocalStorage e sincroniza com o Firestore
+ * Salva a base de modelos no LocalStorage, sincroniza com o Supabase e com o Firestore
  */
 export function saveLearnedLayouts(patterns: LearnedLayoutPattern[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(patterns));
+
+    // Supabase cloud persistence asynchronously
+    syncLearnedLayoutsToSupabase(patterns).catch((err) => {
+      console.warn('[Layout Engine] Supabase async sync notice:', err);
+    });
+
     // Firestore cloud sync asynchronously if quota is not exceeded
     if (!isFirestoreQuotaExceeded()) {
       patterns.forEach((pattern) => {
@@ -1019,49 +1030,56 @@ export function saveLearnedLayouts(patterns: LearnedLayoutPattern[]): void {
 }
 
 /**
- * Syncs learned layout patterns from Firestore cloud database
+ * Syncs learned layout patterns from Supabase and Firestore cloud databases
  */
 export async function syncLearnedLayoutsFromCloud(): Promise<LearnedLayoutPattern[]> {
-  if (isFirestoreQuotaExceeded()) {
-    return loadLearnedLayouts();
-  }
+  const local = loadLearnedLayouts();
+  const mergedMap = new Map<string, LearnedLayoutPattern>();
+  local.forEach((p) => mergedMap.set(p.id, p));
 
+  // 1. Try syncing from Supabase first
   try {
-    const querySnapshot = await safeGetDocs(collection(db, 'learned_layouts'));
-    if (!querySnapshot) {
-      return loadLearnedLayouts();
-    }
-    const cloudPatterns: LearnedLayoutPattern[] = [];
-    querySnapshot.forEach((docSnap) => {
-      const data = docSnap.data() as LearnedLayoutPattern;
-      if (data && data.id) {
-        cloudPatterns.push(data);
-      }
-    });
-
-    if (cloudPatterns.length > 0) {
-      const local = loadLearnedLayouts();
-      const mergedMap = new Map<string, LearnedLayoutPattern>();
-      local.forEach((p) => mergedMap.set(p.id, p));
-      cloudPatterns.forEach((p) => {
+    const supabasePatterns = await fetchLearnedLayoutsFromSupabase();
+    if (supabasePatterns && supabasePatterns.length > 0) {
+      supabasePatterns.forEach((p) => {
         const existing = mergedMap.get(p.id);
         if (!existing || new Date(p.lastUsedDate) > new Date(existing.lastUsedDate)) {
           mergedMap.set(p.id, p);
         }
       });
-      const merged = Array.from(mergedMap.values());
-      localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(merged));
-      return merged;
     }
-  } catch (err: any) {
-    const errorMsg = String(err?.message || err || '');
-    if (errorMsg.includes('resource-exhausted') || errorMsg.includes('Quota limit exceeded')) {
-      console.warn('[Firestore] Quota exceeded during layout sync, falling back to local cache.');
-    } else {
-      console.warn('[Firestore] Sync learned layouts error:', err);
+  } catch (err) {
+    console.warn('[Supabase] Sync learned layouts notice:', err);
+  }
+
+  // 2. Try syncing from Firestore
+  if (!isFirestoreQuotaExceeded()) {
+    try {
+      const querySnapshot = await safeGetDocs(collection(db, 'learned_layouts'));
+      if (querySnapshot) {
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data() as LearnedLayoutPattern;
+          if (data && data.id) {
+            const existing = mergedMap.get(data.id);
+            if (!existing || new Date(data.lastUsedDate) > new Date(existing.lastUsedDate)) {
+              mergedMap.set(data.id, data);
+            }
+          }
+        });
+      }
+    } catch (err: any) {
+      const errorMsg = String(err?.message || err || '');
+      if (errorMsg.includes('resource-exhausted') || errorMsg.includes('Quota limit exceeded')) {
+        console.warn('[Firestore] Quota exceeded during layout sync, falling back to local cache.');
+      } else {
+        console.warn('[Firestore] Sync learned layouts error:', err);
+      }
     }
   }
-  return loadLearnedLayouts();
+
+  const merged = Array.from(mergedMap.values());
+  localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(merged));
+  return merged;
 }
 
 /**

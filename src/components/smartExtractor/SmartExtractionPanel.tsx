@@ -27,6 +27,7 @@ import { SmartDocCategory, SmartExtractedDocument } from '../../utils/smartExtra
 import { SmartDocTypeSelector } from './SmartDocTypeSelector';
 import { SmartDocValidationCard } from './SmartDocValidationCard';
 import { processSmartDocument, convertSmartDocToBoletoItem } from '../../utils/smartExtractor/smartExtractionEngine';
+import { learnSmartDocLayout } from '../../utils/smartExtractor/smartLayoutMemory';
 import { BoletoItem, CompanySettings, CompanyProfile, CNABBatchHistory } from '../../types';
 import { generateCNAB240 } from '../../utils/cnabGenerator240';
 import { generateCNAB400 } from '../../utils/cnabGenerator400';
@@ -159,6 +160,11 @@ export const SmartExtractionPanel: React.FC<SmartExtractionPanelProps> = ({
   // Document update & delete handlers
   const handleUpdateDocument = (updated: SmartExtractedDocument) => {
     setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    try {
+      learnSmartDocLayout(updated, updated.rawTextPreview || updated.fileName);
+    } catch (e) {
+      console.warn('[SmartExtractionPanel] Auto-learn on update notice:', e);
+    }
   };
 
   const handleDeleteDocument = (id: string) => {

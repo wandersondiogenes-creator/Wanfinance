@@ -1,4 +1,6 @@
 import { SmartDocCategory, SmartLearnedLayoutItem, SmartExtractedDocument } from './smartDocTypes';
+import { learnNewLayoutPattern } from '../layoutLearningEngine';
+import { syncLearnedLayoutToSupabase } from '../../lib/supabase';
 
 const STORAGE_KEY = 'wanfinance_smart_learned_layouts_v1';
 
@@ -78,5 +80,24 @@ export function learnSmartDocLayout(doc: SmartExtractedDocument, sampleText: str
   }
 
   saveSmartLearnedLayouts(layouts);
+
+  // Also immediately learn and store into Universal Layout Learning Engine & Supabase
+  try {
+    const universalLearn = learnNewLayoutPattern(sampleText || doc.rawTextPreview || doc.fileName, {
+      linhaDigitavel: doc.linhaDigitavel,
+      codigoBarras: doc.codigoBarras,
+      bancoCodigo: doc.bancoCodigo,
+      favorecidoNome: doc.favorecidoNome,
+      valor: doc.valor,
+      dataVencimento: doc.dataVencimento,
+    });
+    if (universalLearn.pattern) {
+      syncLearnedLayoutToSupabase(universalLearn.pattern).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('[SmartLayoutMemory] Auto-learn sync notice:', err);
+  }
+
   return newItem;
 }
+

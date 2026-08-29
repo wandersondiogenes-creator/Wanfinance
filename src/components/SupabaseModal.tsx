@@ -28,7 +28,10 @@ import {
   fetchCompanyProfilesFromSupabase,
   fetchBoletosFromSupabase,
   fetchHistoryFromSupabase,
+  syncLearnedLayoutsToSupabase,
+  fetchLearnedLayoutsFromSupabase,
 } from '../lib/supabase';
+import { loadLearnedLayouts, saveLearnedLayouts } from '../utils/layoutLearningEngine';
 import { CompanyProfile, BoletoItem, CNABBatchHistory } from '../types';
 import { saveCompanyProfiles, saveBoletos, saveHistory } from '../utils/storage';
 
@@ -104,12 +107,14 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
     const cRes = await syncCompanyProfilesToSupabase(companies);
     const bRes = await syncBoletosToSupabase(boletos);
     const hRes = await syncHistoryToSupabase(history);
+    const layouts = loadLearnedLayouts();
+    const lRes = await syncLearnedLayoutsToSupabase(layouts);
     setIsSyncing(false);
 
     if (cRes.success && bRes.success && hRes.success) {
-      onToast(`Sucesso! ${cRes.count} empresas, ${bRes.count} boletos e ${hRes.count} remessas enviadas ao Supabase.`);
+      onToast(`Sucesso! ${cRes.count} empresas, ${bRes.count} boletos, ${hRes.count} remessas e ${lRes.count} modelos de layout enviados ao Supabase.`);
     } else {
-      const err = cRes.error || bRes.error || hRes.error || 'Erro na sincronização';
+      const err = cRes.error || bRes.error || hRes.error || lRes.error || 'Erro na sincronização';
       onToast(`Aviso na sincronização com Supabase: ${err}`);
     }
   };
@@ -120,15 +125,20 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
     const fetchedCompanies = await fetchCompanyProfilesFromSupabase();
     const fetchedBoletos = await fetchBoletosFromSupabase();
     const fetchedHistory = await fetchHistoryFromSupabase();
+    const fetchedLayouts = await fetchLearnedLayoutsFromSupabase();
     setIsPulling(false);
 
-    if (fetchedCompanies || fetchedBoletos || fetchedHistory) {
+    if (fetchedLayouts && fetchedLayouts.length > 0) {
+      saveLearnedLayouts(fetchedLayouts);
+    }
+
+    if (fetchedCompanies || fetchedBoletos || fetchedHistory || fetchedLayouts) {
       onReloadFromSupabase({
         companies: fetchedCompanies || undefined,
         boletos: fetchedBoletos || undefined,
         history: fetchedHistory || undefined,
       });
-      onToast('Dados recarregados com sucesso a partir do Supabase!');
+      onToast('Dados e modelos de layout recarregados com sucesso a partir do Supabase!');
     } else {
       onToast('Não foi possível carregar do Supabase. Verifique a conexão e as tabelas.');
     }
@@ -220,6 +230,26 @@ CREATE TABLE IF NOT EXISTS public.user_sessions (
     login_time VARCHAR(50)
 );
 
+-- 5. Modelos de Layouts Aprendidos (Continuous OCR / PDF Learning)
+CREATE TABLE IF NOT EXISTS public.learned_layouts (
+    id VARCHAR(100) PRIMARY KEY,
+    signature VARCHAR(255) NOT NULL,
+    bank_code VARCHAR(10) DEFAULT '000',
+    bank_name VARCHAR(100) DEFAULT 'Banco',
+    issuer_name VARCHAR(255),
+    layout_name VARCHAR(255) NOT NULL,
+    confidence_score NUMERIC(5,2) DEFAULT 0.95,
+    times_used INT DEFAULT 1,
+    success_count INT DEFAULT 1,
+    avg_extraction_time_ms INT DEFAULT 20,
+    created_date TIMESTAMPTZ DEFAULT NOW(),
+    last_used_date TIMESTAMPTZ DEFAULT NOW(),
+    anchors JSONB DEFAULT '{}'::jsonb,
+    keywords JSONB DEFAULT '[]'::jsonb,
+    field_extractors JSONB DEFAULT '{}'::jsonb,
+    privacy_sanitised BOOLEAN DEFAULT true
+);
+
 -- Seed de Usuários Autorizados Corporativos (Via1 / Detran)
 INSERT INTO public.user_sessions (id, user_id, name, email, role, login_time)
 VALUES 
@@ -235,6 +265,7 @@ ALTER TABLE public.companies DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.boletos DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cnab_history DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_sessions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.learned_layouts DISABLE ROW LEVEL SECURITY;
 
 -- Políticas de Acesso Público
 DROP POLICY IF EXISTS "Allow public all on companies" ON public.companies;
@@ -247,7 +278,10 @@ DROP POLICY IF EXISTS "Allow public all on cnab_history" ON public.cnab_history;
 CREATE POLICY "Allow public all on cnab_history" ON public.cnab_history FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow public all on user_sessions" ON public.user_sessions;
-CREATE POLICY "Allow public all on user_sessions" ON public.user_sessions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
+CREATE POLICY "Allow public all on user_sessions" ON public.user_sessions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all on learned_layouts" ON public.learned_layouts;
+CREATE POLICY "Allow public all on learned_layouts" ON public.learned_layouts FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlMigrationCode);
