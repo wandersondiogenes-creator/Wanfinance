@@ -1,4 +1,4 @@
-import { getBankInfo } from './banks.js';
+import { getBankInfo, BRAZILIAN_BANKS } from './banks.js';
 import { BoletoType } from '../types';
 
 export interface ParsedBoletoInfo {
@@ -224,6 +224,27 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     gnomeNum = gnreCtrlMatch[1].trim();
   }
 
+  // 5.7 Compromisso / Valor Original Relation Table Match (e.g. FIDC Vita Auto / Fidis / Bradesco)
+  const relacaoTableMatch = rawText.match(/(?:Compromisso|COMPROMISSO)[^\r\n]*\r?\n\s*(\d{6,20})\s+(\d{2}[/.-]\d{2}[/.-]\d{4})\s+(\d{2}[/.-]\d{2}[/.-]\d{4})\s+([\d\.]+(?:,\d{2}))\s+(\d{8,25})\s+(\d+)\s+([A-Z0-9]{5,17})/i) ||
+    rawText.match(/(?:Compromisso|COMPROMISSO)[^\r\n]*\r?\n\s*(\d{6,20})\s+(\d{2}[/.-]\d{2}[/.-]\d{4})\s+(\d{2}[/.-]\d{2}[/.-]\d{4})\s+([\d\.]+(?:,\d{2}))/i);
+
+  if (relacaoTableMatch) {
+    if (!gnomeNum) gnomeNum = relacaoTableMatch[1].trim();
+    if (!dataVencimento && relacaoTableMatch[2]) {
+      const [d, m, y] = relacaoTableMatch[2].split(/[/.-]/);
+      dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    const tableVal = parseNumBR(relacaoTableMatch[4]);
+    if (tableVal > 0 && (!valor || valor === 0)) {
+      valor = tableVal;
+      if (!valorDocumento) valorDocumento = tableVal;
+      if (!valorCobrado) valorCobrado = tableVal;
+    }
+    if (relacaoTableMatch[7] && !chassi) {
+      chassi = relacaoTableMatch[7].trim().toUpperCase();
+    }
+  }
+
   // Beneficiário & Pagador CNPJ/CPF and Name Extraction
   let favorecidoCnpjCpf = '';
   let pagador = '';
@@ -231,6 +252,9 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   if (/BANCO\s+FIDIS/i.test(rawText) || rawText.includes('062.237.425/0001-76') || rawText.includes('062237425000176')) {
     favorecidoCnpjCpf = '062.237.425/0001-76';
+  }
+  if (/FIDC\s+VITA\s+AUTO/i.test(rawText) || /VITA\s+AUTO/i.test(rawText) || rawText.includes('050.095.909/0001-49') || rawText.includes('050095909000149')) {
+    favorecidoCnpjCpf = '050.095.909/0001-49';
   }
   if (/BAJAJ\s+DO\s+BRASIL/i.test(rawText) || /BAJAJ/i.test(rawText) || rawText.includes('45.859.932/0001-22') || rawText.includes('45859932000122')) {
     favorecidoCnpjCpf = '45.859.932/0001-22';
@@ -436,6 +460,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   const isBYDBrasil = textUpper.includes('BYD DO BRASIL') || textUpper.includes('17.140.820/0007-77') || textUpper.includes('03399.01241');
   const isFIDCVendaVeiculos = textUpper.includes('VENDA DE VEICULOS FUNDO') || textUpper.includes('VENDA DE VEÍCULOS FUNDO') || textUpper.includes('FIDC VENDA DE VEÍCULOS') || textUpper.includes('FIDC VENDA DE VEICULOS') || textUpper.includes('21.126.275/0001-46') || textUpper.includes('03399.42294');
   const isFIDCAutoFord = textUpper.includes('FIDC COMPLEMENTAR AUTO FORD') || textUpper.includes('FIDC AUTO FORD') || textUpper.includes('043.489.824/0001-80') || textUpper.includes('043489824000180') || textUpper.includes('GRANVIA VEICULOS') || textUpper.includes('23792.85634') || textUpper.includes('02856-COBFLEX');
+  const isFIDCVitaAuto = textUpper.includes('FIDC VITA AUTO') || textUpper.includes('VITA AUTO') || textUpper.includes('050.095.909/0001-49') || textUpper.includes('050095909000149') || (textUpper.includes('FIAT') && (textUpper.includes('02856-COBFLEX') || textUpper.includes('BETIM-MG') || textUpper.includes('PAULO CAMILO')));
   const isBancoFidis = textUpper.includes('BANCO FIDIS') || textUpper.includes('062.237.425/0001-76') || textUpper.includes('062237425000176') || textUpper.includes('23792.01102') || textUpper.includes('2379201102') || textUpper.includes('02011-COBFLEX') || textUpper.includes('02011 - COBFLEX');
 
   if (isGNRE) {
@@ -450,6 +475,16 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     const emitName = emitenteMatch ? ` - ${emitenteMatch[1].trim()}` : '';
 
     favorecidoNome = `GNRE - Tributos Estaduais${ufStr}${emitName}`;
+  } else if (isFIDCVitaAuto) {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = 'FIDC VITA AUTO (FIAT)';
+    favorecidoCnpjCpf = '050.095.909/0001-49';
+    bancoCodigo = '237';
+    bancoNome = 'Banco Bradesco S.A.';
+    if (!pagador || pagador.includes('Não identificado')) {
+      pagador = 'VIA SUL VEICULOS S/A';
+      pagadorCnpjCpf = '040.841.736/0002-98';
+    }
   } else if (isBancoFidis) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BANCO FIDIS S/A.';
@@ -928,7 +963,7 @@ export function validateConcessionaria48(limpa48: string): boolean {
 }
 
 /**
- * Validates Modulo 10 and structure for a 47-digit Linha Digitável
+ * Validates Modulo 10 and structure for a 47-digit Linha Digitável (Standard FEBRABAN)
  */
 export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
   if (!limpa47 || limpa47.length !== 47) return false;
@@ -940,15 +975,15 @@ export function validateModulo10LinhaDigitavel(limpa47: string): boolean {
   try {
     const campo1Data = limpa47.substring(0, 9);
     const campo1DV = parseInt(limpa47.substring(9, 10), 10);
-    const c1Valid = modulo10(campo1Data) === campo1DV || modulo10LeftToRight(campo1Data) === campo1DV;
+    const c1Valid = modulo10(campo1Data) === campo1DV;
 
     const campo2Data = limpa47.substring(10, 20);
     const campo2DV = parseInt(limpa47.substring(20, 21), 10);
-    const c2Valid = modulo10(campo2Data) === campo2DV || modulo10LeftToRight(campo2Data) === campo2DV;
+    const c2Valid = modulo10(campo2Data) === campo2DV;
 
     const campo3Data = limpa47.substring(21, 31);
     const campo3DV = parseInt(limpa47.substring(31, 32), 10);
-    const c3Valid = modulo10(campo3Data) === campo3DV || modulo10LeftToRight(campo3Data) === campo3DV;
+    const c3Valid = modulo10(campo3Data) === campo3DV;
 
     return c1Valid && c2Valid && c3Valid;
   } catch {
@@ -1017,11 +1052,21 @@ export function parseLinhaDigitavel(input: string): ParsedBoletoInfo {
 
     const dataVencimento = parseFatorVencimento(fatorVencimento);
     const valor = parseValor(valorRaw);
-    const isMod10Valid = limpa.length === 47 ? validateModulo10LinhaDigitavel(limpa) : true;
-    const isKnownBank = bankFound.shortName !== 'Banco Não Identificado' && bancoCodigo !== '000' && !bancoCodigo.startsWith('8');
+    const isMod10Valid = limpa.length === 47 ? validateModulo10LinhaDigitavel(limpa) : false;
+    const isMod11BarcodeValid = limpa.length === 44 ? validateModulo11CodigoBarras(limpa) : false;
+    const isKnownBank = bancoCodigo !== '000' && !bancoCodigo.startsWith('8') && (
+      BRAZILIAN_BANKS[bancoCodigo] !== undefined ||
+      (bankFound.shortName !== 'Banco Não Identificado' && !bankFound.shortName.startsWith('Banco '))
+    );
     
-    // Always mark valid for 47-digit lines or 44-digit barcodes with valid bank prefix
-    const isValid = (limpa.length === 47 && !limpa.startsWith('8')) || (limpa.length === 44 && !limpa.startsWith('8') && isKnownBank) || isMod10Valid;
+    // Strict validity check:
+    // 47 digits: Must not start with 8, bank must be known (or valid 3 digits), and mod10 MUST pass
+    // 44 digits: Must not start with 8, bank must be known, and modulo 11 barcode check must pass
+    const isValid = limpa.length === 47
+      ? (!limpa.startsWith('8') && isKnownBank && isMod10Valid)
+      : limpa.length === 44
+      ? (!limpa.startsWith('8') && isKnownBank && isMod11BarcodeValid)
+      : false;
 
     return {
       linhaDigitavelLimpa: limpa,

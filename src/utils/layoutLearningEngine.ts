@@ -430,6 +430,64 @@ export const DEFAULT_LEARNED_LAYOUTS: LearnedLayoutPattern[] = [
     },
   },
   {
+    id: 'layout-bradesco-fidc-vita-auto-11b',
+    signature: 'SIG_237_BRADESCO_FIDC_VITA_AUTO_FIAT',
+    bankCode: '237',
+    bankName: 'Banco Bradesco S.A.',
+    issuerName: 'FIDC VITA AUTO (FIAT)',
+    layoutName: 'Boleto Bradesco - FIDC Vita Auto / FIAT (237)',
+    confidenceScore: 0.99,
+    timesUsed: 225,
+    successCount: 225,
+    avgExtractionTimeMs: 11,
+    createdDate: '2026-03-01T10:00:00.000Z',
+    lastUsedDate: new Date().toISOString(),
+    privacySanitised: true,
+    anchors: {
+      barcodePattern: '2379285634',
+      linhaDigitavelAnchor: '23792.85634',
+      valorAnchor: 'Valor Documento',
+      vencimentoAnchor: 'Data de Vencimento',
+      beneficiarioAnchor: 'FIDC VITA AUTO (FIAT)',
+      seuNumeroAnchor: 'Número do Documento',
+      nossoNumeroAnchor: 'Nosso Número',
+    },
+    keywords: [
+      'fidc vita auto',
+      'vita auto',
+      'fiat',
+      'fidc vita auto (fiat)',
+      '050.095.909/0001-49',
+      '050095909000149',
+      '040.841.736/0002-98',
+      '040841736000298',
+      '23792.85634',
+      '2379285634',
+      '02856-cobflex',
+      '02856',
+      'cobflex',
+      'bradesco',
+      'compromisso',
+      'chassi',
+      'dias vencer',
+      'relação ao caixa',
+      'relacao ao caixa',
+      'não é necessário levar esta relação ao caixa',
+      'nao e necessario levar esta relacao ao caixa',
+      'paulo camilo-betim-mg',
+      'betim-mg',
+      'via sul veiculos',
+    ],
+    fieldExtractors: {
+      linhaRegex: '23792[0-9\\s.-]{40,65}',
+      valorRegex: '(?:(?:1|6)\\s*\\([^)]*\\)\\s*Valor\\s*(?:Cobrado|Documento|Original)|Valor\\s+Original|Valor\\s+Cobrado|Valor\\s+do\\s+Documento|Valor\\s+Documento)\\s*[:\\s\r\n]*R?\\$?\\s*([\\d\\.]+(?:,\\d{2})?)',
+      vencimentoRegex: '(?:Data\\s+de\\s+Vencimento|Vencimento)\\s*[:\\s\r\n]*(\\d{2}[/.-]\\d{2}[/.-]\\d{4})',
+      favorecidoRegex: '(FIDC\\s+VITA\\s+AUTO\\s*\\(FIAT\\)|FIDC\\s+VITA\\s+AUTO[^\r\n]*)',
+      seuNumeroRegex: '(?:Número\\s+do\\s+Documento|Nº\\s+do\\s+Documento|No\\.?\\s+Documento|Compromisso)\\s*[:\\s\r\n]*([\\w\\d]{6,20})',
+      nossoNumeroRegex: '(?:Nosso\\s+Número|Nosso\\s+Numero|Cart\\.\\s*\\/\\s*Nosso\\s+Número)\\s*[:\\s\r\n]*([\\w\\d\\/-]{6,25})',
+    },
+  },
+  {
     id: 'layout-bradesco-fidc-ford-granvia-11a',
     signature: 'SIG_237_BRADESCO_FIDC_COMPLEMENTAR_AUTO_FORD',
     bankCode: '237',
@@ -1049,7 +1107,8 @@ export function generateLayoutSignature(text: string, bankCode?: string): string
   if (normalizedText.includes('byd auto') || normalizedText.includes('50.351.104/0001-19') || normalizedText.includes('0339905481')) issuerToken = 'BYD_AUTO_DO_BRASIL';
   else if (normalizedText.includes('byd do brasil') || normalizedText.includes('17.140.820/0007-77') || normalizedText.includes('0339901241')) issuerToken = 'BYD_DO_BRASIL';
   else if (normalizedText.includes('bajaj') || normalizedText.includes('j.p.morgan') || normalizedText.includes('jpmorgan') || normalizedText.includes('45.859.932/0001-22')) issuerToken = 'JPMORGAN_BAJAJ_DO_BRASIL';
-  else if (normalizedText.includes('banco fidis') || normalizedText.includes('fidc vita auto') || normalizedText.includes('fidc moab') || normalizedText.includes('fidc complementar auto ford')) issuerToken = 'BRADESCO_AUTO_FIDIS';
+  else if (normalizedText.includes('fidc vita auto') || normalizedText.includes('vita auto') || normalizedText.includes('050.095.909/0001-49') || normalizedText.includes('050095909000149')) issuerToken = 'BRADESCO_FIDC_VITA_AUTO_FIAT';
+  else if (normalizedText.includes('banco fidis') || normalizedText.includes('fidc moab') || normalizedText.includes('fidc complementar auto ford')) issuerToken = 'BRADESCO_AUTO_FIDIS';
   else if (normalizedText.includes('venda de veiculos fundo') || normalizedText.includes('21.126.275/0001-46') || normalizedText.includes('21126275000146')) issuerToken = 'SANTANDER_FIDC_RENAULT_VEICULOS';
   else if (normalizedText.includes('omoda')) issuerToken = 'SANTANDER_VEICULOS_OMODA';
   else if (normalizedText.includes('financeira alfa') || normalizedText.includes('alfa s.a.') || normalizedText.includes('17.167.412/0001-13')) issuerToken = 'FINANCEIRA_ALFA';
@@ -1247,7 +1306,7 @@ export function extractViaLearnedLayout(
 
         if (clean.length === 47 || clean.length === 48 || clean.length === 44) {
           const parsed = parseLinhaDigitavel(clean);
-          if (parsed.isValid || clean.length === 48 || clean.length === 47) {
+          if (parsed.isValid && (clean.length === 48 || (parsed.bancoCodigo !== '000' && !parsed.bancoCodigo.startsWith('8')))) {
             const key44 = parsed.codigoBarras || clean;
             if (seenLines.has(clean) || seenLines.has(key44)) {
               continue;

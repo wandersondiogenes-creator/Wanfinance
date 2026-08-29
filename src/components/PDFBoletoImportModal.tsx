@@ -304,14 +304,19 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
 
         try {
           const localExtracted = await extractBoletosLocallyInBrowser(fileBase64, file.name);
-          if (localExtracted && localExtracted.length > 0) {
-            rawBoletos = localExtracted;
+          const validLocal = (localExtracted || []).filter((b) => {
+            const rawDigits = onlyNumbers(b.linhaDigitavel || b.codigoBarras || '');
+            const parsed = parseLinhaDigitavel(rawDigits);
+            return parsed.isValid && (rawDigits.length === 48 || (parsed.bancoCodigo !== '000' && !parsed.bancoCodigo.startsWith('8')));
+          });
+          if (validLocal.length > 0) {
+            rawBoletos = validLocal;
             technicalLogger.log({
               step: 'Extração Local do Navegador',
               fileName: file.name,
               fileSize: file.size,
               severity: 'info',
-              errorMessage: `Sucesso Local-First: ${localExtracted.length} boleto(s) extraído(s) em tempo recorde`,
+              errorMessage: `Sucesso Local-First: ${validLocal.length} boleto(s) extraído(s) em tempo recorde`,
             });
           }
         } catch (localErr: any) {

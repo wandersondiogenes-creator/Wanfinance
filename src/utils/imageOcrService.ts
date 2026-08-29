@@ -114,13 +114,23 @@ export async function extractBoletoFromImageSource(
         const clean = onlyNumbers(match);
         if (clean.length === 47 || clean.length === 48 || clean.length === 44) {
           const parsed = parseLinhaDigitavel(clean);
+          if (!parsed.isValid) continue;
           const key44 = parsed.codigoBarras || clean;
           if (seenLines.has(clean) || seenLines.has(key44)) continue;
           seenLines.add(clean);
           seenLines.add(key44);
 
-          let extractedValue = detectedGlobal.valor || parsed.valor || 0;
-          let vencimentoFinal = detectedGlobal.dataVencimento || parsed.dataVencimento || '';
+          let extractedValue = 0;
+          if (clean.length === 47 && !clean.startsWith('8') && parsed.valor > 0) {
+            extractedValue = parsed.valor;
+          } else if (detectedGlobal.valor && detectedGlobal.valor > 0) {
+            extractedValue = detectedGlobal.valor;
+          } else if (parsed.valor > 0) {
+            extractedValue = parsed.valor;
+          }
+          let vencimentoFinal = (clean.length === 47 && !clean.startsWith('8') && parsed.dataVencimento)
+            ? parsed.dataVencimento
+            : (detectedGlobal.dataVencimento || parsed.dataVencimento || '');
           let favorecidoNome = detectedGlobal.favorecidoNome || extractFavorecidoFromText(rawText, parsed.bancoNome);
 
           boletosFound.push({
