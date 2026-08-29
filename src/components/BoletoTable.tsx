@@ -22,6 +22,7 @@ interface BoletoTableProps {
   onOpenNewModal: () => void;
   onOpenBatchModal: () => void;
   onOpenPDFModal: () => void;
+  onOpenSmartExtractor?: () => void;
   onGenerateCNAB: () => void;
   onBatchUpdatePaymentDate?: (date: string) => void;
 }
@@ -40,6 +41,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
   onOpenNewModal,
   onOpenBatchModal,
   onOpenPDFModal,
+  onOpenSmartExtractor,
   onGenerateCNAB,
   onBatchUpdatePaymentDate,
 }) => {
@@ -625,6 +627,23 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                       </div>
                     </button>
 
+                    {onOpenSmartExtractor && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowInsertMenu(false);
+                          onOpenSmartExtractor();
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-bold text-slate-800 hover:bg-indigo-50 rounded-xl transition-colors flex items-center space-x-2 cursor-pointer"
+                      >
+                        <Sparkles className="w-4 h-4 text-indigo-600" />
+                        <div>
+                          <p className="text-slate-900 font-bold">Extração Inteligente</p>
+                          <p className="text-[10px] text-slate-500 font-normal">Reconhecimento por tipo de documento</p>
+                        </div>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => {
@@ -786,10 +805,22 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
           <button
             onClick={onOpenPDFModal}
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-sm flex items-center space-x-1.5 cursor-pointer"
+            title="Extrair boletos via PDF com IA tradicional"
           >
             <Sparkles className="w-3.5 h-3.5 text-blue-100 animate-pulse" />
             <span>Extrair PDF (IA)</span>
           </button>
+
+          {onOpenSmartExtractor && (
+            <button
+              onClick={onOpenSmartExtractor}
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-sm flex items-center space-x-1.5 cursor-pointer"
+              title="Acessar painel de Extração Inteligente com detecção de tipos"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span>Extração Inteligente</span>
+            </button>
+          )}
 
           <button
             onClick={onOpenBatchModal}

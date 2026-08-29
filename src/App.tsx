@@ -627,6 +627,7 @@ export default function App() {
                       }}
                       onOpenBatchModal={() => setIsBatchModalOpen(true)}
                       onOpenPDFModal={() => setIsPDFModalOpen(true)}
+                      onOpenSmartExtractor={() => setActiveTab('extracao_inteligente')}
                       onGenerateCNAB={() => setIsPreviewModalOpen(true)}
                       onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
                     />
@@ -649,6 +650,7 @@ export default function App() {
                     }}
                     onOpenBatchModal={() => setIsBatchModalOpen(true)}
                     onOpenPDFModal={() => setIsPDFModalOpen(true)}
+                    onOpenSmartExtractor={() => setActiveTab('extracao_inteligente')}
                     onGenerateCNAB={() => setIsPreviewModalOpen(true)}
                     onBatchUpdatePaymentDate={handleBatchUpdatePaymentDate}
                   />

@@ -216,16 +216,29 @@ export const AppleSidebar: React.FC<AppleSidebarProps> = ({
           </button>
         </div>
 
-        {/* Action Button: Apple Pill Style "Extrair com IA" */}
+        {/* Action Buttons: Extrair PDF por IA e Extração Inteligente sempre juntas */}
         <div className="p-3">
-          <button
-            type="button"
-            onClick={onOpenPDFModal}
-            className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-600 text-white font-semibold text-xs shadow-md shadow-blue-600/25 active:scale-[0.98] transition-all cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Extrair PDF por IA</span>
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onOpenPDFModal}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-600 text-white font-semibold text-xs shadow-md shadow-blue-600/25 active:scale-[0.98] transition-all cursor-pointer truncate"
+              title="Extrair PDF por IA (Tradicional)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span className="truncate">Extrair PDF (IA)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('extracao_inteligente')}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-500 hover:to-purple-600 text-white font-semibold text-xs shadow-md shadow-indigo-600/25 active:scale-[0.98] transition-all cursor-pointer truncate"
+              title="Extração Inteligente (Nova Aba)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span className="truncate">Extração Inteligente</span>
+            </button>
+          </div>
         </div>
 
         {/* Sidebar Nav Items Section */}
