@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { BoletoItem, CNABBatchHistory } from '../types';
 import { formatCurrencyBRL, formatDateBR, formatLinhaDigitavelDisplay } from '../utils/boletoParser';
 import { getBankInfo } from '../utils/banks';
-import { Search, Filter, Trash2, Edit2, Download, AlertCircle, CheckCircle, Plus, Copy, FileText, CheckSquare, Square, Sparkles, FileUp, AlertTriangle, TrendingDown, TrendingUp, Clock, Tag, Percent, Calendar, ChevronDown, PlusCircle, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Filter, Trash2, Edit2, Download, AlertCircle, CheckCircle, Plus, Copy, FileText, CheckSquare, Square, Sparkles, FileUp, AlertTriangle, TrendingDown, TrendingUp, Clock, Tag, Percent, Calendar, ChevronDown, PlusCircle, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown, Check } from 'lucide-react';
 import { getBoletosDuplicateMap } from '../utils/duplicateDetector';
 
 export type SortColumn = 'banco' | 'favorecido' | 'seuNumero' | 'vencimento' | 'pagamento' | 'valor' | 'status';
@@ -53,6 +53,13 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
   const setFilterType = propSetFilterType || setInternalFilterType;
   const [batchPayDateInput, setBatchPayDateInput] = useState<string>('');
   const [showInsertMenu, setShowInsertMenu] = useState(false);
+  const [copiedLinhaId, setCopiedLinhaId] = useState<string | null>(null);
+
+  const handleCopyLinha = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedLinhaId(id);
+    setTimeout(() => setCopiedLinhaId(null), 2000);
+  };
 
   // Column sorting state
   const [sortColumn, setSortColumn] = useState<SortColumn>('vencimento');
@@ -844,12 +851,13 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-700">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-200 select-none font-bold">
+            <thead className="bg-slate-50/90 backdrop-blur-xs text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-200/80 select-none font-bold">
               <tr>
-                <th className="p-4 w-10">
+                <th className="py-2.5 px-3 w-9">
                   <button
                     onClick={() => onSelectAll(!allSelected)}
-                    className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="text-slate-400 hover:text-slate-700 cursor-pointer flex items-center justify-center"
+                    title={allSelected ? "Desmarcar todos" : "Selecionar todos"}
                   >
                     {allSelected ? (
                       <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -860,7 +868,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                 </th>
 
                 {/* Banco */}
-                <th className="p-4">
+                <th className="py-2.5 px-3 whitespace-nowrap">
                   <button
                     type="button"
                     onClick={() => handleSort('banco')}
@@ -870,7 +878,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                   >
                     <span>Banco</span>
                     {sortColumn === 'banco' ? (
-                      sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                     ) : (
                       <ArrowUpDown className="w-3 h-3 text-slate-400 hover:text-slate-600" />
                     )}
@@ -878,7 +886,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                 </th>
 
                 {/* Favorecido / Linha Digitável */}
-                <th className="p-4">
+                <th className="py-2.5 px-3 min-w-[300px]">
                   <button
                     type="button"
                     onClick={() => handleSort('favorecido')}
@@ -888,7 +896,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                   >
                     <span>Favorecido / Linha Digitável</span>
                     {sortColumn === 'favorecido' ? (
-                      sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                     ) : (
                       <ArrowUpDown className="w-3 h-3 text-slate-400 hover:text-slate-600" />
                     )}
@@ -896,7 +904,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                 </th>
 
                 {/* Seu Número */}
-                <th className="p-4">
+                <th className="py-2.5 px-3 whitespace-nowrap">
                   <button
                     type="button"
                     onClick={() => handleSort('seuNumero')}
@@ -906,7 +914,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                   >
                     <span>Seu Número</span>
                     {sortColumn === 'seuNumero' ? (
-                      sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                     ) : (
                       <ArrowUpDown className="w-3 h-3 text-slate-400 hover:text-slate-600" />
                     )}
@@ -914,7 +922,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                 </th>
 
                 {/* Venc. / Pgto */}
-                <th className="p-4">
+                <th className="py-2.5 px-3 whitespace-nowrap">
                   <button
                     type="button"
                     onClick={() => handleSort(sortColumn === 'vencimento' ? 'pagamento' : 'vencimento')}
@@ -925,7 +933,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                   >
                     <span>{sortColumn === 'pagamento' ? 'Pgto / Venc.' : 'Venc. / Pgto'}</span>
                     {sortColumn === 'vencimento' || sortColumn === 'pagamento' ? (
-                      sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                     ) : (
                       <ArrowUpDown className="w-3 h-3 text-slate-400 hover:text-slate-600" />
                     )}
@@ -933,7 +941,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                 </th>
 
                 {/* Valor Final */}
-                <th className="p-4 text-right">
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">
                   <button
                     type="button"
                     onClick={() => handleSort('valor')}
@@ -943,7 +951,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                   >
                     <span>Valor Final</span>
                     {sortColumn === 'valor' ? (
-                      sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                     ) : (
                       <ArrowUpDown className="w-3 h-3 text-slate-400 hover:text-slate-600" />
                     )}
@@ -951,7 +959,7 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                 </th>
 
                 {/* Status */}
-                <th className="p-4 text-center">
+                <th className="py-2.5 px-2 text-center whitespace-nowrap">
                   <button
                     type="button"
                     onClick={() => handleSort('status')}
@@ -961,17 +969,17 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                   >
                     <span>Status</span>
                     {sortColumn === 'status' ? (
-                      sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                      sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                     ) : (
                       <ArrowUpDown className="w-3 h-3 text-slate-400 hover:text-slate-600" />
                     )}
                   </button>
                 </th>
 
-                <th className="p-4 text-right">Ações</th>
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
+            <tbody className="divide-y divide-slate-100/80">
               {sortedBoletos.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-slate-500">
@@ -1016,16 +1024,16 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                   return (
                     <tr
                       key={boleto.id}
-                      className={`hover:bg-slate-50/80 transition-colors ${
+                      className={`hover:bg-slate-50/90 transition-colors ${
                         dupInfo?.isDuplicate
-                          ? 'bg-orange-100/80 hover:bg-orange-200/80 border-l-4 border-l-orange-500 font-medium'
+                          ? 'bg-orange-50/90 hover:bg-orange-100/80 border-l-4 border-l-orange-500'
                           : boleto.selected
-                          ? 'bg-blue-50/60 hover:bg-blue-50'
+                          ? 'bg-blue-50/70 hover:bg-blue-50'
                           : ''
                       }`}
                     >
                       {/* Checkbox */}
-                      <td className="p-4">
+                      <td className="py-2.5 px-3">
                         <input
                           type="checkbox"
                           checked={boleto.selected}
@@ -1034,149 +1042,155 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                         />
                       </td>
 
-                      {/* Bank Badge */}
-                      <td className="p-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-2">
+                      {/* Bank Badge - Apple Capsule */}
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-xl bg-slate-100/90 border border-slate-200/80 shadow-2xs">
                           <span
-                            className="w-2.5 h-2.5 rounded-full"
+                            className="w-2 h-2 rounded-full shrink-0 shadow-2xs"
                             style={{ backgroundColor: bankInfo.color }}
-                          ></span>
-                          <span className="font-mono text-xs font-bold text-slate-800">
+                          />
+                          <span className="font-mono text-[11px] font-extrabold text-slate-800 tracking-tight">
                             [{boleto.bancoCodigo}]
                           </span>
-                          <span className="text-xs text-slate-500 hidden sm:inline font-medium">
+                          <span className="text-[11px] text-slate-600 font-semibold truncate max-w-[85px]" title={bankInfo.name}>
                             {bankInfo.shortName}
                           </span>
                         </div>
                       </td>
 
-                      {/* Favorecido & Linha Digitável */}
-                      <td className="p-4">
-                        <div className="space-y-1">
+                      {/* Favorecido & Linha Digitável - Apple iPhone Grouped Layout */}
+                      <td className="py-2.5 px-3">
+                        <div className="space-y-1 max-w-[520px]">
+                          {/* Row 1: Favorecido Name + Category Badges */}
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <p className="font-bold text-slate-900 truncate max-w-[280px]">
+                            <p className="font-extrabold text-[12px] text-slate-900 truncate max-w-[280px]" title={boleto.favorecidoNome}>
                               {boleto.favorecidoNome}
                             </p>
 
                             {/* Boleto Type Tag */}
                             {boleto.tipoBoleto === 'ipva_sefaz' && (
-                              <span className="bg-purple-100 text-purple-900 border border-purple-300 text-[10px] font-black px-2 py-0.5 rounded-md">
+                              <span className="bg-purple-100 text-purple-900 border border-purple-200 text-[9px] font-black px-1.5 py-0.5 rounded-md">
                                 IPVA / SEFAZ
                               </span>
                             )}
                             {boleto.tipoBoleto === 'taxa_detran' && (
-                              <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-md">
-                                DETRAN Taxas
+                              <span className="bg-amber-100 text-amber-900 border border-amber-200 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                                DETRAN
                               </span>
                             )}
                             {boleto.tipoBoleto === 'multa_transito' && (
-                              <span className="bg-rose-100 text-rose-900 border border-rose-300 text-[10px] font-black px-2 py-0.5 rounded-md">
-                                Multa Trânsito
+                              <span className="bg-rose-100 text-rose-900 border border-rose-200 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                                Multa
                               </span>
                             )}
                             {boleto.tipoBoleto === 'concessionaria' && (
-                              <span className="bg-teal-100 text-teal-900 border border-teal-300 text-[10px] font-black px-2 py-0.5 rounded-md">
-                                Concessionária
+                              <span className="bg-teal-100 text-teal-900 border border-teal-200 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                                Concessão
                               </span>
                             )}
                             {boleto.tipoBoleto === 'tributo' && (
-                              <span className="bg-indigo-100 text-indigo-900 border border-indigo-300 text-[10px] font-black px-2 py-0.5 rounded-md">
-                                Tributo / DARF
+                              <span className="bg-indigo-100 text-indigo-900 border border-indigo-200 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                                DARF / Trib
                               </span>
                             )}
 
                             {(boleto.valor >= 250000 || valorFinal >= 250000) && (
                               <span
-                                className="inline-flex items-center gap-1 bg-purple-100 text-purple-950 border border-purple-300 text-[10px] font-black px-2.5 py-0.5 rounded-full shrink-0 shadow-2xs animate-pulse"
+                                className="inline-flex items-center gap-1 bg-purple-100 text-purple-950 border border-purple-300 text-[9px] font-black px-2 py-0.5 rounded-full shrink-0 shadow-2xs"
                                 title="Valor igual ou superior a R$ 250.000,00 - Exige autorização de alta alçada"
                               >
-                                <AlertTriangle className="w-3 h-3 text-purple-700" />
-                                Alta Alçada (&gt; 250k)
+                                <AlertTriangle className="w-2.5 h-2.5 text-purple-700" />
+                                &gt; 250k
                               </span>
                             )}
 
                             {dupInfo?.isDuplicate && (
                               <span
-                                className="inline-flex items-center gap-1 bg-orange-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shrink-0 shadow-xs"
+                                className="inline-flex items-center gap-1 bg-orange-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full shrink-0 shadow-2xs"
                                 title={dupInfo.duplicateReason}
                               >
-                                <AlertTriangle className="w-3 h-3 text-white fill-orange-600" />
-                                {dupInfo.duplicateSourceLabel || 'Boleto Duplicado'}
+                                <AlertTriangle className="w-2.5 h-2.5 text-white" />
+                                {dupInfo.duplicateSourceLabel || 'Duplicado'}
                               </span>
                             )}
                           </div>
 
-                          {dupInfo?.isDuplicate && (
-                            <div className="bg-orange-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-xs my-1 border border-orange-600">
-                              <AlertTriangle className="w-4 h-4 text-white shrink-0" />
-                              <span>{dupInfo.duplicateReason}</span>
-                            </div>
-                          )}
-
-                          {/* Vehicle Details (Placa, RENAVAM, Auto de Infração) */}
-                          {(boleto.placa || boleto.renavam || boleto.autoInfracao) && (
-                            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                              {boleto.placa && (
-                                <span className="bg-slate-900 text-amber-300 font-mono font-black px-1.5 py-0.5 rounded border border-slate-700">
-                                  PLACA: {boleto.placa}
-                                </span>
+                          {/* Row 2: Monospace Linha Digitável in a Single Compact Apple Chip */}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLinha(boleto.id, boleto.linhaDigitavel)}
+                              title="Clique para copiar a Linha Digitável"
+                              className="group/btn inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10.5px] font-mono font-bold tracking-tight border border-slate-200/80 transition-all cursor-pointer select-all max-w-full"
+                            >
+                              {copiedLinhaId === boleto.id ? (
+                                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                              ) : (
+                                <Copy className="w-3 h-3 text-slate-400 group-hover/btn:text-slate-700 shrink-0" />
                               )}
-                              {boleto.renavam && (
-                                <span className="bg-slate-100 text-slate-700 font-mono font-bold px-1.5 py-0.5 rounded border border-slate-300">
-                                  RENAVAM: {boleto.renavam}
-                                </span>
-                              )}
-                              {boleto.autoInfracao && (
-                                <span className="bg-rose-50 text-rose-800 font-mono font-bold px-1.5 py-0.5 rounded border border-rose-200">
-                                  AUTO: {boleto.autoInfracao}
-                                </span>
-                              )}
-                            </div>
-                          )}
-
-                          <p className="font-mono text-xs text-slate-500 tracking-tight font-medium">
-                            {formatLinhaDigitavelDisplay(boleto.linhaDigitavel)}
-                          </p>
-                          {boleto.favorecidoCnpjCpf ? (
-                            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                              <span className="bg-slate-100 text-slate-700 font-mono font-bold px-1.5 py-0.5 rounded border border-slate-200">
-                                CNPJ/CPF Beneficiário: {boleto.favorecidoCnpjCpf}
+                              <span className="truncate">
+                                {formatLinhaDigitavelDisplay(boleto.linhaDigitavel)}
                               </span>
-                              {boleto.pagadorCnpjCpf && (
-                                <span className="bg-slate-50 text-slate-500 font-mono text-[10px] px-1.5 py-0.5 rounded border border-slate-200">
-                                  Pagador: {boleto.pagadorCnpjCpf}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1 text-[11px] text-amber-700 font-medium">
-                              <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
-                              <span>CNPJ/CPF Beneficiário não informado (Obrigatório Santander J-52)</span>
-                            </div>
-                          )}
+                            </button>
+                          </div>
+
+                          {/* Row 3: Compact Metadata (CNPJ Beneficiário, Pagador, Placa, Renavam) */}
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                            {boleto.favorecidoCnpjCpf ? (
+                              <span className="bg-slate-100/90 text-slate-700 font-mono font-bold px-1.5 py-0.5 rounded-md border border-slate-200/70" title="CNPJ/CPF do Beneficiário">
+                                Benef: {boleto.favorecidoCnpjCpf}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                Sem CNPJ Beneficiário
+                              </span>
+                            )}
+
+                            {boleto.pagadorCnpjCpf && (
+                              <span className="bg-slate-50 text-slate-500 font-mono px-1.5 py-0.5 rounded-md border border-slate-200/60" title="CNPJ/CPF do Pagador">
+                                Pag: {boleto.pagadorCnpjCpf}
+                              </span>
+                            )}
+
+                            {boleto.placa && (
+                              <span className="bg-slate-900 text-amber-300 font-mono font-black px-1.5 py-0.5 rounded border border-slate-700">
+                                PLACA: {boleto.placa}
+                              </span>
+                            )}
+                            {boleto.renavam && (
+                              <span className="bg-slate-100 text-slate-700 font-mono font-bold px-1.5 py-0.5 rounded border border-slate-300">
+                                RENAVAM: {boleto.renavam}
+                              </span>
+                            )}
+                            {boleto.autoInfracao && (
+                              <span className="bg-rose-50 text-rose-800 font-mono font-bold px-1.5 py-0.5 rounded border border-rose-200">
+                                AUTO: {boleto.autoInfracao}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
 
                       {/* Seu Número / Ref */}
-                      <td className="p-4 whitespace-nowrap">
-                        <span className="bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-mono font-bold border border-slate-200">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <span className="bg-slate-100/90 text-slate-700 text-[11px] px-2 py-0.5 rounded-lg font-mono font-bold border border-slate-200/80">
                           {boleto.seuNumero || '--'}
                         </span>
                       </td>
 
-                      {/* Vencimento e Data de Pagamento */}
-                      <td className="p-4 whitespace-nowrap font-mono text-xs">
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5 text-slate-800 font-bold">
-                            <span className="text-[10px] text-slate-400 font-sans font-bold uppercase">Venc:</span>
+                      {/* Vencimento e Data de Pagamento - Apple Calendar Widget Capsule */}
+                      <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px]">
+                        <div className="flex flex-col gap-0.5 bg-slate-50/80 border border-slate-200/70 p-1.5 rounded-xl min-w-[105px]">
+                          <div className="flex items-center justify-between gap-1 text-slate-700 font-bold">
+                            <span className="text-[9px] text-slate-400 font-sans font-bold uppercase">Venc:</span>
                             <span>{formatDateBR(boleto.dataVencimento)}</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-blue-600 font-sans font-bold uppercase">Pgto:</span>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[9px] text-blue-600 font-sans font-bold uppercase">Pgto:</span>
                             <span
-                              className={`font-bold ${
+                              className={`font-extrabold ${
                                 boleto.dataPagamento && boleto.dataPagamento !== boleto.dataVencimento
-                                  ? 'text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200'
+                                  ? 'text-blue-800 bg-blue-100/80 px-1 rounded'
                                   : 'text-slate-600'
                               }`}
                             >
@@ -1186,93 +1200,75 @@ export const BoletoTable: React.FC<BoletoTableProps> = ({
                         </div>
                       </td>
 
-                      {/* Valor */}
-                      <td className="p-4 text-right whitespace-nowrap font-mono">
-                        <p className="text-sm font-black text-slate-900">{formatCurrencyBRL(valorFinal)}</p>
+                      {/* Valor - Apple Pay Balance Style */}
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono">
+                        <p className="text-[13px] font-black text-slate-900 tracking-tight">{formatCurrencyBRL(valorFinal)}</p>
 
                         {((boleto.desconto && boleto.desconto > 0) || (boleto.jurosMulta && boleto.jurosMulta > 0)) && (
-                          <p className="text-[10px] text-slate-400 line-through">
+                          <p className="text-[9px] text-slate-400 line-through">
                             Bruto: {formatCurrencyBRL(boleto.valor)}
                           </p>
                         )}
 
                         {boleto.desconto && boleto.desconto > 0 ? (
-                          <p className="text-[10px] font-bold text-emerald-600 flex items-center justify-end gap-1 mt-0.5">
-                            <TrendingDown className="w-3 h-3" />
+                          <p className="text-[9.5px] font-bold text-emerald-600 flex items-center justify-end gap-0.5 mt-0.5">
+                            <TrendingDown className="w-2.5 h-2.5" />
                             <span>Desc: -{formatCurrencyBRL(boleto.desconto)}</span>
                           </p>
                         ) : null}
 
                         {boleto.jurosMulta && boleto.jurosMulta > 0 ? (
-                          <p className="text-[10px] font-bold text-amber-600 flex items-center justify-end gap-1 mt-0.5">
-                            <TrendingUp className="w-3 h-3" />
+                          <p className="text-[9.5px] font-bold text-amber-600 flex items-center justify-end gap-0.5 mt-0.5">
+                            <TrendingUp className="w-2.5 h-2.5" />
                             <span>Juros: +{formatCurrencyBRL(boleto.jurosMulta)}</span>
                           </p>
                         ) : null}
                       </td>
 
                       {/* Validation Status & Alert Badges */}
-                      <td className="p-4 text-center whitespace-nowrap">
+                      <td className="py-2.5 px-2 text-center whitespace-nowrap">
                         <div className="flex flex-col items-center gap-1">
                           {boleto.isValid ? (
-                            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                              <CheckCircle className="w-3 h-3 text-emerald-600" /> Válido
+                            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                              <CheckCircle className="w-2.5 h-2.5 text-emerald-600" /> Válido
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                              <AlertCircle className="w-3 h-3 text-rose-600" /> Inválido
+                            <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200/80 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                              <AlertCircle className="w-2.5 h-2.5 text-rose-600" /> Inválido
                             </span>
                           )}
-
-                          {boleto.desconto && boleto.desconto > 0 ? (
-                            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                              <TrendingDown className="w-3 h-3 text-emerald-600" /> Desconto
-                            </span>
-                          ) : null}
-
-                          {boleto.jurosMulta && boleto.jurosMulta > 0 ? (
-                            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                              <TrendingUp className="w-3 h-3 text-amber-600" /> Juros/Multa
-                            </span>
-                          ) : null}
 
                           {boleto.dataVencimento < todayStr ? (
-                            <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                              <Clock className="w-3 h-3 text-rose-600" /> Vencido
+                            <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-800 border border-rose-200 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                              <Clock className="w-2.5 h-2.5 text-rose-600" /> Vencido
                             </span>
                           ) : null}
-
-                          {(boleto.valor >= 250000 || valorFinal >= 250000) && (
-                            <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-950 border border-purple-300 text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs">
-                              <AlertTriangle className="w-3 h-3 text-purple-700" /> &gt; R$ 250k
-                            </span>
-                          )}
                         </div>
                       </td>
 
                       {/* Actions */}
-                      <td className="p-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end space-x-1">
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end space-x-0.5">
                           <button
                             onClick={() => onDuplicateBoleto(boleto)}
                             title="Duplicar boleto"
                             className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                           >
-                            <Copy className="w-4 h-4" />
+                            <Copy className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => onEditBoleto(boleto)}
                             title="Editar boleto"
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => onDeleteBoleto(boleto.id)}
                             title="Excluir boleto"
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>

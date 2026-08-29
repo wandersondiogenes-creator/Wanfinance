@@ -1281,17 +1281,17 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-black uppercase tracking-wider text-[10px]">
-                          <th className="p-3">Arquivo</th>
-                          <th className="p-3">Banco / Emissor</th>
-                          <th className="p-3">Status</th>
-                          <th className="p-3 text-center">Progresso</th>
-                          <th className="p-3">Layout Memória</th>
-                          <th className="p-3 text-right">Valor Extraído</th>
-                          <th className="p-3 text-center">Ações</th>
+                        <tr className="bg-slate-50/90 border-b border-slate-200/80 text-slate-600 font-black uppercase tracking-wider text-[10px]">
+                          <th className="py-2.5 px-3">Arquivo</th>
+                          <th className="py-2.5 px-3">Banco / Emissor</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3 text-center">Progresso</th>
+                          <th className="py-2.5 px-3">Layout Memória</th>
+                          <th className="py-2.5 px-3 text-right">Valor Extraído</th>
+                          <th className="py-2.5 px-3 text-center">Ações</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
+                      <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
                         {items.map((item, idx) => {
                           const bankCode = item.data?.bancoCodigo || '000';
                           const bankInfo = getBankInfo(bankCode);
@@ -1309,105 +1309,109 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                               key={item.id}
                               className={`transition-colors ${
                                 dupInfo?.isDuplicate
-                                  ? 'bg-orange-100/90 hover:bg-orange-200/90 border-l-4 border-l-orange-500 font-bold'
-                                  : 'hover:bg-slate-50'
+                                  ? 'bg-orange-50/90 hover:bg-orange-100/90 border-l-4 border-l-orange-500 font-bold'
+                                  : 'hover:bg-slate-50/80'
                               }`}
                             >
-                              <td className="p-3 font-mono font-bold text-slate-900 flex items-center gap-2">
-                                <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                              <td className="py-2 px-3 font-mono font-bold text-slate-900 flex items-center gap-2">
+                                <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                                 <span className="truncate max-w-[180px]" title={item.fileName}>
                                   {item.fileName}
                                 </span>
                               </td>
-                              <td className="p-3 font-semibold">
+                              <td className="py-2 px-3 font-semibold">
                                 {item.data ? (
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="bg-blue-100 text-blue-900 font-mono text-[10px] px-1.5 py-0.5 rounded font-bold">
-                                      {item.data.bancoCodigo}
+                                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-100/90 border border-slate-200/80">
+                                    <span
+                                      className="w-2 h-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: bankInfo.color }}
+                                    />
+                                    <span className="font-mono text-[10px] font-bold text-slate-800">
+                                      [{item.data.bancoCodigo}]
                                     </span>
-                                    <span>{item.data.bancoNome}</span>
-                                  </span>
+                                    <span className="text-[11px] text-slate-600 truncate max-w-[100px]">{item.data.bancoNome}</span>
+                                  </div>
                                 ) : (
-                                  <span className="text-slate-400 italic">Identificando...</span>
+                                  <span className="text-slate-400 italic text-[11px]">Identificando...</span>
                                 )}
                               </td>
-                              <td className="p-3">
+                              <td className="py-2 px-3">
                                 <div className="flex flex-col items-start gap-1">
                                   {item.status === 'loading' && (
-                                    <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 font-bold text-[11px]">
-                                      <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                    <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 font-bold text-[10px]">
+                                      <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-600" />
                                       <span>{item.stepMessage.split('—')[1] || 'Processando'}</span>
                                     </span>
                                   )}
                                   {item.status === 'success' && (
-                                    <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-[11px]">
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold text-[10px]">
+                                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
                                       <span>Concluído</span>
                                     </span>
                                   )}
                                   {item.status === 'partial' && (
-                                    <span className="inline-flex items-center gap-1 text-amber-900 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-bold text-[11px]">
-                                      <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                    <span className="inline-flex items-center gap-1 text-amber-900 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-bold text-[10px]">
+                                      <AlertTriangle className="w-2.5 h-2.5 text-amber-600" />
                                       <span>Parcial</span>
                                     </span>
                                   )}
                                   {item.status === 'error' && (
-                                    <span className="inline-flex items-center gap-1 text-red-800 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 font-bold text-[11px]">
-                                      <AlertCircle className="w-3 h-3 text-red-600" />
+                                    <span className="inline-flex items-center gap-1 text-red-800 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 font-bold text-[10px]">
+                                      <AlertCircle className="w-2.5 h-2.5 text-red-600" />
                                       <span>Erro</span>
                                     </span>
                                   )}
                                   {dupInfo?.isDuplicate && (
-                                    <span className="inline-flex items-center gap-1 text-white bg-orange-500 font-black px-2 py-0.5 rounded-full text-[10px] shadow-xs" title={dupInfo.duplicateReason}>
-                                      <AlertTriangle className="w-3 h-3 text-white" />
+                                    <span className="inline-flex items-center gap-1 text-white bg-orange-500 font-black px-2 py-0.5 rounded-full text-[9px] shadow-2xs" title={dupInfo.duplicateReason}>
+                                      <AlertTriangle className="w-2.5 h-2.5 text-white" />
                                       <span>{dupInfo.duplicateSourceLabel || 'Duplicado'}</span>
                                     </span>
                                   )}
                                   {item.data?.valor && item.data.valor >= 250000 ? (
-                                    <span className="inline-flex items-center gap-1 text-purple-950 bg-purple-100 border border-purple-300 font-extrabold px-2 py-0.5 rounded-full text-[10px] shadow-2xs">
-                                      <AlertTriangle className="w-3 h-3 text-purple-700" />
-                                      <span>&gt; R$ 250k</span>
+                                    <span className="inline-flex items-center gap-1 text-purple-950 bg-purple-100 border border-purple-300 font-extrabold px-2 py-0.5 rounded-full text-[9px] shadow-2xs">
+                                      <AlertTriangle className="w-2.5 h-2.5 text-purple-700" />
+                                      <span>&gt; 250k</span>
                                     </span>
                                   ) : null}
                                 </div>
                               </td>
-                              <td className="p-3 text-center">
+                              <td className="py-2 px-3 text-center">
                                 <div className="flex flex-col items-center">
-                                  <span className="font-mono text-[11px] font-bold text-slate-800">
-                                    Arquivo {idx + 1} de {totalFiles} — {item.progress}%
+                                  <span className="font-mono text-[10.5px] font-bold text-slate-800">
+                                    {item.progress}%
                                   </span>
-                                  <div className="w-20 bg-slate-200 rounded-full h-1.5 mt-1 overflow-hidden">
+                                  <div className="w-16 bg-slate-200 rounded-full h-1 mt-1 overflow-hidden">
                                     <div
-                                      className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                                      className="bg-blue-600 h-1 rounded-full transition-all duration-300"
                                       style={{ width: `${item.progress}%` }}
                                     />
                                   </div>
                                 </div>
                               </td>
-                              <td className="p-3">
+                              <td className="py-2 px-3">
                                 {item.layoutRecognized ? (
-                                  <span className="text-[10px] font-extrabold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 w-fit">
-                                    <Zap className="w-3 h-3 text-indigo-600 fill-indigo-100" />
+                                  <span className="text-[9.5px] font-extrabold text-indigo-900 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md flex items-center gap-1 w-fit">
+                                    <Zap className="w-2.5 h-2.5 text-indigo-600 fill-indigo-100" />
                                     <span>Conhecido</span>
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-extrabold text-blue-900 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md flex items-center gap-1 w-fit">
-                                    <Brain className="w-3 h-3 text-blue-600" />
-                                    <span>Novo Aprendido</span>
+                                  <span className="text-[9.5px] font-extrabold text-blue-900 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-md flex items-center gap-1 w-fit">
+                                    <Brain className="w-2.5 h-2.5 text-blue-600" />
+                                    <span>Aprendido</span>
                                   </span>
                                 )}
                               </td>
-                              <td className="p-3 text-right font-mono font-black text-slate-900">
+                              <td className="py-2 px-3 text-right font-mono font-black text-slate-900 text-[12px]">
                                 {item.data?.valor ? formatCurrencyBRL(item.data.valor) : '—'}
                               </td>
-                              <td className="p-3 text-center">
+                              <td className="py-2 px-3 text-center">
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveItem(item.id)}
-                                  className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100"
+                                  className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 transition-colors"
                                   title="Remover este boleto"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </td>
                             </tr>
