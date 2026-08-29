@@ -28,6 +28,7 @@ import {
 
 export type AppTabType =
   | 'boletos'
+  | 'extracao_inteligente'
   | 'novo_boleto'
   | 'empresa'
   | 'historico'
@@ -96,6 +97,14 @@ export const AppleSidebar: React.FC<AppleSidebarProps> = ({
       icon: FileText,
       badge: totalBoletosCount > 0 ? totalBoletosCount : undefined,
       badgeColor: 'bg-blue-500 text-white',
+      category: 'Principal',
+    },
+    {
+      id: 'extracao_inteligente' as AppTabType,
+      label: 'Extração Inteligente',
+      icon: Sparkles,
+      badge: 'NOVA ABA',
+      badgeColor: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold',
       category: 'Principal',
     },
     {

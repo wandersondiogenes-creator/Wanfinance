@@ -37,6 +37,7 @@ import { GoogleSheetsPanel } from './components/GoogleSheetsPanel';
 import { BankPaymentApiPanel } from './components/BankPaymentApiPanel';
 import { LearnedLayoutsAdminPanel } from './components/LearnedLayoutsAdminPanel';
 import { ExtratoBancarioMainPanel } from './components/extrato/ExtratoBancarioMainPanel';
+import { SmartExtractionPanel } from './components/smartExtractor/SmartExtractionPanel';
 import { getBoletosDuplicateMap } from './utils/duplicateDetector';
 import { validateAndClampPaymentDate } from './utils/boletoParser';
 import { CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
@@ -91,9 +92,7 @@ export default function App() {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<
-    'boletos' | 'novo_boleto' | 'empresa' | 'historico' | 'validador' | 'sheets' | 'api_pagamentos' | 'modelos_aprendidos' | 'extratos_bancarios'
-  >('boletos');
+  const [activeTab, setActiveTab] = useState<AppTabType>('boletos');
 
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -392,6 +391,7 @@ export default function App() {
   // Tab Title Map for Apple Top Navigation Bar
   const tabTitles: Record<AppTabType, { title: string; subtitle: string }> = {
     boletos: { title: 'Boletos a Pagar', subtitle: 'Lote de Pagamentos' },
+    extracao_inteligente: { title: 'Extração Inteligente Multi-Documentos', subtitle: 'Novo Módulo Especializado & Auditoria de Validação' },
     novo_boleto: { title: 'Importar / Inserir Boletos', subtitle: 'Entrada de Dados' },
     empresa: { title: 'Empresas & Contas Bancárias', subtitle: 'Configurações de Pagador' },
     historico: { title: 'Remessas Geradas', subtitle: 'Histórico & Arquivos CNAB' },
@@ -532,21 +532,41 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                        {/* Option 1: PDF Extraction via IA */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                        {/* Option 0: Nova Aba Extração Inteligente */}
                         <div
-                          onClick={() => setIsPDFModalOpen(true)}
-                          className="bg-white dark:bg-[#2c2c2e] border border-blue-500/20 hover:border-blue-500/50 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3 apple-card-hover"
+                          onClick={() => setActiveTab('extracao_inteligente')}
+                          className="bg-gradient-to-b from-blue-500/10 to-indigo-500/10 dark:from-blue-500/15 dark:to-indigo-500/15 border-2 border-blue-500/50 hover:border-blue-500 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-lg space-y-3 apple-card-hover relative"
                         >
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold shadow-sm shadow-blue-500/20">
+                          <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider shadow-xs">
+                            Nova Aba
+                          </div>
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold shadow-sm shadow-blue-500/30">
                             <Sparkles className="w-5 h-5 text-amber-300" />
                           </div>
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">1. Extrair PDF por IA</h3>
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">Extração Inteligente Multi-Doc</h3>
                           <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                            Envie múltiplos arquivos PDF ou fotos de boletos. A IA analisa e preenche todos os dados automaticamente.
+                            Módulo avançado com seleção de categoria (Montadoras/FIDC, DETRAN, DARF, GRU, GNRE) e auditoria visual de validação.
                           </p>
-                          <button className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/15 px-3 py-1.5 rounded-xl transition-colors">
-                            Abrir Extrator PDF →
+                          <button className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-xl transition-colors shadow-xs">
+                            Acessar Nova Aba →
+                          </button>
+                        </div>
+
+                        {/* Option 1: PDF Extraction Tradicional */}
+                        <div
+                          onClick={() => setIsPDFModalOpen(true)}
+                          className="bg-white dark:bg-[#2c2c2e] border border-black/[0.08] dark:border-white/[0.08] hover:border-blue-500/50 rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md space-y-3 apple-card-hover"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-black/[0.05] dark:bg-white/[0.08] text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold">
+                            <Sparkles className="w-5 h-5 text-blue-500" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">Extrator PDF Tradicional</h3>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                            Extrator rápido clássico em janela modal. Mantido 100% intacto para compatibilidade total.
+                          </p>
+                          <button className="text-xs font-semibold text-slate-700 dark:text-slate-300 bg-black/[0.04] dark:bg-white/[0.06] px-3 py-1.5 rounded-xl transition-colors">
+                            Abrir Extrator Clássico →
                           </button>
                         </div>
 
@@ -635,6 +655,20 @@ export default function App() {
                 )}
               </div>
             </div>
+          )}
+
+          {activeTab === 'extracao_inteligente' && (
+            <SmartExtractionPanel
+              company={activeCompanySettings}
+              companies={companies}
+              onImportBoletosToMainList={(newBoletos) => {
+                handleImportBatchBoletos(newBoletos);
+                setActiveTab('boletos');
+              }}
+              onOpenTraditionalExtractor={() => setIsPDFModalOpen(true)}
+              onShowToast={(msg, type) => showToast(msg, type)}
+              onSaveToHistory={handleSaveToHistory}
+            />
           )}
 
           {activeTab === 'empresa' && (

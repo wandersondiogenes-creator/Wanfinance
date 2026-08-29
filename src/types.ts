@@ -34,6 +34,7 @@ export interface BoletoItem {
   multa?: number;
   tipoBoleto?: BoletoType;
   tipoDocumento?: string; // 'boleto', 'darf', 'gnre', 'carnet', 'tributo'
+  chassi?: string;
   placa?: string;
   renavam?: string;
   autoInfracao?: string;
