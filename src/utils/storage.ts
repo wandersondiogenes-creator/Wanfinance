@@ -114,33 +114,55 @@ export function loadCompanyProfiles(): CompanyProfile[] {
         // First deduplicate parsed by id and CNPJ
         const cleanParsed = sanitizeAndDeduplicateCompanies(parsed);
 
-        // Merge official Santander Pagfor convênio and station codes into parsed profiles
+        // Merge official Santander and Banco do Brasil bank profiles into parsed profiles
         const merged = cleanParsed.map((comp) => {
           const defaultMatch = DEFAULT_COMPANIES.find(
             (dc) => (dc.cnpjCpf || '').replace(/\D/g, '') === (comp.cnpjCpf || '').replace(/\D/g, '') || dc.id === comp.id
           );
           if (!defaultMatch) return comp;
 
-          // Merge Santander bank account if present or add if missing
+          // Merge or update Santander (033)
           const defaultSantander = defaultMatch.bancos.find((b) => b.bancoCodigo === '033');
-          if (!defaultSantander) return comp;
+          if (defaultSantander) {
+            const existingSantanderIdx = comp.bancos.findIndex((b) => b.bancoCodigo === '033');
+            if (existingSantanderIdx >= 0) {
+              const existingSantander = comp.bancos[existingSantanderIdx];
+              comp.bancos[existingSantanderIdx] = {
+                ...existingSantander,
+                agencia: existingSantander.agencia || defaultSantander.agencia || '',
+                conta: existingSantander.conta || defaultSantander.conta || '',
+                contaDV: existingSantander.contaDV || defaultSantander.contaDV || '0',
+                convenio: defaultSantander.convenio || existingSantander.convenio || '',
+                codigoTransmissao: defaultSantander.codigoTransmissao || existingSantander.codigoTransmissao || '',
+                codigoEstacao: defaultSantander.codigoEstacao || existingSantander.codigoEstacao || '',
+                apelido: defaultSantander.apelido || existingSantander.apelido || 'Santander',
+                layoutVersaoLote: '030',
+              };
+            } else {
+              comp.bancos.push(defaultSantander);
+            }
+          }
 
-          const existingSantanderIdx = comp.bancos.findIndex((b) => b.bancoCodigo === '033');
-          if (existingSantanderIdx >= 0) {
-            const existingSantander = comp.bancos[existingSantanderIdx];
-            comp.bancos[existingSantanderIdx] = {
-              ...existingSantander,
-              agencia: existingSantander.agencia || defaultSantander.agencia || '',
-              conta: existingSantander.conta || defaultSantander.conta || '',
-              contaDV: existingSantander.contaDV || defaultSantander.contaDV || '0',
-              convenio: defaultSantander.convenio || existingSantander.convenio || '',
-              codigoTransmissao: defaultSantander.codigoTransmissao || existingSantander.codigoTransmissao || '',
-              codigoEstacao: defaultSantander.codigoEstacao || existingSantander.codigoEstacao || '',
-              apelido: defaultSantander.apelido || existingSantander.apelido || 'Santander',
-              layoutVersaoLote: '030',
-            };
-          } else {
-            comp.bancos.push(defaultSantander);
+          // Merge or update Banco do Brasil (001)
+          const defaultBB = defaultMatch.bancos.find((b) => b.bancoCodigo === '001');
+          if (defaultBB) {
+            const existingBBIdx = comp.bancos.findIndex((b) => b.bancoCodigo === '001');
+            if (existingBBIdx >= 0) {
+              const existingBB = comp.bancos[existingBBIdx];
+              comp.bancos[existingBBIdx] = {
+                ...existingBB,
+                bancoNome: 'Banco do Brasil S.A.',
+                agencia: existingBB.agencia || defaultBB.agencia || '3434',
+                conta: existingBB.conta || defaultBB.conta || '6931',
+                contaDV: existingBB.contaDV || defaultBB.contaDV || '0',
+                convenio: defaultBB.convenio || existingBB.convenio || '',
+                codigoTransmissao: defaultBB.codigoTransmissao || existingBB.codigoTransmissao || '',
+                apelido: defaultBB.apelido || existingBB.apelido || `Banco do Brasil - ${defaultBB.convenio}`,
+                layoutVersaoLote: '000',
+              };
+            } else {
+              comp.bancos.push(defaultBB);
+            }
           }
 
           return comp;

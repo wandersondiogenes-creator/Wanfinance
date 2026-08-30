@@ -66,50 +66,71 @@ export function generateCNAB240(
   const agenciaContaDV = ' ';
 
   const isSantander = bancoCodigo === '033';
+  const isBancoDoBrasil = bancoCodigo === '001';
 
-  const convenio = isSantander && company.convenio && company.convenio.length < 20
-    ? `0033${padLeftZeros(company.agencia, 4)}${padLeftZeros(company.convenio || company.codigoTransmissao || '0', 12)}`
-    : padRightSpaces(company.convenio || '', 20);
+  // Convênio field formatting according to bank specification
+  let convenio = padRightSpaces(company.convenio || '', 20);
+  if (isSantander && company.convenio && company.convenio.length < 20) {
+    convenio = `0033${padLeftZeros(company.agencia, 4)}${padLeftZeros(company.convenio || company.codigoTransmissao || '0', 12)}`;
+  } else if (isBancoDoBrasil) {
+    // Banco do Brasil CNAB 240 (Particularidades BB 2026 - Posições 33 a 52):
+    // BB1 (33-41, 9 num): Nº do Convênio de pagamento completando com zeros à esquerda
+    // BB2 (42-45, 4 num): Código fixo '0126'
+    // BB3 (46-50, 5 alfa): Uso Reservado do Banco = 5 brancos
+    // BB4 (51-52, 2 alfa): '  ' (produção) ou 'TS' (teste)
+    const bbConvenioNum = padLeftZeros(company.convenio || '0', 9);
+    convenio = `${bbConvenioNum}0126     `; // 9 + 4 + 5 + 2 = 20 caracteres
+  }
 
   const empresaNome = padRightSpaces(company.razaoSocial, 30);
-  const bancoNome = isSantander ? padRightSpaces('Banco Santander', 30) : padRightSpaces(company.bancoNome, 30);
+  let bancoNome = padRightSpaces(company.bancoNome, 30);
+  if (isSantander) {
+    bancoNome = padRightSpaces('Banco Santander', 30);
+  } else if (isBancoDoBrasil) {
+    bancoNome = padRightSpaces('BANCO DO BRASIL SA', 30);
+  }
   
-  // Santander Pagfor V11.7: Posições 158-163 (NSA - Número Sequencial do Arquivo).
-  // Faixa de 1 a 10 (000001 a 000010) é tratada pelo banco exclusivamente como Teste/Homologação.
-  // Para seguir em Produção, a sequência deve iniciar obrigatoriamente a partir de 11 em diante (000011, 000012, etc.).
-  const nsaRaw = typeof company.nsa === 'number' ? company.nsa : parseInt(String(company.nsa || '11'), 10) || 11;
+  // NSA - Número Sequencial do Arquivo
+  const nsaRaw = typeof company.nsa === 'number' ? company.nsa : parseInt(String(company.nsa || '1'), 10) || 1;
   const effectiveNsa = (isSantander && nsaRaw < 11) ? 11 : nsaRaw;
   const nsa = padLeftZeros(effectiveNsa, 6);
 
   // 1. HEADER DE ARQUIVO (Tipo Registro 0)
   const headerArquivoParts = [
-    bancoCodigo,                           // 001-003 (3) Banco
+    bancoCodigo,                           // 001-003 (3) Banco (001 = BB, 033 = Santander)
     '0000',                                // 004-007 (4) Lote de serviço
     '0',                                   // 008-008 (1) Tipo de registro = 0
     '         ',                           // 009-017 (9) Reservado FEBRABAN / Brancos
     tipoInscricaoCompany,                  // 018-018 (1) Tipo inscrição
     inscricaoCompany,                      // 019-032 (14) CNPJ/CPF Empresa
-    convenio,                              // 033-052 (20) Convênio no banco (BBBBAAAACCCCCCCCCCCC p/ Santander)
+    convenio,                              // 033-052 (20) Convênio no banco (BB: NNNNNNNNN0126     )
     agencia,                               // 053-057 (5) Agência
     agenciaDV,                             // 058-058 (1) DV Agência
     conta,                                 // 059-070 (12) Conta Corrente
     contaDV,                               // 071-071 (1) DV Conta
-    agenciaContaDV,                        // 072-072 (1) DV Ag/Conta
+    isBancoDoBrasil ? '0' : agenciaContaDV, // 072-072 (1) DV Ag/Conta ('0' para BB)
     empresaNome,                           // 073-102 (30) Nome da Empresa
-    bancoNome,                             // 103-132 (30) Nome do Banco
+    bancoNome,                             // 103-132 (30) Nome do Banco ('BANCO DO BRASIL SA')
     padRightSpaces('', 10),                // 133-142 (10) Reservado FEBRABAN
     '1',                                   // 143-143 (1) Código Remessa = 1
     dataGeracao,                           // 144-151 (8) Data Geração (DDMMAAAA)
     horaGeracao,                           // 152-157 (6) Hora Geração (HHMMSS)
     nsa,                                   // 158-163 (6) NSA Sequencial Arquivo
-    isSantander ? '060' : '103',           // 164-166 (3) Versão Layout Arquivo ('060' Santander)
-    isSantander ? '01600' : '01600',       // 167-171 (5) Densidade Gravação
-    padRightSpaces('', 20),                // 172-191 (20) Reservado Banco
+    isSantander ? '060' : (isBancoDoBrasil ? '000' : '103'), // 164-166 (3) Versão Layout Arquivo ('000' BB)
+    isSantander ? '01600' : (isBancoDoBrasil ? '00000' : '01600'), // 167-171 (5) Densidade Gravação ('00000' BB)
+    padRightSpaces('', 19),                // 172-190 (19) Reservado Banco (19 brancos para BB)
     isSantander && (company.codigoEstacao || company.codigoTransmissao)
       ? padRightSpaces((company.codigoEstacao || company.codigoTransmissao || '').trim(), 20)
-      : padRightSpaces('', 20),            // 192-211 (20) Reservado Empresa / Código Estação
-    padRightSpaces('', 19),                // 212-230 (19) Filler
-    padRightSpaces('', 10),                // 231-240 (10) Ocorrências para Retorno
+      : padRightSpaces('', 20),            // 191-210/192-211 (20) Reservado Empresa
+    padRightSpaces('', isBancoDoBrasil ? 11 : 19), // 212-222 (11) Filler / FEBRABAN
+    ...(isBancoDoBrasil
+      ? [
+          '   ',                           // 223-225 (3) Cobrança sem papel
+          '000',                           // 226-228 (3) Uso exclusivo VANS
+          '00',                            // 229-230 (2) Tipo de Serviço
+        ]
+      : []),
+    isBancoDoBrasil ? '0000000000' : padRightSpaces('', 10), // 231-240 (10) Ocorrências para Retorno ('0000000000' BB)
   ];
 
   const headerArquivo = headerArquivoParts.join('').substring(0, 240).padEnd(240, ' ');
@@ -119,60 +140,59 @@ export function generateCNAB240(
     type: 'HEADER_ARQUIVO',
     lineNumber: 1,
     content: headerArquivo,
-    description: isSantander
+    description: isBancoDoBrasil
+      ? 'Header de Arquivo Banco do Brasil (CNAB 240 - Particularidades BB 2026)'
+      : isSantander
       ? 'Header de Arquivo Santander (Versão 060) - Identificação da empresa pagadora'
       : 'Header de Arquivo - Identificação da empresa pagadora e do banco',
     fields: [
-      { pos: '001-003', name: 'Banco', value: bancoCodigo, description: 'Código do Banco Pagador (033 = Santander)' },
+      { pos: '001-003', name: 'Banco', value: bancoCodigo, description: isBancoDoBrasil ? '001 = Banco do Brasil' : isSantander ? '033 = Santander' : 'Código do Banco Pagador' },
       { pos: '019-032', name: 'CNPJ/CPF', value: inscricaoCompany, description: 'Documento da Empresa' },
-      { pos: '033-052', name: 'Convênio Pagfor', value: convenio.trim(), description: isSantander ? 'Convênio Santander (BBBBAAAACCCCCCCCCCCC)' : 'Código do Convênio' },
-      ...(isSantander && (company.codigoEstacao || company.codigoTransmissao)
-        ? [{ pos: '192-211', name: 'Cód. Estação', value: (company.codigoEstacao || company.codigoTransmissao || '').trim(), description: 'Código da Estação Santander Pagfor' }]
-        : []),
+      { pos: '033-052', name: 'Convênio BB/Banco', value: convenio.trim(), description: isBancoDoBrasil ? 'Convênio BB (Nº Convênio 9d + 0126 + 7 espaços)' : isSantander ? 'Convênio Santander (BBBBAAAACCCCCCCCCCCC)' : 'Código do Convênio' },
+      { pos: '053-058', name: 'Agência', value: `${agencia}-${agenciaDV}`, description: 'Agência Mantenedora' },
+      { pos: '059-071', name: 'Conta Corrente', value: `${conta}-${contaDV}`, description: 'Conta Corrente da Empresa' },
       { pos: '073-102', name: 'Empresa', value: empresaNome.trim(), description: 'Razão Social da Empresa' },
+      { pos: '103-132', name: 'Nome do Banco', value: bancoNome.trim(), description: 'Banco do Brasil SA' },
       { pos: '144-151', name: 'Data Geração', value: dataGeracao, description: 'Data do Arquivo' },
-      {
-        pos: '158-163',
-        name: 'NSA (Sequencial)',
-        value: nsa,
-        description: isSantander
-          ? `Número Sequencial do Arquivo (Produção Santander: ${nsa} - Faixa Produção ≥ 11)`
-          : `Número Sequencial do Arquivo (NSA #${effectiveNsa})`,
-      },
-      { pos: '164-166', name: 'Versão Layout', value: isSantander ? '060' : '103', description: 'Versão do Layout do Arquivo' },
+      { pos: '158-163', name: 'NSA (Sequencial)', value: nsa, description: `Número Sequencial do Arquivo (NSA #${effectiveNsa})` },
+      { pos: '164-166', name: 'Versão Layout', value: isBancoDoBrasil ? '000' : (isSantander ? '060' : '103'), description: 'Versão do Layout do Arquivo' },
     ],
   });
 
   // 2. HEADER DE LOTE (Tipo Registro 1 - Pagamento de Títulos / Boletos)
   const loteServico = '0001';
+  const tipoServicoLote = isBancoDoBrasil ? '98' : (isSantander ? '20' : '30'); // '98' = Pagamentos Diversos (BB p. 9), '20' = Fornecedor
+  const formaLancamentoLote = '31'; // '31' = Boleto de Outros Bancos / Pagamentos Gerais de Títulos
+  const versaoLayoutLote = isBancoDoBrasil ? '000' : (isSantander ? '030' : (company.layoutVersaoLote || '046'));
+
   const headerLoteParts = [
     bancoCodigo,                           // 001-003 (3) Banco
     loteServico,                           // 004-007 (4) Lote = 0001
     '1',                                   // 008-008 (1) Tipo de registro = 1
     'C',                                   // 009-009 (1) Operação = C (Crédito)
-    isSantander ? '20' : '30',             // 010-011 (2) Serviço (20 = Pagamento Fornecedor Santander)
-    '31',                                  // 012-013 (2) Forma Lançamento = 31 (Boletos Outros Bancos/Geral)
-    isSantander ? '030' : (company.layoutVersaoLote || '046'), // 014-016 (3) Versão Layout Lote ('030' Santander)
+    tipoServicoLote,                       // 010-011 (2) Tipo do Serviço (BB '98', Santander '20')
+    formaLancamentoLote,                   // 012-013 (2) Forma Lançamento = 31 (Boletos/Títulos)
+    versaoLayoutLote,                      // 014-016 (3) Versão Layout Lote ('000' BB, '030' Santander)
     ' ',                                   // 017-017 (1) Reservado FEBRABAN / Branco
     tipoInscricaoCompany,                  // 018-018 (1) Tipo inscrição
     inscricaoCompany,                      // 019-032 (14) CNPJ/CPF Empresa
-    convenio,                              // 033-052 (20) Convênio
+    convenio,                              // 033-052 (20) Convênio BB
     agencia,                               // 053-057 (5) Agência
     agenciaDV,                             // 058-058 (1) DV Agência
     conta,                                 // 059-070 (12) Conta Corrente
     contaDV,                               // 071-071 (1) DV Conta
-    agenciaContaDV,                        // 072-072 (1) DV Ag/Conta
+    isBancoDoBrasil ? '0' : agenciaContaDV, // 072-072 (1) DV Ag/Conta ('0' BB)
     empresaNome,                           // 073-102 (30) Nome da Empresa
-    padRightSpaces('PAGAMENTO A FORNECEDORES', 40), // 103-142 (40) Mensagem
+    padRightSpaces(isBancoDoBrasil ? '' : 'PAGAMENTO A FORNECEDORES', 40), // 103-142 (40) Mensagem (BB: exclusivo do banco -> brancos)
     padRightSpaces(company.logradouro || 'RUA PRINCIPAL', 30), // 143-172 (30) Logradouro
     padLeftZeros(company.numero || '100', 5), // 173-177 (5) Número
     padRightSpaces(company.complemento || '', 15), // 178-192 (15) Complemento
-    padRightSpaces(company.cidade || 'SAO PAULO', 20), // 193-212 (20) Cidade
-    padLeftZeros(company.cep?.substring(0, 5) || '01000', 5), // 213-217 (5) CEP
+    padRightSpaces(company.cidade || 'RECIFE', 20), // 193-212 (20) Cidade
+    padLeftZeros(company.cep?.substring(0, 5) || '51170', 5), // 213-217 (5) CEP
     padLeftZeros(company.cep?.substring(5) || '000', 3), // 218-220 (3) Complemento CEP
-    padRightSpaces(company.uf || 'SP', 2), // 221-222 (2) UF
-    padRightSpaces('', 8),                 // 223-230 (8) Indicativo Forma Pagamento
-    padRightSpaces('', 10),                // 231-240 (10) Ocorrências para o Retorno
+    padRightSpaces(company.uf || 'PE', 2), // 221-222 (2) UF
+    padRightSpaces('', 8),                 // 223-230 (8) Indicativo Forma Pagamento / FEBRABAN
+    isBancoDoBrasil ? '0000000000' : padRightSpaces('', 10), // 231-240 (10) Ocorrências para o Retorno ('0000000000' BB)
   ];
 
   const headerLote = headerLoteParts.join('').substring(0, 240).padEnd(240, ' ');
@@ -223,21 +243,21 @@ export function generateCNAB240(
       seqStr,                                // 009-013 (5) N° Sequencial Registro no Lote
       'J',                                   // 014-014 (1) Código do Segmento = J
       '0',                                   // 015-015 (1) Tipo de Movimento = 0 (Inclusão)
-      '00',                                  // 016-017 (2) Código Instrução Movimento = 00 (Liberado)
+      '00',                                  // 016-017 (2) Código Instrução Movimento = 00 (Inclusão)
       codigoBarras,                          // 018-061 (44) Código de Barras
       favorecidoNome,                        // 062-091 (30) Nome do Favorecido/Beneficiário
-      dataVencimento,                        // 092-099 (8) Data de Vencimento
+      dataVencimento,                        // 092-099 (8) Data de Vencimento (DDMMAAAA)
       valorTitulo,                           // 100-114 (15) Valor do Título
-      valorDesconto,                         // 115-129 (15) Valor do Desconto
-      valorJurosMulta,                       // 130-144 (15) Valor Juros/Multa
-      dataPagamento,                         // 145-152 (8) Data do Pagamento
+      valorDesconto,                         // 115-129 (15) Valor do Desconto + Abatimento
+      valorJurosMulta,                       // 130-144 (15) Valor Mora + Multa
+      dataPagamento,                         // 145-152 (8) Data do Pagamento (DDMMAAAA)
       valorPagamento,                        // 153-167 (15) Valor do Pagamento Efetivo
-      padLeftZeros('0', 15),                 // 168-182 (15) Quantidade Moeda (Zeros)
-      seuNumero,                             // 183-202 (20) Seu Número / Ref Empresa
-      nossoNumero,                           // 203-222 (20) Nosso Número / Ref Banco
+      '000000000000000',                     // 168-182 (15) Quantidade Moeda (15 zeros)
+      seuNumero,                             // 183-202 (20) Seu Número / Ref Empresa (BB pos 189-194 p/ extrato)
+      padRightSpaces('', 20),                // 203-222 (20) Nosso Número / Ref Banco
       '09',                                  // 223-224 (2) Código da Moeda (09 = Real)
-      padRightSpaces('', 6),                 // 225-230 (6) Filler
-      padRightSpaces('', 10),                // 231-240 (10) Ocorrências para Retorno
+      padRightSpaces('', 6),                 // 225-230 (6) CNAB / Filler
+      isBancoDoBrasil ? '0000000000' : padRightSpaces('', 10), // 231-240 (10) Ocorrências para Retorno ('0000000000' BB)
     ];
 
     const linhaSegmentoJ = segmentoJParts.join('').substring(0, 240).padEnd(240, ' ');
@@ -247,26 +267,29 @@ export function generateCNAB240(
       type: 'SEGMENTO_J',
       lineNumber: lines.length,
       content: linhaSegmentoJ,
-      description: `Segmento J (Boleto #${idx + 1}) - ${boleto.favorecidoNome}`,
+      description: isBancoDoBrasil
+        ? `Segmento J (Boleto #${idx + 1} BB) - ${boleto.favorecidoNome}`
+        : `Segmento J (Boleto #${idx + 1}) - ${boleto.favorecidoNome}`,
       fields: [
-        { pos: '018-061', name: 'Código de Barras', value: codigoBarras, description: '44 dígitos do código de barras' },
-        { pos: '062-091', name: 'Favorecido', value: favorecidoNome.trim(), description: 'Nome do Beneficiário' },
+        { pos: '018-061', name: 'Código de Barras', value: codigoBarras, description: '44 dígitos da captura óptica' },
+        { pos: '062-091', name: 'Beneficiário', value: favorecidoNome.trim(), description: 'Nome do Favorecido' },
         { pos: '092-099', name: 'Vencimento', value: dataVencimento, description: 'Data de Vencimento (DDMMAAAA)' },
-        { pos: '100-114', name: 'Valor Título', value: `R$ ${(boleto.valor).toFixed(2)}`, description: 'Valor em Centavos' },
-        { pos: '145-152', name: 'Data Pagamento', value: dataPagamento, description: 'Data do Agendamento' },
-        { pos: '183-202', name: 'Seu Número', value: seuNumero.trim(), description: 'Identificação Interna' },
+        { pos: '100-114', name: 'Valor Título', value: `R$ ${(boleto.valor).toFixed(2)}`, description: 'Valor Nominal do Título' },
+        { pos: '145-152', name: 'Data Pagamento', value: dataPagamento, description: 'Data do Agendamento/Pagamento' },
+        { pos: '153-167', name: 'Valor Pagamento', value: `R$ ${(boleto.valor - (boleto.desconto || 0) + (boleto.jurosMulta || 0)).toFixed(2)}`, description: 'Valor Efetivo Total' },
+        { pos: '183-202', name: 'Seu Número', value: seuNumero.trim(), description: isBancoDoBrasil ? 'Seu Número (posições 189-194 no extrato BB)' : 'Identificação Interna' },
       ],
     });
 
-    // SEGMENTO J-52 (Obrigatório Santander / Febraban: Identificação do Favorecido e Pagador)
+    // SEGMENTO J-52 (Obrigatório BB / Santander / Febraban: Identificação do Favorecido e Pagador)
     sequencialRegistroNoLote += 1;
     const seqJ52Str = padLeftZeros(sequencialRegistroNoLote, 5);
 
-    // Determine Beneficiary / Favorecido document and type (Mandatory for Santander J-52)
+    // Determine Beneficiary / Favorecido document and type
     const rawFavorecidoDoc = boleto.favorecidoCnpjCpf || boleto.beneficiarioCnpjCpf || '';
     const docFavorecidoClean = onlyNumbers(rawFavorecidoDoc);
     
-    // Tipo de Inscrição Beneficiário (Posição 76): 1=CPF, 2=CNPJ, 3=PIS/PASEP
+    // Tipo de Inscrição Beneficiário (Posição 76): 1=CPF, 2=CNPJ
     let tipoInscricaoFavorecido = '2'; // Default to CNPJ for companies
     if (docFavorecidoClean.length > 0 && docFavorecidoClean.length <= 11) {
       tipoInscricaoFavorecido = '1'; // CPF
@@ -286,7 +309,7 @@ export function generateCNAB240(
     const beneficiarioNome = padRightSpaces(boleto.favorecidoNome || boleto.beneficiario || 'BENEFICIARIO DO BOLETO', 40);
 
     const segmentoJ52Parts = [
-      bancoCodigo,                                  // 001-003 (3) Banco (033 = Santander)
+      bancoCodigo,                                  // 001-003 (3) Banco (001 = BB, 033 = Santander)
       loteServico,                                  // 004-007 (4) Lote de Serviço = 0001
       '3',                                          // 008-008 (1) Tipo de registro = 3 (Detalhe)
       seqJ52Str,                                    // 009-013 (5) Sequencial no Lote
@@ -297,13 +320,13 @@ export function generateCNAB240(
       tipoInscricaoPagador,                         // 020-020 (1) Tipo Inscrição Pagador (1=CPF, 2=CNPJ)
       padLeftZeros(docPagadorClean || inscricaoCompany, 15), // 021-035 (15) CNPJ/CPF Pagador (15 dígitos com zeros)
       pagadorNome,                                  // 036-075 (40) Nome do Pagador
-      tipoInscricaoFavorecido,                      // 076-076 (1) Tipo Inscrição Beneficiário (1=CPF, 2=CNPJ) - Santander V11.7
-      padLeftZeros(docFavorecidoClean, 15),         // 077-091 (15) CNPJ/CPF Beneficiário (15 dígitos com zeros) - Santander V11.7
+      tipoInscricaoFavorecido,                      // 076-076 (1) Tipo Inscrição Beneficiário (1=CPF, 2=CNPJ)
+      padLeftZeros(docFavorecidoClean, 15),         // 077-091 (15) CNPJ/CPF Beneficiário (15 dígitos com zeros)
       beneficiarioNome,                             // 092-131 (40) Nome do Beneficiário
       '0',                                          // 132-132 (1) Tipo Inscrição Sacador Avalista (0=Isento/Não informado)
-      padLeftZeros('0', 15),                        // 133-147 (15) CNPJ/CPF Sacador Avalista (15 zeros)
+      '000000000000000',                            // 133-147 (15) CNPJ/CPF Sacador Avalista (15 zeros)
       padRightSpaces('', 40),                       // 148-187 (40) Nome Sacador Avalista (40 espaços)
-      padRightSpaces('', 53),                       // 188-240 (53) Reservado Santander / FEBRABAN (53 espaços)
+      padRightSpaces('', 53),                       // 188-240 (53) Reservado BB / Santander / FEBRABAN (53 espaços)
     ];
 
     const linhaSegmentoJ52 = segmentoJ52Parts.join('').substring(0, 240).padEnd(240, ' ');
@@ -315,7 +338,9 @@ export function generateCNAB240(
       type: 'SEGMENTO_J52',
       lineNumber: lines.length,
       content: linhaSegmentoJ52,
-      description: isSantander
+      description: isBancoDoBrasil
+        ? `Segmento J-52 BB (Identificação do Beneficiário e Pagador #${idx + 1})`
+        : isSantander
         ? `Segmento J-52 Santander V11.7 (Obrigatório - Beneficiário: ${boleto.favorecidoNome || 'Cedente'})`
         : `Segmento J-52 (Identificação do Beneficiário e Pagador #${idx + 1})`,
       fields: [
@@ -329,8 +354,8 @@ export function generateCNAB240(
           name: 'Doc Beneficiário',
           value: padLeftZeros(docFavorecidoClean, 15),
           description: isBeneficiaryDocMissing
-            ? '⚠️ ATENÇÃO: CNPJ/CPF do Beneficiário ausente! O Santander rejeitará com ocorrência AT.'
-            : 'CPF/CNPJ Real do Beneficiário (Obrigatório Santander)',
+            ? '⚠️ CNPJ/CPF do Beneficiário não identificado'
+            : 'CPF/CNPJ Real do Beneficiário',
         },
         { pos: '092-131', name: 'Nome Beneficiário', value: beneficiarioNome.trim(), description: 'Razão Social do Favorecido/Recebedor' },
       ],
@@ -349,11 +374,11 @@ export function generateCNAB240(
     '5',                                   // 008-008 (1) Tipo Registro = 5
     padRightSpaces('', 9),                 // 009-017 (9) Reservado FEBRABAN
     qtdRegistrosLoteStr,                   // 018-023 (6) Quantidade Registros Lote
-    somatorioValores,                      // 024-041 (18) Somatório Valores Títulos
-    padLeftZeros('0', 18),                 // 042-059 (18) Quantidade de Moedas
-    padLeftZeros('0', 6),                  // 060-065 (6) N° Aviso de Débito
+    somatorioValores,                      // 024-041 (18) Somatório Valores Títulos (16 inteiros + 2 dec)
+    '000000000000000000',                  // 042-059 (18) Quantidade de Moedas (18 zeros no BB)
+    '000000',                              // 060-065 (6) N° Aviso de Débito (6 zeros no BB)
     padRightSpaces('', 165),               // 066-230 (165) Reservado FEBRABAN
-    padRightSpaces('', 10),                // 231-240 (10) Ocorrências para Retorno
+    isBancoDoBrasil ? '0000000000' : padRightSpaces('', 10), // 231-240 (10) Ocorrências para Retorno ('0000000000' BB)
   ];
 
   const trailerLote = trailerLoteParts.join('').substring(0, 240).padEnd(240, ' ');
@@ -363,7 +388,9 @@ export function generateCNAB240(
     type: 'TRAILER_LOTE',
     lineNumber: lines.length,
     content: trailerLote,
-    description: 'Trailer de Lote - Totalização do Lote de Pagamentos',
+    description: isBancoDoBrasil
+      ? 'Trailer de Lote BB - Totalização do Lote de Pagamentos'
+      : 'Trailer de Lote - Totalização do Lote de Pagamentos',
     fields: [
       { pos: '018-023', name: 'Qtd Registros', value: String(qtdRegistrosLote), description: 'Total de linhas do lote' },
       { pos: '024-041', name: 'Valor Total', value: `R$ ${totalValorBoletos.toFixed(2)}`, description: 'Somatório dos valores' },
@@ -381,9 +408,10 @@ export function generateCNAB240(
     '9999',                                // 004-007 (4) Lote = 9999
     '9',                                   // 008-008 (1) Tipo Registro = 9
     padRightSpaces('', 9),                 // 009-017 (9) Reservado FEBRABAN
-    qtdLotesStr,                           // 018-023 (6) Qtd de Lotes
+    qtdLotesStr,                           // 018-023 (6) Qtd de Lotes (000001)
     qtdRegistrosArqStr,                    // 024-029 (6) Qtd de Registros no Arquivo
-    padRightSpaces('', 211),               // 030-240 (211) Filler / Reservado
+    '000000',                              // 030-035 (6) Qtde de Contas p/ Conc. ('000000' BB)
+    padRightSpaces('', 205),               // 036-240 (205) Filler / Reservado FEBRABAN
   ];
 
   const trailerArquivo = trailerArquivoParts.join('').substring(0, 240).padEnd(240, ' ');
