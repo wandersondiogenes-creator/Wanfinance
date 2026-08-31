@@ -26,7 +26,11 @@ import {
 import { SmartDocCategory, SmartExtractedDocument } from '../../utils/smartExtractor/smartDocTypes';
 import { SmartDocTypeSelector } from './SmartDocTypeSelector';
 import { SmartDocValidationCard } from './SmartDocValidationCard';
-import { processSmartDocument, convertSmartDocToBoletoItem } from '../../utils/smartExtractor/smartExtractionEngine';
+import {
+  processSmartDocumentsFromFile,
+  processSmartDocument,
+  convertSmartDocToBoletoItem,
+} from '../../utils/smartExtractor/smartExtractionEngine';
 import { learnSmartDocLayout } from '../../utils/smartExtractor/smartLayoutMemory';
 import { BoletoItem, CompanySettings, CompanyProfile, CNABBatchHistory } from '../../types';
 import { generateCNAB240 } from '../../utils/cnabGenerator240';
@@ -88,7 +92,7 @@ export const SmartExtractionPanel: React.FC<SmartExtractionPanelProps> = ({
     for (const file of pdfFiles) {
       try {
         setStatusMessage(`Processando: ${file.name}...`);
-        const doc = await processSmartDocument(
+        const docs = await processSmartDocumentsFromFile(
           file,
           selectedCategory,
           (prog, msg) => {
@@ -97,7 +101,7 @@ export const SmartExtractionPanel: React.FC<SmartExtractionPanelProps> = ({
             setStatusMessage(`${file.name}: ${msg}`);
           }
         );
-        extractedDocs.push(doc);
+        extractedDocs.push(...docs);
       } catch (err: any) {
         console.error(`Erro ao processar ${file.name}:`, err);
       }

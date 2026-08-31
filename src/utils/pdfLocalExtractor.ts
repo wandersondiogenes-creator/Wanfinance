@@ -87,11 +87,64 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
         pdfDocRef = pdfDoc;
 
         for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-          const page = await pdfDoc.getPage(pageNum);
-          const textContent = await page.getTextContent();
-          const pageStrings = textContent.items.map((item: any) => (item as any)?.str || '');
-          const pageCombined = pageStrings.join(' ');
-          pageTexts.push(pageCombined);
+          try {
+            const page = await pdfDoc.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const items = (textContent.items || []) as any[];
+
+            // Group text by Y coordinate to preserve actual line structure
+            const lineMap = new Map<number, string[]>();
+            for (const item of items) {
+              const str = (item.str || '').trim();
+              if (!str) continue;
+              const y = item.transform ? Math.round(item.transform[5] / 4) * 4 : 0;
+              if (!lineMap.has(y)) lineMap.set(y, []);
+              lineMap.get(y)!.push(str);
+            }
+
+            // Sort lines top to bottom (descending Y)
+            const sortedYs = Array.from(lineMap.keys()).sort((a, b) => b - a);
+            const pageLines = sortedYs.map((y) => (lineMap.get(y) || []).join(' '));
+            let pageCombined = pageLines.join('\n');
+
+            // If page text is very short or missing barcode data, render page canvas & run OCR (with auto-rotation for inverted scans)
+            const hasBarcodeInVector = pageCombined.length > 30 && (
+              /\b8\d{10,11}[-\s.]*\d/i.test(pageCombined) ||
+              /\b[0-7]\d{4}[\.\s-]*\d{5}/i.test(pageCombined) ||
+              /\b\d{44,48}\b/.test(pageCombined.replace(/\D/g, ''))
+            );
+
+            if (!hasBarcodeInVector && typeof document !== 'undefined') {
+              try {
+                const viewport = page.getViewport({ scale: 2.0, rotation: page.rotate || 0 });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  await page.render({ canvasContext: ctx, viewport }).promise;
+                  const ocrBoletos = await extractBoletoFromImageSource(canvas, `${fileName}_p${pageNum}`);
+                  if (ocrBoletos && ocrBoletos.length > 0) {
+                    for (const ob of ocrBoletos) {
+                      ob.observacoes = ob.observacoes || `Página ${pageNum} de ${pdfDoc.numPages}`;
+                      const rawD = onlyNumbers(ob.linhaDigitavel || ob.codigoBarras || '');
+                      const k44 = rawD.length >= 44 ? rawD : `${ob.seuNumero}_${pageNum}`;
+                      if (!seenLines.has(k44)) {
+                        seenLines.add(k44);
+                        boletosFound.push(ob);
+                      }
+                    }
+                  }
+                }
+              } catch (ocrPageErr) {
+                console.warn(`[Local PDF Extractor] Falha no OCR da página ${pageNum}:`, ocrPageErr);
+              }
+            }
+
+            pageTexts.push(pageCombined);
+          } catch (pErr) {
+            console.warn(`[Local PDF Extractor] Erro ao ler página ${pageNum}:`, pErr);
+          }
         }
       } catch (pdfJsErr: any) {
         const msg = String(pdfJsErr?.message || pdfJsErr);
@@ -170,18 +223,25 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
       /03399[0-9.\s-]{35,65}/g,
       // 3. Flexible 47-digit bank pattern (banks 001-799)
       /[0-7]\d{4}[\.\s-]*\d{5}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d\s*[\.\s-]*\d{14}/g,
-      // 4. Standard 48-digit Concessionária/Tributo/SEFAZ/IPVA/DETRAN (4 blocks of 11.1 or 12)
-      /8\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d/g,
+      // 4. Standard 48-digit Concessionária/Tributo/SEFAZ/IPVA/DETRAN/CTTU (4 blocks of 11.1 or 12)
+      /8\d{10,11}[-\s.]*\d\s+\d{10,11}[-\s.]*\d\s+\d{10,11}[-\s.]*\d\s+\d{10,11}[-\s.]*\d/g,
       /\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d/g,
       /\d{12}[\s-]+\d{12}[\s-]+\d{12}[\s-]+\d{12}/g,
       /(?:8\d{10}[-\s.]*\d\s*){4}/g,
-      // 5. Generic 48-digit Arrecadação / IPVA / SEFAZ / DETRAN
+      // 5. Generic 48-digit Arrecadação / IPVA / SEFAZ / DETRAN / CTTU (iniciados por 8)
       /8\d{11}[\s-]*\d{12}[\s-]*\d{12}[\s-]*\d{12}/g,
-      // 6. Generic Brazilian bank line digitavel
+      /\b8[0-9\s.-]{43,65}\b/g,
+      // 6. Contiguous 44 or 48 raw digits
+      /\b8\d{47}\b/g,
+      /\b\d{44}\b/g,
+      // 7. Generic Brazilian bank line digitavel
       /(?:0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})9[0-9.\s-]{40,65}/g,
     ];
 
-    for (const textBlock of pageTexts) {
+    for (let pageIdx = 0; pageIdx < pageTexts.length; pageIdx++) {
+      const textBlock = pageTexts[pageIdx];
+      const pageNum = pageIdx + 1;
+      const totalPages = pageTexts.length;
       const blockText = textBlock || fullDocText;
       const detectedGlobal = detectBoletoDetailsFromText(blockText);
 
@@ -205,6 +265,13 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
             const parsedLast47 = parseLinhaDigitavel(last47);
             if (parsedLast47.isValid && !last47.startsWith('8')) {
               clean = last47;
+            }
+          } else if (clean.length > 48 && clean.startsWith('8')) {
+            // Trim leading/trailing noise if clean has 49-55 digits
+            const first48 = clean.slice(0, 48);
+            const parsed48 = parseLinhaDigitavel(first48);
+            if (parsed48.isValid) {
+              clean = first48;
             }
           }
 
@@ -281,15 +348,24 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
               || blockText.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+N[uú]mero|Nosso\s+Numero|Nosso\s+N[oº°]\.?)\s*[:\s\r\n]*([\w\/\.-]{5,25})/i);
             if (nossoNumMatch && !nossoNum) nossoNum = nossoNumMatch[1].trim();
 
-            const finalFavorecido = (localDetected.favorecidoNome && localDetected.favorecidoNome !== 'Beneficiário / Cedente' ? localDetected.favorecidoNome : null)
+            let finalFavorecido = (localDetected.favorecidoNome && localDetected.favorecidoNome !== 'Beneficiário / Cedente' ? localDetected.favorecidoNome : null)
               || (detectedGlobal.favorecidoNome && detectedGlobal.favorecidoNome !== 'Beneficiário / Cedente' ? detectedGlobal.favorecidoNome : null)
               || extractFavorecidoFromText(localContextText || blockText || fullDocText, parsed.bancoNome);
+
+            if (blockText.toUpperCase().includes('SEFAZ') || blockText.toUpperCase().includes('IPVA')) {
+              finalFavorecido = finalFavorecido || 'SEFAZ - IPVA';
+            } else if (blockText.toUpperCase().includes('CTTU') || blockText.toUpperCase().includes('RECIFE')) {
+              finalFavorecido = finalFavorecido || 'CTTU - Prefeitura do Recife';
+            } else if (blockText.toUpperCase().includes('DETRAN')) {
+              finalFavorecido = finalFavorecido || 'DETRAN';
+            }
 
             const finalPagador = localDetected.pagador || detectedGlobal.pagador || 'Pagador Não Identificado';
             const finalPagadorCnpj = localDetected.pagadorCnpjCpf || detectedGlobal.pagadorCnpjCpf || '';
             const finalBeneficiarioCnpj = localDetected.favorecidoCnpjCpf || detectedGlobal.favorecidoCnpjCpf || '';
 
-            const uniqueRef = docNumber || nossoNum || localDetected.seuNumero || detectedGlobal.seuNumero || `BOL-${clean.substring(33, 47) || Date.now()}`;
+            const detectedPlaca = localDetected.placa || detectedGlobal.placa || '';
+            const uniqueRef = docNumber || nossoNum || localDetected.seuNumero || detectedGlobal.seuNumero || (detectedPlaca ? `PLACA-${detectedPlaca}-P${pageNum}` : `PAG-${pageNum}-${clean.substring(33, 47) || Date.now()}`);
 
             const descontoVal = localDetected.desconto || detectedGlobal.desconto || 0;
             const jurosVal = localDetected.juros || detectedGlobal.juros || 0;
@@ -321,10 +397,10 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
               bancoCodigo: localDetected.bancoCodigo || detectedGlobal.bancoCodigo || parsed.bancoCodigo,
               bancoNome: localDetected.bancoNome || detectedGlobal.bancoNome || parsed.bancoNome,
               tipoBoleto: localDetected.tipoBoleto || detectedGlobal.tipoBoleto,
-              placa: localDetected.placa || detectedGlobal.placa,
+              placa: detectedPlaca,
               renavam: localDetected.renavam || detectedGlobal.renavam,
               autoInfracao: localDetected.autoInfracao || detectedGlobal.autoInfracao,
-              observacoes: localDetected.observacoes || detectedGlobal.observacoes || (boletosFound.length > 0 ? `Boleto #${boletosFound.length + 1} do arquivo` : 'Extraído via leitor de PDF local'),
+              observacoes: localDetected.observacoes || detectedGlobal.observacoes || (totalPages > 1 ? `Página ${pageNum} de ${totalPages}` : 'Extraído via leitor de PDF local'),
               confidence: 0.95,
             });
           }

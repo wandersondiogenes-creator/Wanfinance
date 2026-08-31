@@ -155,6 +155,14 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
   const [savedModelIds, setSavedModelIds] = useState<Set<string>>(new Set());
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [copiedLogs, setCopiedLogs] = useState(false);
+  const [copiedLinhaId, setCopiedLinhaId] = useState<string | null>(null);
+
+  const handleCopyLinha = (itemId: string, linha: string) => {
+    if (!linha) return;
+    navigator.clipboard?.writeText(linha);
+    setCopiedLinhaId(itemId);
+    setTimeout(() => setCopiedLinhaId((cur) => (cur === itemId ? null : cur)), 2000);
+  };
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileMapRef = useRef<Map<string, File>>(new Map());
@@ -656,14 +664,17 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         };
       });
 
-      // Update the first item in state with processed result
+      // Update the loading item with all extracted boletos from this file
       if (processedItems.length > 0) {
-        updateItemState(itemId, processedItems[0]);
-
-        // If multi-boletos in same PDF page, append additional items
-        if (processedItems.length > 1) {
-          setItems((prev) => [...prev, ...processedItems.slice(1)]);
-        }
+        setItems((prev) => {
+          const itemIdx = prev.findIndex((it) => it.id === itemId);
+          if (itemIdx === -1) {
+            return [...prev, ...processedItems];
+          }
+          const next = [...prev];
+          next.splice(itemIdx, 1, ...processedItems);
+          return next;
+        });
       }
 
       return processedItems;
@@ -1423,7 +1434,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                 </div>
               ) : (
                 /* View Mode 2: Detailed Cards (Modo Cartões com Progresso em Tempo Real) */
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {items.map((item, idx) => {
                     const dupInfo = item.data
                       ? detectBoletoDuplicate(
@@ -1434,104 +1445,120 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                         )
                       : null;
 
+                    const rawDigits = item.data ? onlyNumbers(item.data.linhaDigitavel || item.data.codigoBarras || '') : '';
+                    const isCopied = copiedLinhaId === item.id;
+
                     return (
                       <div
                         key={item.id}
-                        className={`bg-white border rounded-2xl p-4 transition-all shadow-xs ${
+                        className={`bg-white/95 backdrop-blur-sm border rounded-2xl p-3 sm:p-3.5 transition-all shadow-xs hover:shadow-sm ${
                           dupInfo?.isDuplicate
-                            ? 'border-2 border-orange-500 bg-orange-50/80 shadow-md ring-2 ring-orange-400/30'
+                            ? 'border-orange-500 bg-orange-50/40 ring-1 ring-orange-400/40'
                             : item.status === 'error'
                             ? 'border-red-300 bg-red-50/20'
                             : item.status === 'partial'
-                            ? 'border-amber-200 bg-amber-50/10'
-                            : 'border-slate-200 hover:border-slate-300'
+                            ? 'border-amber-300 bg-amber-50/20'
+                            : 'border-slate-200/90 hover:border-slate-300'
                         }`}
                       >
-                        {/* Header com Nome do Arquivo Mostrado IMEDIATAMENTE */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                          <div className="flex items-center space-x-2.5 overflow-hidden flex-wrap gap-y-1">
-                            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shrink-0">
-                              <FileText className="w-4 h-4" />
+                        {/* Apple Dynamic Header Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-900 to-slate-700 text-white flex items-center justify-center shrink-0 shadow-xs">
+                              <FileText className="w-4 h-4 text-slate-200" />
                             </div>
-                            <div>
-                              <div className="flex items-center space-x-2 flex-wrap">
-                                <span className="text-xs font-black text-slate-900 truncate max-w-sm">
-                                  📄 "{item.fileName}"
-                                </span>
-                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                                  Arquivo {idx + 1} de {totalFiles}
-                                </span>
-                                {item.totalInFile && item.totalInFile > 1 && (
-                                  <span className="text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-xs">
-                                    📑 Boleto {item.boletoIndex || 1} de {item.totalInFile} (no mesmo arquivo)
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                                  {item.data?.favorecidoNome || item.fileName}
+                                </h4>
+                                
+                                {item.totalInFile && item.totalInFile > 1 ? (
+                                  <span className="text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-full shrink-0">
+                                    Boleto {item.boletoIndex || 1} de {item.totalInFile}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
+                                    Doc {idx + 1}/{totalFiles}
                                   </span>
                                 )}
+
+                                {item.layoutRecognized && (
+                                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                                    <Zap className="w-2.5 h-2.5 fill-blue-600 text-blue-600" />
+                                    <span>Fast-Path</span>
+                                  </span>
+                                )}
+
+                                {dupInfo?.isDuplicate && (
+                                  <span className="text-[10px] font-black text-orange-800 bg-orange-100 border border-orange-300 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0" title={dupInfo.duplicateReason}>
+                                    <AlertTriangle className="w-3 h-3 text-orange-600" />
+                                    <span>{dupInfo.duplicateSourceLabel || 'Duplicado'}</span>
+                                  </span>
+                                )}
+
+                                {item.data?.valor && item.data.valor >= 250000 ? (
+                                  <span className="text-[10px] font-black text-purple-900 bg-purple-100 border border-purple-300 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                                    <AlertTriangle className="w-3 h-3 text-purple-600" />
+                                    <span>Alta Alçada</span>
+                                  </span>
+                                ) : null}
                               </div>
-                              <span key={`step-status-${item.progress}`} className="text-[11px] font-bold text-blue-700 block mt-0.5">
-                                Status: {item.stepMessage}
-                              </span>
+
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                                <span className="truncate max-w-[240px] text-slate-400 font-mono text-[10px]">
+                                  {item.fileName}
+                                </span>
+                                <span>•</span>
+                                <span className="font-semibold text-blue-600">
+                                  {item.stepMessage}
+                                </span>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center space-x-2 shrink-0 flex-wrap gap-y-1">
-                            {dupInfo?.isDuplicate && (
-                              <span className="text-xs text-white bg-orange-500 px-3 py-1 rounded-full border border-orange-600 flex items-center space-x-1 font-black shadow-xs" title={dupInfo.duplicateReason}>
-                                <AlertTriangle className="w-3.5 h-3.5 text-white" />
-                                <span>{dupInfo.duplicateSourceLabel || 'Boleto Repetido'}</span>
-                              </span>
-                            )}
-
-                            {item.data?.valor && item.data.valor >= 250000 ? (
-                              <span
-                                className="text-xs text-purple-950 bg-purple-100 px-3 py-1 rounded-full border border-purple-300 flex items-center space-x-1 font-black shadow-xs"
-                                title="Valor igual ou superior a R$ 250.000,00 - Exige autorização de alta alçada"
-                              >
-                                <AlertTriangle className="w-3.5 h-3.5 text-purple-700" />
-                                <span>Alta Alçada (&gt; R$ 250k)</span>
-                              </span>
+                          {/* Preço de Destaque & Ações Rápidas */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {item.data?.valor ? (
+                              <div className="text-right mr-1">
+                                <div className="text-xs sm:text-sm font-mono font-black text-slate-900 tracking-tight">
+                                  {formatCurrencyBRL(item.data.valor)}
+                                </div>
+                                <div className="text-[10px] font-bold text-slate-500">
+                                  Venc: {item.data.dataVencimento ? item.data.dataVencimento.split('-').reverse().join('/') : '--/--/----'}
+                                </div>
+                              </div>
                             ) : null}
 
                             {item.status === 'loading' && (
-                              <span key="status-badge-loading" className="text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 flex items-center space-x-1.5 font-bold">
+                              <div className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200 font-bold">
                                 <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                                <span>Processando ({item.progress}%)</span>
-                              </span>
+                                <span>{item.progress}%</span>
+                              </div>
                             )}
 
                             {(item.status === 'success' || item.status === 'partial') && (
-                              <div key="status-badge-success" className="flex items-center space-x-2 flex-wrap gap-y-1">
-                                <span
-                                  className={`text-xs px-2.5 py-1 rounded-full border flex items-center space-x-1 font-bold ${
-                                    item.status === 'success'
-                                      ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
-                                      : 'text-amber-800 bg-amber-50 border-amber-200'
-                                  }`}
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>
-                                    {item.status === 'success' ? 'Extraído 100%' : 'Extraído com Pendências'}
-                                  </span>
-                                </span>
-
+                              <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => handleSaveLayoutModel(item)}
-                                  className={`text-xs font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer border shadow-xs ${
+                                  className={`text-[11px] font-bold px-2 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer border ${
                                     savedModelIds.has(item.id) || item.layoutRecognized
                                       ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
                                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                                   }`}
-                                  title="Salvar layout e regras de extração deste modelo para processamentos futuros"
+                                  title="Salvar modelo na memória contínua"
                                 >
-                                  <Brain className="w-3.5 h-3.5 text-indigo-600" />
-                                  <span>{savedModelIds.has(item.id) || item.layoutRecognized ? 'Modelo Salvo' : 'Salvar Modelo'}</span>
+                                  <Brain className="w-3 h-3 text-indigo-600" />
+                                  <span className="hidden sm:inline">{savedModelIds.has(item.id) || item.layoutRecognized ? 'Salvo' : 'Memorizar'}</span>
                                 </button>
 
                                 <button
                                   type="button"
                                   onClick={() => handleImportSingleItem(item)}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer shadow-xs"
-                                  title="Importar apenas este boleto"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+                                  title="Importar boleto"
                                 >
                                   <Plus className="w-3.5 h-3.5" />
                                   <span>Importar</span>
@@ -1539,203 +1566,60 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                               </div>
                             )}
 
-                            {item.status === 'error' && (
-                              <span key="status-badge-error" className="text-xs text-red-800 bg-red-50 px-2.5 py-1 rounded-full border border-red-200 flex items-center space-x-1 font-bold">
-                                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                                <span>Erro na extração</span>
-                              </span>
-                            )}
-
                             <button
                               type="button"
                               onClick={() => handleRemoveItem(item.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                              className="p-1 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                               title="Remover da fila"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
 
-                        {/* Barra de Progresso Real por Arquivo (0% a 100%) */}
-                        <div className="py-2">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-                            <span className="flex items-center gap-1.5">
-                              {item.status === 'loading' && (
-                                <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-                              )}
-                              <span key={`msg-progress-${item.progress}`}>
-                                Etapa do Processamento: {item.stepMessage}
-                              </span>
-                            </span>
-                            <span key={`pct-${item.progress}`} className="font-mono text-blue-800 font-extrabold">
-                              {item.progress}%
-                            </span>
+                        {/* Barra de Progresso Durante Carregamento */}
+                        {item.status === 'loading' && (
+                          <div className="py-1.5">
+                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200/80">
+                              <div
+                                className="h-full rounded-full transition-all duration-300 bg-gradient-to-r from-blue-600 to-indigo-600"
+                                style={{ width: `${item.progress}%` }}
+                              />
+                            </div>
                           </div>
-                          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200 p-0.5">
-                            <div
-                              className={`h-1 rounded-full transition-all duration-300 ${
-                                item.status === 'error'
-                                  ? 'bg-red-500'
-                                  : item.status === 'partial'
-                                  ? 'bg-amber-500'
-                                  : 'bg-gradient-to-r from-blue-600 to-indigo-600'
-                              }`}
-                              style={{ width: `${item.progress}%` }}
-                            />
-                          </div>
-                        </div>
+                        )}
 
-                        {/* Alerta Destacado de Duplicidade (Laranja) */}
+                        {/* Alerta de Duplicidade */}
                         {dupInfo?.isDuplicate && (
-                          <div className="my-2 bg-orange-500 text-white p-3 rounded-xl flex items-start gap-2.5 shadow-xs text-xs font-bold border border-orange-600">
-                            <AlertTriangle className="w-4.5 h-4.5 text-white shrink-0 mt-0.5" />
+                          <div className="my-2 bg-orange-50 border border-orange-200 text-orange-950 p-2.5 rounded-xl flex items-start gap-2 text-xs font-semibold">
+                            <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
                             <div>
-                              <p className="font-black text-sm text-white">
-                                Atenção: Boleto Duplicado Detectado!
-                              </p>
-                              <p className="text-orange-100 text-xs mt-0.5 font-medium">
-                                {dupInfo.duplicateReason}
-                              </p>
+                              <span className="font-bold text-orange-900 block">Boleto possivelmente duplicado</span>
+                              <span className="text-[11px] text-orange-800">{dupInfo.duplicateReason}</span>
                             </div>
                           </div>
                         )}
 
-                        {/* Indicador de Memória / Reconhecimento de Layout */}
-                        {item.status !== 'loading' && (
-                          <div className="my-2 space-y-2">
-                            {item.layoutRecognized ? (
-                              <div className="bg-indigo-50/90 border border-indigo-200 rounded-xl p-2.5 text-xs text-indigo-900 flex items-center justify-between gap-2">
-                                <div className="flex items-center space-x-2">
-                                  <Brain className="w-4 h-4 text-indigo-600 shrink-0" />
-                                  <div>
-                                    <span className="font-black text-indigo-950 block">
-                                      🧠 Layout reconhecido na memória: {item.layoutName}
-                                    </span>
-                                    <span className="text-[11px] text-indigo-700 font-medium">
-                                      Este boleto possui características semelhantes a um modelo já aprendido.
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="bg-indigo-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1 shadow-xs">
-                                  <Zap className="w-3 h-3 fill-white" />
-                                  <span>Fast-Path</span>
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-2.5 text-xs text-blue-900 flex items-center justify-between gap-2">
-                                <div className="flex items-center space-x-2">
-                                  <Brain className="w-4 h-4 text-blue-600 shrink-0" />
-                                  <div>
-                                    <span className="font-black text-blue-950 block">
-                                      🆕 Novo layout identificado
-                                    </span>
-                                    <span className="text-[11px] text-blue-700 font-medium">
-                                      Este padrão foi analisado e armazenado na memória para acelerar processamentos futuros.
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="bg-blue-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-lg shrink-0 flex items-center gap-1 shadow-xs">
-                                  <Sparkles className="w-3 h-3" />
-                                  <span>Novo Aprendizado</span>
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Banner de Nível de Confiança e Alertas Financeiros */}
-                            {item.data && (
-                              <div className={`border rounded-xl p-3 text-xs ${
-                                (item.data.confianca || 100) >= 85
-                                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
-                                  : (item.data.confianca || 100) >= 65
-                                  ? 'bg-amber-50/80 border-amber-200 text-amber-950'
-                                  : 'bg-red-50/80 border-red-200 text-red-950'
-                              }`}>
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="font-bold flex items-center gap-1.5">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                    <span>Pontuação de Confiança da Extração:</span>
-                                  </span>
-                                  <span className={`font-mono font-black text-xs px-2 py-0.5 rounded-lg ${
-                                    (item.data.confianca || 100) >= 85
-                                      ? 'bg-emerald-200 text-emerald-900'
-                                      : (item.data.confianca || 100) >= 65
-                                      ? 'bg-amber-200 text-amber-900'
-                                      : 'bg-red-200 text-red-900'
-                                  }`}>
-                                    {item.data.confianca || Math.round((item.data.confidence || 0.95) * 100)}%
-                                  </span>
-                                </div>
-
-                                {Array.isArray(item.data.alertas) && item.data.alertas.length > 0 && (
-                                  <div className="mt-2 space-y-1 border-t border-slate-200/60 pt-2">
-                                    <span className="font-extrabold text-[11px] block uppercase tracking-wider text-slate-700">
-                                      Alertas e Inconsistências Identificadas:
-                                    </span>
-                                    {item.data.alertas.map((alerta, aIdx) => (
-                                      <p key={aIdx} className="text-[11px] font-semibold text-amber-900 flex items-start gap-1">
-                                        <span>•</span>
-                                        <span>{alerta}</span>
-                                      </p>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* TRATAMENTO DETALHADO DE ERROS (Não descarta dados parciais) */}
+                        {/* Tratamento Detalhado de Erros */}
                         {(item.status === 'error' || item.status === 'partial') && item.detailedError && (
-                          <div className="bg-red-50/90 border border-red-200 rounded-xl p-3.5 my-3 text-xs text-red-900 space-y-2">
+                          <div className="bg-red-50/90 border border-red-200 rounded-xl p-2.5 my-2 text-xs text-red-900 space-y-1.5">
                             <div className="flex items-center justify-between">
-                              <span className="font-black text-red-950 flex items-center gap-1.5 text-sm">
-                                <AlertCircle className="w-4 h-4 text-red-600" />
-                                <span>❌ {item.detailedError.errorType}</span>
+                              <span className="font-bold text-red-950 flex items-center gap-1 text-xs">
+                                <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                                <span>{item.detailedError.errorType}</span>
                               </span>
-                              <span className="text-[10px] font-bold bg-red-100 text-red-800 border border-red-300 px-2 py-0.5 rounded-md">
-                                Etapa: {item.detailedError.stepWhereOccurred}
+                              <span className="text-[10px] font-semibold bg-red-100 text-red-800 px-1.5 py-0.5 rounded">
+                                {item.detailedError.stepWhereOccurred}
                               </span>
                             </div>
-
-                            <p className="text-[11px] text-slate-700 font-medium">
-                              <strong>Motivo provável:</strong> {item.detailedError.probableCause}
+                            <p className="text-[11px] text-slate-700">
+                              {item.detailedError.probableCause}
                             </p>
-
-                            {/* Status de Campos Extraídos Parcialmente */}
-                            <div className="bg-white border border-red-200 rounded-lg p-2 text-[11px]">
-                              <span className="font-bold text-slate-800 block mb-1">
-                                Status da Extração Parcial dos Campos:
-                              </span>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                                <span className={item.detailedError.partialExtracted.banco ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
-                                  {item.detailedError.partialExtracted.banco ? '✅ Banco' : '❌ Banco'}
-                                </span>
-                                <span className={item.detailedError.partialExtracted.beneficiario ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
-                                  {item.detailedError.partialExtracted.beneficiario ? '✅ Beneficiário' : '❌ Beneficiário'}
-                                </span>
-                                <span className={item.detailedError.partialExtracted.valor ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
-                                  {item.detailedError.partialExtracted.valor ? '✅ Valor' : '❌ Valor'}
-                                </span>
-                                <span className={item.detailedError.partialExtracted.vencimento ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
-                                  {item.detailedError.partialExtracted.vencimento ? '✅ Vencimento' : '❌ Vencimento'}
-                                </span>
-                                <span className={item.detailedError.partialExtracted.linhaDigitavel ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
-                                  {item.detailedError.partialExtracted.linhaDigitavel ? '✅ Linha Digitável' : '❌ Linha Digitável'}
-                                </span>
-                              </div>
-                            </div>
-
-                            <p className="text-[11px] text-red-950 font-extrabold bg-red-100/80 p-2 rounded-lg border border-red-200">
-                              💡 <strong>Ação Recomendada:</strong> {item.detailedError.recommendedAction}
-                            </p>
-
-                            {/* Input para digitação ou colagem rápida da linha digitável */}
-                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <div className="flex items-center gap-1.5 pt-1">
                               <input
                                 type="text"
-                                placeholder="Cole a linha digitável (ex: 03399.01241 85810.000001...)"
-                                className="flex-1 min-w-[200px] bg-white border border-slate-300 text-slate-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 placeholder:text-slate-400 font-bold"
+                                placeholder="Cole a linha digitável (47 ou 48 dígitos)..."
+                                className="flex-1 bg-white border border-slate-300 text-slate-900 font-mono text-xs px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-blue-600 font-bold"
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
                                     const val = (e.target as HTMLInputElement).value;
@@ -1750,17 +1634,17 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                   const val = inputEl ? inputEl.value : '';
                                   if (val) handleManualConvert(item.id, item.fileName, val);
                                 }}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-all shadow-xs cursor-pointer shrink-0"
                               >
-                                Processar Código
+                                Converter
                               </button>
                               {fileMapRef.current.has(item.fileName) && (
                                 <button
                                   type="button"
                                   onClick={() => handleRetryFile(item.fileName, item.id)}
-                                  className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                                  className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs px-2.5 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer shrink-0"
                                 >
-                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  <RefreshCw className="w-3 h-3" />
                                   <span>Reanalisar</span>
                                 </button>
                               )}
@@ -1768,197 +1652,197 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                           </div>
                         )}
 
-                        {/* Formulação dos Campos de Sucesso e Edição Completa */}
+                        {/* Bento Grid Compacto com Campos Extraídos (Apple Pro Style) */}
                         {item.data && (
-                          <div className="space-y-3 pt-3 border-t border-slate-100">
-                            {/* Linha Digitavel */}
-                            <div>
-                              <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                Linha Digitável (47 ou 48 dígitos)
-                              </label>
+                          <div className="space-y-2 pt-2">
+                            {/* Linha Digitável em Pílula de Acesso Rápido */}
+                            <div className="bg-slate-50/80 border border-slate-200/90 rounded-xl p-1.5 sm:px-2.5 sm:py-1.5 flex items-center gap-2">
+                              <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 uppercase tracking-wider shrink-0">
+                                <Barcode className="w-3.5 h-3.5 text-slate-600" />
+                                <span className="hidden sm:inline">Linha:</span>
+                              </div>
+                              
                               <input
                                 type="text"
                                 value={item.data.linhaDigitavel}
                                 onChange={(e) => handleFieldChange(item.id, 'linhaDigitavel', e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
+                                className="flex-1 bg-transparent border-0 text-slate-900 font-mono text-xs font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-blue-500 rounded px-1.5 py-0.5"
+                                placeholder="00000.00000 00000.000000 00000.000000 0 00000000000000"
                               />
+
+                              <button
+                                type="button"
+                                onClick={() => handleCopyLinha(item.id, rawDigits || item.data?.linhaDigitavel || '')}
+                                className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all shrink-0 cursor-pointer ${
+                                  isCopied
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs'
+                                }`}
+                                title="Copiar linha digitável completa"
+                              >
+                                {isCopied ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-emerald-600" />
+                                    <span className="text-[10px]">Copiado!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3 text-slate-500" />
+                                    <span className="text-[10px] hidden sm:inline">Copiar</span>
+                                  </>
+                                )}
+                              </button>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                              {/* Favorecido / Beneficiario */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Beneficiário / Favorecido
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.data.favorecidoNome}
-                                  onChange={(e) => handleFieldChange(item.id, 'favorecidoNome', e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-semibold"
-                                />
+                            {/* Bento Grid 3 Colunas: Financeiro | Partes | Identificação */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                              {/* Célula 1: Financeiro & Agendamento */}
+                              <div className="bg-slate-50/60 border border-slate-200/70 rounded-xl p-2 sm:p-2.5 space-y-1.5">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
+                                  Valores & Datas
+                                </span>
+                                
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-600 block">Valor (R$)</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={item.data.valor}
+                                      onChange={(e) => handleFieldChange(item.id, 'valor', parseFloat(e.target.value) || 0)}
+                                      className="w-full bg-white border border-slate-200 text-slate-900 font-mono text-xs font-black px-2 py-1 rounded-lg focus:border-blue-600 focus:outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-600 block">Vencimento</label>
+                                    <input
+                                      type="date"
+                                      value={item.data.dataVencimento}
+                                      onChange={(e) => handleFieldChange(item.id, 'dataVencimento', e.target.value)}
+                                      className="w-full bg-white border border-slate-200 text-slate-900 text-xs font-semibold px-1.5 py-1 rounded-lg focus:border-blue-600 focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <div>
+                                    <label className="text-[9px] font-bold text-blue-700 block">Agendamento</label>
+                                    <input
+                                      type="date"
+                                      value={item.data.dataPagamento || item.data.dataVencimento}
+                                      min={new Date().toISOString().split('T')[0]}
+                                      onChange={(e) => handleFieldChange(item.id, 'dataPagamento', e.target.value)}
+                                      className="w-full bg-white border border-blue-200 text-blue-900 text-xs font-bold px-1.5 py-1 rounded-lg focus:border-blue-600 focus:outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-600 block">Desconto (R$)</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={item.data.desconto || 0}
+                                      onChange={(e) => handleFieldChange(item.id, 'desconto', parseFloat(e.target.value) || 0)}
+                                      className="w-full bg-white border border-slate-200 text-slate-900 font-mono text-xs px-2 py-1 rounded-lg focus:border-blue-600 focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
                               </div>
 
-                              {/* Valor */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Valor (R$)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={item.data.valor}
-                                  onChange={(e) => handleFieldChange(item.id, 'valor', parseFloat(e.target.value) || 0)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-black"
-                                />
+                              {/* Célula 2: Beneficiário e Pagador */}
+                              <div className="bg-slate-50/60 border border-slate-200/70 rounded-xl p-2 sm:p-2.5 space-y-1.5">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
+                                  Beneficiário & Pagador
+                                </span>
+
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-600 block">Beneficiário / Favorecido</label>
+                                  <input
+                                    type="text"
+                                    value={item.data.favorecidoNome}
+                                    onChange={(e) => handleFieldChange(item.id, 'favorecidoNome', e.target.value)}
+                                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs font-bold px-2 py-1 rounded-lg focus:border-blue-600 focus:outline-none truncate"
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-600 block">CNPJ/CPF Beneficiário</label>
+                                    <input
+                                      type="text"
+                                      value={item.data.favorecidoCnpjCpf || ''}
+                                      placeholder="Opcional"
+                                      onChange={(e) => handleFieldChange(item.id, 'favorecidoCnpjCpf', e.target.value)}
+                                      className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-2 py-1 rounded-lg focus:border-blue-600 focus:outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-600 block">Pagador (Sacado)</label>
+                                    <input
+                                      type="text"
+                                      value={item.data.pagadorNome || ''}
+                                      placeholder="Empresa Pagadora"
+                                      onChange={(e) => handleFieldChange(item.id, 'pagadorNome', e.target.value)}
+                                      className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-2 py-1 rounded-lg focus:border-blue-600 focus:outline-none truncate"
+                                    />
+                                  </div>
+                                </div>
                               </div>
 
-                              {/* Vencimento */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Data de Vencimento
-                                </label>
-                                <input
-                                  type="date"
-                                  value={item.data.dataVencimento}
-                                  onChange={(e) => handleFieldChange(item.id, 'dataVencimento', e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-semibold"
-                                />
-                              </div>
+                              {/* Célula 3: Controle Bancário e Documento */}
+                              <div className="bg-slate-50/60 border border-slate-200/70 rounded-xl p-2 sm:p-2.5 space-y-1.5">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
+                                  Controle Bancário & Documento
+                                </span>
 
-                              {/* Banco */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Banco Emissor
-                                </label>
-                                <div className="flex items-center space-x-2">
-                                  <span className="bg-blue-100 text-blue-900 font-mono text-[10px] px-2 py-1.5 rounded-lg font-black">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="bg-slate-200 text-slate-900 font-mono text-[10px] px-1.5 py-1 rounded-lg font-black shrink-0">
                                     {item.data.bancoCodigo}
                                   </span>
                                   <input
                                     type="text"
                                     value={item.data.bancoNome}
                                     onChange={(e) => handleFieldChange(item.id, 'bancoNome', e.target.value)}
-                                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
+                                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs font-semibold px-2 py-1 rounded-lg focus:border-blue-600 focus:outline-none truncate"
                                   />
                                 </div>
-                              </div>
 
-                              {/* Seu Numero / Doc */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Número do Documento (Seu Nº)
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.data.seuNumero}
-                                  onChange={(e) => handleFieldChange(item.id, 'seuNumero', e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                                />
-                              </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-600 block">Nº Doc (Seu Nº)</label>
+                                    <input
+                                      type="text"
+                                      value={item.data.seuNumero}
+                                      onChange={(e) => handleFieldChange(item.id, 'seuNumero', e.target.value)}
+                                      className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-2 py-1 rounded-lg focus:border-blue-600 focus:outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-600 block">Nosso Número</label>
+                                    <input
+                                      type="text"
+                                      value={item.data.nossoNumero || ''}
+                                      placeholder="Opcional"
+                                      onChange={(e) => handleFieldChange(item.id, 'nossoNumero', e.target.value)}
+                                      className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-2 py-1 rounded-lg focus:border-blue-600 focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
 
-                              {/* Nosso Numero */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Nosso Número
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.data.nossoNumero || ''}
-                                  placeholder="Não informado"
-                                  onChange={(e) => handleFieldChange(item.id, 'nossoNumero', e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                                />
-                              </div>
-
-                              {/* CNPJ Beneficiario */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  CNPJ/CPF Beneficiário
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.data.favorecidoCnpjCpf || ''}
-                                  placeholder="Opcional"
-                                  onChange={(e) => handleFieldChange(item.id, 'favorecidoCnpjCpf', e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                                />
-                              </div>
-
-                              {/* Pagador Nome */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Pagador
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.data.pagadorNome || ''}
-                                  placeholder="Opcional"
-                                  onChange={(e) => handleFieldChange(item.id, 'pagadorNome', e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                                />
-                              </div>
-
-                              {/* Data de Pagamento */}
-                              <div>
-                                <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block mb-1">
-                                  Data de Agendamento
-                                </label>
-                                <input
-                                  type="date"
-                                  value={item.data.dataPagamento || item.data.dataVencimento}
-                                  min={new Date().toISOString().split('T')[0]}
-                                  max={item.data.dataVencimento && item.data.dataVencimento >= new Date().toISOString().split('T')[0] ? item.data.dataVencimento : undefined}
-                                  onChange={(e) => handleFieldChange(item.id, 'dataPagamento', e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-blue-900 font-mono text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-bold"
-                                />
-                              </div>
-
-                              {/* Juros / Multa */}
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Juros / Mora (R$)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={item.data.juros || 0}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    handleFieldChange(item.id, 'juros', val);
-                                    handleFieldChange(item.id, 'jurosMulta', Number((val + (item.data?.multa || 0)).toFixed(2)));
-                                  }}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Multa (R$)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={item.data.multa || 0}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    handleFieldChange(item.id, 'multa', val);
-                                    handleFieldChange(item.id, 'jurosMulta', Number(((item.data?.juros || 0) + val).toFixed(2)));
-                                  }}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                                  Desconto (R$)
-                                </label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={item.data.desconto || 0}
-                                  onChange={(e) => handleFieldChange(item.id, 'desconto', parseFloat(e.target.value) || 0)}
-                                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
-                                />
+                                {/* Se existirem campos de veículos / tributo (Placa, Renavam) */}
+                                {(item.data.placa || item.data.renavam || item.data.autoInfracao) && (
+                                  <div className="flex items-center gap-1.5 pt-0.5">
+                                    {item.data.placa && (
+                                      <span className="bg-slate-200 text-slate-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                        Placa: {item.data.placa}
+                                      </span>
+                                    )}
+                                    {item.data.renavam && (
+                                      <span className="bg-slate-200 text-slate-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                        Renavam: {item.data.renavam}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>

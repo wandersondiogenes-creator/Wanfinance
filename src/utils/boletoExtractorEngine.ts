@@ -77,20 +77,23 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
    - O "beneficiario" é a entidade credora (ex: "FIDC COMPLEMENTAR AUTO FORD", CNPJ "043.489.824/0001-80").
    - O "pagador" é a empresa devedora (ex: "GRANVIA VEICULOS S/A", CNPJ "012.946.886/0001-40").
    - O "numeroDocumento" e "nossoNumero" devem ser extraídos dos campos oficiais da ficha de compensação/recibo do pagador (ex: Número Documento "0832852091", Nosso Número "030/69231795159-4").
-10. REGRA CRÍTICA DE QUANTIDADE DE BOLETOS - NUNCA CRIAR MÚLTIPLOS OBJETOS PARA LINHAS DE TABELA:
-   - NUNCA crie múltiplos objetos no array "boletos" para as linhas de uma tabela anexa de compromissos, notas fiscais, faturas ou débitos agrupados.
-   - Se o documento/página possui apenas 1 código de barras e 1 linha digitável (ex: 23792.85634 06923.179516 59003.852403 5 15430000486840), retorne RIGOROSAMENTE 1 ÚNICO OBJETO no array "boletos" com o valor total cobrado (ex: R$ 4.868,40).
-   - Não confunda a lista de notas/compromissos anexos com boletos separados. É terminantemente proibido retornar 6 ou 7 boletos para um documento que é apenas 1 boleto bancário aglutinado.`;
+10. REGRA CRÍTICA DE QUANTIDADE DE BOLETOS & DOCUMENTOS MULTI-PÁGINAS:
+   - SE O ARQUIVO CONTIVER MÚLTIPLOS BOLETOS OU MÚLTIPLAS PÁGINAS COM BOLETOS/GUIAS INDEPENDENTES (ex: 9 páginas com 1 guia/boleto por página, como guias de IPVA de veículos diferentes, parcelas de tributos ou multas da CTTU/DETRAN): VOCÊ DEVE EXTRAIR CADA GUIA/BOLETO DE CADA PÁGINA COMO UM OBJETO SEPARADO NO ARRAY "boletos" (resultando em 9 itens no array para 9 boletos/guias).
+   - NUNCA crie múltiplos objetos no array "boletos" para as linhas de uma tabela anexa de compromissos dentro de um único boleto aglutinado com 1 único código de barras.
+   - SE ALGUMA PÁGINA ESTIVER INVERTIDA DE CABEÇA PARA BAIXO (180°) OU DIGITALIZADA COM ORIENTAÇÃO ALTERADA: rotacione mentalmente a imagem e extraia rigorosamente todos os campos (Linha Digitável, Código de Barras, Favorecido CTTU/DETRAN/SEFAZ, Pagador, Placa, Renavam, Auto de Infração, Valor e Vencimento).`;
 
-export const PROMPT_BOLETO_EXTRACTION = (fileName: string) => `Extraia todas as informações financeiras e cadastrais do arquivo "${fileName}" respeitando rigorosamente o schema JSON solicitado.
-Certifique-se de preencher com 100% de exatidão:
+export const PROMPT_BOLETO_EXTRACTION = (fileName: string) => `Extraia rigorosamente TODOS os boletos, guias de arrecadação (IPVA, DETRAN, CTTU, SEFAZ) e tributos contidos em TODAS as páginas do arquivo "${fileName}".
+ATENÇÃO MULTI-BOLETOS: Se o arquivo tiver múltiplos boletos (por exemplo, 9 boletos em 9 páginas diferentes), você DEVE extrair TODOS os 9 boletos, retornando exatamente 9 objetos no array "boletos".
+Se houver boletos escaneados de cabeça para baixo ou invertidos, faça a leitura completa e precisa de cada um.
+
+Certifique-se de preencher com 100% de exatidão para cada boleto:
 - Banco Emissor, Código do Banco e Nome do Banco
-- Beneficiário (Razão Social e CNPJ/CPF)
+- Beneficiário / Favorecido (Razão Social e CNPJ/CPF)
 - Pagador / Sacado (Razão Social/Nome e CPF/CNPJ)
 - Valor, Data de Vencimento
-- Número do Documento, Seu Número, Nosso Número
+- Número do Documento, Seu Número, Nosso Número, Placa, Renavam, Auto de Infração
 - Agência e Conta
-- Linha Digitável e Código de Barras
+- Linha Digitável e Código de Barras (47 ou 48 dígitos)
 - Desconto, Juros e Multa
 - Tipo do Documento (boleto, darf, gnre, carnet, tributo, concessionaria, ipva)
 - Confiança da leitura (0 a 100)

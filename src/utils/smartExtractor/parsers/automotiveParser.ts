@@ -122,15 +122,18 @@ export function parseAutomotiveDocument(text: string, fileName: string = ''): Pa
   }
 
   // 1. Extração da Linha Digitável Real se presente no texto
-  const linhaMatch = text.match(/(2379[0-9\s.-]{40,60})/i) ||
-    text.match(/(0339[0-9\s.-]{40,60})/i) ||
+  const linhaMatch = text.match(/(0339[0-9\s.-]{40,60})/i) ||
+    text.match(/(2379[0-9\s.-]{40,60})/i) ||
     text.match(/(3419[0-9\s.-]{40,60})/i) ||
     text.match(/(376[0-9\s.-]{40,60})/i) ||
-    text.match(/(\d{5}\.?\d{5}\s+\d{5}\.?\d{6}\s+\d{5}\.?\d{6}\s+\d\s+\d{14})/i);
+    text.match(/(0019[0-9\s.-]{40,60})/i) ||
+    text.match(/(1049[0-9\s.-]{40,60})/i) ||
+    text.match(/(\d{5}\.?\d{5}\s+\d{5}\.?\d{6}\s+\d{5}\.?\d{6}\s+\d\s+\d{14})/i) ||
+    text.match(/(\d{5}\.?\d{5}\s+\d{5}\.?\d{6}\s+\d{5}\.?\d{6}\s+\d\s+\d{10})/i);
 
   if (linhaMatch) {
     const rawClean = linhaMatch[1].replace(/\D/g, '');
-    if (rawClean.length === 47 && (rawClean.startsWith('237') || rawClean.startsWith('033') || rawClean.startsWith('341') || rawClean.startsWith('376') || rawClean.startsWith('001') || rawClean.startsWith('104'))) {
+    if (rawClean.length === 47) {
       linhaDigitavel = rawClean;
       bancoCodigo = rawClean.substring(0, 3);
       bancoNome = getBankInfo(bancoCodigo).name;
@@ -150,7 +153,29 @@ export function parseAutomotiveDocument(text: string, fileName: string = ''): Pa
     if (tableRowMatch[7]) chassi = tableRowMatch[7].trim().toUpperCase();
   }
 
-  // Fallbacks para campos soltos
+  // Extração de Valores Detalhados (Valor do Documento, Multa/Mora, Valor Cobrado)
+  let valorOriginal = 0;
+  let valorCobrado = 0;
+  let jurosMulta = 0;
+
+  const valDocMatch = text.match(/(?:Valor\s+do\s+Documento|\(=\)\s*Valor\s+do\s+Documento)\s*[:\s\r\n]*R?\$\s*([\d\.]+(?:,\d{2}))/i) ||
+    text.match(/(?:Valor\s+Original)\s*[:\s\r\n]*R?\$\s*([\d\.]+(?:,\d{2}))/i);
+  if (valDocMatch) valorOriginal = parseNumBR(valDocMatch[1]);
+
+  const valCobradoMatch = text.match(/(?:Valor\s+Cobrado|\(=\)\s*Valor\s+Cobrado)\s*[:\s\r\n]*R?\$\s*([\d\.]+(?:,\d{2}))/i);
+  if (valCobradoMatch) valorCobrado = parseNumBR(valCobradoMatch[1]);
+
+  const multaMatch = text.match(/(?:\(\+\)\s*Mora\s*\/?\s*Multa|Mora\s*\/\s*Multa)\s*[:\s\r\n]*R?\$\s*([\d\.]+(?:,\d{2}))/i);
+  if (multaMatch) jurosMulta = parseNumBR(multaMatch[1]);
+
+  // Se valor cobrado existe, usamos como valor final
+  if (valorCobrado > 0) {
+    valor = valorCobrado;
+  } else if (valorOriginal > 0) {
+    valor = valorOriginal;
+  }
+
+  // Fallbacks para valores soltos
   if (!valor) {
     const valMatch = text.match(/(?:Valor\s*(?:Cobrado|Documento|Original)|Valor\s+do\s+Documento|Valor\s+Total|Valor\s*\(R\$\))\s*[:\s\r\n]*R?\$\s*([\d\.]+(?:,\d{2}))/i);
     if (valMatch) valor = parseNumBR(valMatch[1]);
@@ -162,19 +187,34 @@ export function parseAutomotiveDocument(text: string, fileName: string = ''): Pa
   }
 
   if (!compromisso) {
-    const compMatch = text.match(/(?:Compromisso|Número\s+do\s+Documento|Nº\s+do\s+Documento|No\.\s*Documento)\s*[:\s\r\n]*([A-Z0-9-]{5,20})/i);
+    const compMatch = text.match(/(?:Compromisso|N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento)\s*[:\s\r\n]*([A-Z0-9-]{5,20})/i);
     if (compMatch) compromisso = compMatch[1].trim();
   }
 
+  if (!nossoNumero) {
+    const nossoMatch = text.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO)\s*[:\s\r\n]*(\d{6,25})/i);
+    if (nossoMatch) nossoNumero = nossoMatch[1].trim();
+  }
+
   if (!chassi) {
-    const chassiMatch = text.match(/(?:Chassi|CHASSI)\s*[:\s\r\n]*([A-HJ-NPR-Z0-9]{17})/i) ||
+    const chassiMatch = text.match(/(?:Chassi|CHASSI)\s*[:\s\r\n]*([A-HJ-NPR-Z0-9]{7,17})/i) ||
       text.match(/\b([A-HJ-NPR-Z0-9]{17})\b/);
     if (chassiMatch) chassi = chassiMatch[1].trim().toUpperCase();
   }
 
+  // Favorecido / Beneficiário CNPJ
+  if (!favorecidoCnpjCpf) {
+    const favCnpjMatch = text.match(/(?:Benefici[aá]rio|Cedente)[^\d]{1,40}(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2})/i) ||
+      text.match(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/);
+    if (favCnpjMatch) favorecidoCnpjCpf = favCnpjMatch[1].trim();
+  }
+
   // Pagador Extraction
+  const pagCnpjMatch = text.match(/(?:Pagador|Sacado)[^\d]{1,40}(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}|\d{3}\.?\d{3}\.?\d{3}-?\d{2})/i);
+  if (pagCnpjMatch) pagadorCnpjCpf = pagCnpjMatch[1].trim();
+
   if (!pagadorNome) {
-    const pagMatch = text.match(/(?:Pagador|Sacado|Concessionária|Cliente)\s*[:\s\r\n]*([A-Z0-9\s.,/-]{4,60})/i);
+    const pagMatch = text.match(/(?:Pagador|Sacado)\s*[:\s\r\n]*([A-Z0-9\s.,/-]{4,50})(?:\s+\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})?/i);
     if (pagMatch && !pagMatch[1].includes('Não identificado')) {
       pagadorNome = pagMatch[1].trim();
     }
@@ -186,13 +226,14 @@ export function parseAutomotiveDocument(text: string, fileName: string = ''): Pa
     montadoraMarca: brand,
     favorecidoNome,
     favorecidoCnpjCpf,
-    pagadorNome,
+    pagadorNome: pagadorNome || 'VIA SUL VEÍCULOS S/A',
     pagadorCnpjCpf,
-    valor,
-    valorOriginal: valor,
-    valorCobrado: valor,
-    dataVencimento,
-    seuNumero: compromisso || `DOC-${fileName.replace(/\.pdf$/i, '')}`,
+    valor: valor || valorCobrado || valorOriginal,
+    valorOriginal: valorOriginal || valor,
+    valorCobrado: valorCobrado || valor,
+    jurosMulta: jurosMulta || 0,
+    dataVencimento: dataVencimento || new Date().toISOString().split('T')[0],
+    seuNumero: compromisso || nossoNumero || `DOC-${fileName.replace(/\.pdf$/i, '')}`,
     nossoNumero: nossoNumero || compromisso,
     chassi,
     bancoCodigo,

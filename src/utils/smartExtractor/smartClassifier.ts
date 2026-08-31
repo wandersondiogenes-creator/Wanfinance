@@ -25,7 +25,7 @@ export function classifySmartDocument(text: string, fileName: string = ''): Clas
     { brand: 'NISSAN', keys: ['nissan', 'nissan do brasil', 'banco rci nissan'] },
     { brand: 'NEWVIA', keys: ['newvia', 'new via', 'newvia veiculos'] },
     { brand: 'FORD / FIDC AUTO FORD', keys: ['fidc complementar auto ford', 'fidc auto ford', 'granvia veiculos', '043.489.824/0001-80', 'ford motor'] },
-    { brand: 'BYD DO BRASIL / AUTO', keys: ['byd auto', 'byd do brasil', '17.140.820/0007-77', '50.351.104/0001-19', 'build your dreams', '0339905481', '0339901241'] },
+    { brand: 'BYD DO BRASIL / AUTO', keys: ['byd auto', 'byd do brasil', '17.140.820/0007-77', '50.351.104/0001-19', 'build your dreams', '0339905481', '0339901241', 'antonio buscato'] },
     { brand: 'BAJAJ / J.P. MORGAN', keys: ['bajaj', 'bajaj do brasil', '45.859.932/0001-22', 'banco j.p. morgan', 'jpmorgan'] },
     { brand: 'TOYOTA', keys: ['banco toyota', 'toyota do brasil', 'toyota financial'] },
     { brand: 'VOLKSWAGEN', keys: ['banco volkswagen', 'volkswagen do brasil', 'vw financial'] },
@@ -37,7 +37,7 @@ export function classifySmartDocument(text: string, fileName: string = ''): Clas
 
   for (const auto of automotiveKeywords) {
     const matched = auto.keys.filter(k => normalized.includes(k));
-    if (matched.length >= 1 && (normalized.includes('chassi') || normalized.includes('compromisso') || normalized.includes('fidc') || normalized.includes('veiculo') || matched.length >= 2)) {
+    if (matched.length >= 1 && (normalized.includes('chassi') || normalized.includes('compromisso') || normalized.includes('fidc') || normalized.includes('veiculo') || matched.length >= 2 || auto.brand.includes('BYD') || auto.brand.includes('FIAT'))) {
       return {
         category: 'montadora_fidc',
         confidence: 0.96,
@@ -48,13 +48,62 @@ export function classifySmartDocument(text: string, fileName: string = ''): Clas
     }
   }
 
-  // 2. Detecção de DETRAN / IPVA / Trânsito
-  const detranKeys = ['detran', 'ipva', 'licenciamento', 'taxa de transito', 'dpvat', 'auto de infracao', 'infracao de transito', 'secretaria da fazenda - ipva', 'renavam'];
+  // 2. Detecção de DETRAN / IPVA / SEFAZ / Trânsito / CTTU / Multas
+  const detranKeys = [
+    'sefaz - ipva',
+    'sefaz',
+    'secretaria da fazenda',
+    'ipva',
+    'detran',
+    'cttu',
+    'autarquia de transito',
+    'autarquia de trânsito',
+    'prefeitura municipal de recife',
+    'prefeitura municipal',
+    'bhtrans',
+    'cet-sp',
+    'eptc',
+    'der-',
+    'policia rodoviaria',
+    'polícia rodoviária',
+    'licenciamento',
+    'taxa de transito',
+    'taxa de trânsito',
+    'dpvat',
+    'auto de infracao',
+    'auto de infração',
+    'infracao de transito',
+    'infração de trânsito',
+    'notificacao de penalidade',
+    'notificação de penalidade',
+    'renavam',
+    'placa',
+    'multa de transito',
+    'multa de trânsito',
+    'taxa bombeiro'
+  ];
   const matchedDetran = detranKeys.filter(k => normalized.includes(k));
-  if (matchedDetran.length >= 2 || (normalized.includes('detran') && (normalized.includes('renavam') || normalized.includes('placa')))) {
+  if (
+    matchedDetran.length >= 1 &&
+    (normalized.includes('ipva') ||
+      normalized.includes('sefaz') ||
+      normalized.includes('secretaria da fazenda') ||
+      normalized.includes('detran') ||
+      normalized.includes('cttu') ||
+      normalized.includes('transito') ||
+      normalized.includes('trânsito') ||
+      normalized.includes('autarquia') ||
+      normalized.includes('penalidade') ||
+      normalized.includes('renavam') ||
+      normalized.includes('placa') ||
+      fileName.toLowerCase().includes('ipva') ||
+      fileName.toLowerCase().includes('detran') ||
+      fileName.toLowerCase().includes('multa') ||
+      fileName.toLowerCase().includes('cttu'))
+  ) {
     return {
       category: 'detran_ipva',
-      confidence: 0.95,
+      confidence: 0.96,
       matchedKeywords: matchedDetran,
       suggestedParser: 'DetranIpvaParser',
     };

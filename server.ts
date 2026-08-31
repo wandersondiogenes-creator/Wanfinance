@@ -140,7 +140,7 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
 
   // Patterns for Brazilian boletos:
   // 1. Formatted 47-digit Linha Digitável: 00190.00009 01234.567004 00001.234567 8 85000000012345
-  // 2. Formatted 48-digit Concessionária / Tributo: 84670000001-7 23450012100-3 00000000000-0 00000000000-0
+  // 2. Formatted 48-digit Concessionária / Tributo / IPVA / CTTU: 84670000001-7 23450012100-3 00000000000-0 00000000000-0
   // 3. Raw 47 or 48 contiguous digits
   // 4. Raw 44-digit barcodes
   const patterns = [
@@ -150,14 +150,18 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
     /[0-7]\d{4}[\.\s-]*\d{5}[\s-]+[0-7]?\d{4,5}[\.\s-]*\d{6}[\s-]+\d{5}[\.\s-]*\d{6}[\s-]+\d[\s-]+\d{14}/g,
     // 3. Flexible 47-digit pattern - Banks 001-799
     /[0-7]\d{4}[\.\s-]*\d{5}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d{5}[\.\s-]*\d{6}\s*[\.\s-]*\d\s*[\.\s-]*\d{14}/g,
-    // 4. Standard 48-digit Concessionária/Tributo/SEFAZ/IPVA/DETRAN (4 blocks of 11.1 or 12)
-    /8\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d\s+8?\d{10,11}[-\s.]*\d/g,
+    // 4. Standard 48-digit Concessionária/Tributo/SEFAZ/IPVA/DETRAN/CTTU (4 blocks of 11.1 or 12)
+    /8\d{10,11}[-\s.]*\d\s+\d{10,11}[-\s.]*\d\s+\d{10,11}[-\s.]*\d\s+\d{10,11}[-\s.]*\d/g,
     /\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d[\s-]+\d{11}[\.\s-]*\d/g,
     /\d{12}[\s-]+\d{12}[\s-]+\d{12}[\s-]+\d{12}/g,
     /(?:8\d{10}[-\s.]*\d\s*){4}/g,
-    // 5. Contiguous digits (48 for concessionárias starting with 8)
+    // 5. Generic 48-digit Arrecadação / IPVA / SEFAZ / DETRAN / CTTU
+    /8\d{11}[\s-]*\d{12}[\s-]*\d{12}[\s-]*\d{12}/g,
+    /\b8[0-9\s.-]{43,65}\b/g,
+    // 6. Contiguous digits
     /\b8\d{47}\b/g,
-    // 6. Generic Brazilian bank line digitavel
+    /\b\d{44}\b/g,
+    // 7. Generic Brazilian bank line digitavel
     /(?:0\d{2}|1\d{2}|2\d{2}|3\d{2}|4\d{2}|6\d{2}|7\d{2})9[0-9.\s-]{40,65}/g,
   ];
 
