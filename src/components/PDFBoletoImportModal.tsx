@@ -39,6 +39,7 @@ import {
   recordFastPathSuccess,
 } from '../utils/layoutLearningEngine';
 import { applyLearnedCorrectionsToBoleto } from '../utils/correctionsMemoryEngine';
+import { consolidateAndDeduplicateBoletos } from '../utils/boletoExtractorEngine';
 
 export interface DetailedErrorInfo {
   errorType: string;
@@ -463,48 +464,8 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         });
       }
 
-      // Deduplicate rawBoletos strictly by 44-digit barcode key or Nosso Número
-      const seenRawKeys = new Map<string, any>();
-      const uniqueRawBoletos: any[] = [];
-
-      for (const b of rawBoletos) {
-        const rawDigits = onlyNumbers(b.linhaDigitavel || b.codigoBarras || '');
-        let key44 = rawDigits;
-        if (rawDigits.length === 47 || rawDigits.length === 48) {
-          const parsed = parseLinhaDigitavel(rawDigits);
-          if (parsed.codigoBarras) key44 = parsed.codigoBarras;
-          // For 47-digit bank boletos, barcode nominal value is authoritative
-          if (rawDigits.length === 47 && !rawDigits.startsWith('8') && parsed.valor > 0) {
-            b.valor = parsed.valor;
-          } else if ((!b.valor || b.valor <= 0) && parsed.valor > 0) {
-            b.valor = parsed.valor;
-          }
-        }
-        const nos = onlyNumbers(b.nossoNumero || b.seuNumero || '');
-        const venc = String(b.dataVencimento || '').trim();
-
-        const finalKey = key44.length >= 40 ? key44 : (nos || venc ? `${nos}_${venc}` : `DOC_${uniqueRawBoletos.length}`);
-
-        if (finalKey) {
-          if (!seenRawKeys.has(finalKey)) {
-            seenRawKeys.set(finalKey, b);
-            uniqueRawBoletos.push(b);
-          } else {
-            const existing = seenRawKeys.get(finalKey);
-            // Keep the one with a more complete Favorecido or non-default valor
-            if ((b.valor || 0) > 0 && ((existing.valor || 0) <= 0 || (b.favorecidoNome && b.favorecidoNome !== 'Beneficiário / Cedente'))) {
-              const idx = uniqueRawBoletos.indexOf(existing);
-              if (idx !== -1) {
-                uniqueRawBoletos[idx] = b;
-                seenRawKeys.set(finalKey, b);
-              }
-            }
-          }
-        } else {
-          uniqueRawBoletos.push(b);
-        }
-      }
-      rawBoletos = uniqueRawBoletos;
+      // Robust multi-tier deduplication and consolidation (unifies 44-digit barcode, nosso número, and multi-vias like Via Usuário + Via Banco)
+      rawBoletos = consolidateAndDeduplicateBoletos(rawBoletos);
 
       // Process raw extracted boletos
       const processedItems: PDFExtractedItem[] = rawBoletos.map((extracted, idx) => {
@@ -621,9 +582,16 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
             valorDocumento: typeof extracted.valorDocumento === 'number' && extracted.valorDocumento > 0 ? extracted.valorDocumento : finalValor,
             valorCobrado: typeof extracted.valorCobrado === 'number' && extracted.valorCobrado > 0 ? extracted.valorCobrado : finalValor,
             desconto: typeof extracted.desconto === 'number' ? extracted.desconto : 0,
-            juros: typeof extracted.juros === 'number' ? extracted.juros : 0,
-            multa: typeof extracted.multa === 'number' ? extracted.multa : 0,
-            jurosMulta: typeof extracted.jurosMulta === 'number' ? extracted.jurosMulta : (((typeof extracted.juros === 'number' ? extracted.juros : 0) + (typeof extracted.multa === 'number' ? extracted.multa : 0)) || 0),
+            juros: typeof extracted.juros === 'number' && (typeof extracted.valorCobrado === 'number' && typeof extracted.valorDocumento === 'number' && extracted.valorCobrado > extracted.valorDocumento) ? extracted.juros : 0,
+            multa: typeof extracted.multa === 'number' && (typeof extracted.valorCobrado === 'number' && typeof extracted.valorDocumento === 'number' && extracted.valorCobrado > extracted.valorDocumento) ? extracted.multa : 0,
+            jurosMulta: (() => {
+              const docV = typeof extracted.valorDocumento === 'number' && extracted.valorDocumento > 0 ? extracted.valorDocumento : finalValor;
+              const cobV = typeof extracted.valorCobrado === 'number' && extracted.valorCobrado > 0 ? extracted.valorCobrado : finalValor;
+              if (cobV > 0 && docV > 0 && cobV > docV) {
+                return Number((cobV - docV + (typeof extracted.desconto === 'number' ? extracted.desconto : 0)).toFixed(2));
+              }
+              return 0;
+            })(),
             dataVencimento:
               extracted.dataVencimento ||
               parsedCheck.dataVencimento ||
@@ -881,7 +849,14 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
       desconto: d.desconto || 0,
       juros: d.juros || 0,
       multa: d.multa || 0,
-      jurosMulta: d.jurosMulta || ((d.juros || 0) + (d.multa || 0)) || 0,
+      jurosMulta: (() => {
+        const docV = d.valorDocumento || d.valor;
+        const cobV = d.valorCobrado || d.valor;
+        if (cobV > 0 && docV > 0 && cobV > docV) {
+          return Number((cobV - docV + (d.desconto || 0)).toFixed(2));
+        }
+        return d.jurosMulta || 0;
+      })(),
       observacoes: d.observacoes,
       confianca: d.confianca || Math.round((d.confidence || 0.95) * 100),
       alertas: d.alertas || [],
@@ -931,7 +906,14 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         desconto: d.desconto || 0,
         juros: d.juros || 0,
         multa: d.multa || 0,
-        jurosMulta: d.jurosMulta || ((d.juros || 0) + (d.multa || 0)) || 0,
+        jurosMulta: (() => {
+          const docV = d.valorDocumento || d.valor;
+          const cobV = d.valorCobrado || d.valor;
+          if (cobV > 0 && docV > 0 && cobV > docV) {
+            return Number((cobV - docV + (d.desconto || 0)).toFixed(2));
+          }
+          return d.jurosMulta || 0;
+        })(),
         observacoes: d.observacoes,
         confianca: d.confianca || Math.round((d.confidence || 0.95) * 100),
         alertas: d.alertas || [],

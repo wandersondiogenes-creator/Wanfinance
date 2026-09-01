@@ -62,9 +62,10 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
    - Se o arquivo PDF contiver 2 ou mais boletos ou guias de pagamento (ex: 1ª e 2ª parcela, Cota Única e Parcela, IPVA e Taxa de Licenciamento DETRAN/SEFAZ, dois boletos bancários com linhas digitáveis distintas, ou carnê multi-páginas de veículos/seguros):
    - EXTRAIA CADA BOLETO/GUIA INDIVIDUALMENTE e retorne TODOS os boletos encontrados no array "boletos" (um objeto para cada linha digitável / boleto distinto).
    - Cada boleto do array deve conter sua respectiva linhaDigitavel, seu valor exato individual, seu vencimento e seu favorecido/beneficiário correspondente.
-   - NUNCA descarte o segundo boleto e NUNCA retorne apenas o primeiro se houver dois ou mais boletos distintos no documento.
-6. DOCUMENTOS COM VÁRIAS VIAS REPETIDAS DA MESMA GUIA NA MESMA PÁGINA (VIA USUÁRIO / VIA BANCO):
-   - Se na mesma página houver 2 vias com a MESMA linha digitável e mesmo código de barras (ex: topo "VIA USUÁRIO" e rodapé "VIA BANCO"), trata-se de 1 único boleto. Retorne apenas 1 item para essa guia repetida. Mas se as linhas digitáveis forem diferentes (dois boletos distintos), retorne ambos no array.
+   - NUNCA descarte o segundo boleto e NUNCA retorne apenas o primeiro se houver dois ou mais boletos distintos no documento. Se houver 2 boletos no arquivo, o array "boletos" DEVE CONTER EXATAMENTE 2 ITENS.
+6. DOCUMENTOS COM VÁRIAS VIAS REPETIDAS DA MESMA GUIA (VIA USUÁRIO / VIA BANCO COM O MESMO CÓDIGO DE BARRAS):
+   - Se uma página contiver 2 vias da MESMA guia (ex: metade superior 'VIA DO CONTRIBUINTE / VIA USUÁRIO' e metade inferior 'VIA DO BANCO / AGENTE ARRECADADOR') compartilhando o EXATO MESMO código de barras / mesma linha digitável, retorne 1 único item para essa guia.
+   - MAS SE OS CÓDIGOS DE BARRAS / LINHAS DIGITÁVEIS FOREM DIFERENTES (ex: 2 parcelas distintas, 2 guias de IPVA/Taxas distintas, ou 2 boletos com códigos de barras diferentes), RETORNE OBRIGATORIAMENTE TODOS OS BOLETOS no array "boletos" (um objeto para cada código de barras distinto).
 7. EXCEÇÃO CRÍTICA PARA GUIAS GNRE, TRIBUTOS E ARRECADAÇÃO (DOCUMENTO VÁLIDO PARA PAGAMENTO):
    - Em guias de arrecadação GNRE, DARF, DAE, Tributos Estaduais/Federais e Concessionárias: se o documento contiver o campo "Documento Válido para pagamento", "Válido para pagamento até" ou similar especificando uma data (exemplo: "Documento Válido para pagamento 07/08/2026"), CONSIDERE OBRIGATORIAMENTE ESTA DATA FINAL (ex: 2026-08-07) como a "dataVencimento" oficial do boleto.
    - Esta data limite de pagamento/validade TEM PRECEDÊNCIA ABSOLUTA sobre qualquer outra data presente no campo "Data de Vencimento" ou codificada no código de barras.
@@ -80,7 +81,11 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
 10. REGRA CRÍTICA DE QUANTIDADE DE BOLETOS & DOCUMENTOS MULTI-PÁGINAS:
    - SE O ARQUIVO CONTIVER MÚLTIPLOS BOLETOS OU MÚLTIPLAS PÁGINAS COM BOLETOS/GUIAS INDEPENDENTES (ex: 9 páginas com 1 guia/boleto por página, como guias de IPVA de veículos diferentes, parcelas de tributos ou multas da CTTU/DETRAN): VOCÊ DEVE EXTRAIR CADA GUIA/BOLETO DE CADA PÁGINA COMO UM OBJETO SEPARADO NO ARRAY "boletos" (resultando em 9 itens no array para 9 boletos/guias).
    - NUNCA crie múltiplos objetos no array "boletos" para as linhas de uma tabela anexa de compromissos dentro de um único boleto aglutinado com 1 único código de barras.
-   - SE ALGUMA PÁGINA ESTIVER INVERTIDA DE CABEÇA PARA BAIXO (180°) OU DIGITALIZADA COM ORIENTAÇÃO ALTERADA: rotacione mentalmente a imagem e extraia rigorosamente todos os campos (Linha Digitável, Código de Barras, Favorecido CTTU/DETRAN/SEFAZ, Pagador, Placa, Renavam, Auto de Infração, Valor e Vencimento).`;
+   - SE ALGUMA PÁGINA ESTIVER INVERTIDA DE CABEÇA PARA BAIXO (180°) OU DIGITALIZADA COM ORIENTAÇÃO ALTERADA: rotacione mentalmente a imagem e extraia rigorosamente todos os campos (Linha Digitável, Código de Barras, Favorecido CTTU/DETRAN/SEFAZ, Pagador, Placa, Renavam, Auto de Infração, Valor e Vencimento).
+11. REGRA CRÍTICA PARA JUROS, MULTA E INSTRUÇÕES APÓS O VENCIMENTO:
+   - Textos informativos de instruções como "JUROS DIÁRIO DE R$ X", "COBRAR MULTA DE R$ Y APÓS [DATA]", "APÓS O VENCIMENTO COBRAR MORA/MULTA", etc., são APENAS INSTRUÇÕES CONDICIONAIS DE COBRANÇA SE O BOLETO ESTIVER VENCIDO.
+   - NUNCA adicione esses valores condicionais ao campo "valor" nem ao campo "jurosMulta"/"juros"/"multa" de boletos dentro do prazo de vencimento.
+   - Os campos "juros", "multa" e "jurosMulta" só devem ser preenchidos se o boleto já tiver o campo formal "(+) Mora / Multa" ou "(+) Outros Acréscimos" preenchido com valor efetivo cobrado maior que zero, ou se o "Valor Cobrado" for maior que o "Valor do Documento". Caso contrário, retorne 0 para juros e multa.`;
 
 export const PROMPT_BOLETO_EXTRACTION = (fileName: string) => `Extraia rigorosamente TODOS os boletos, guias de arrecadação (IPVA, DETRAN, CTTU, SEFAZ) e tributos contidos em TODAS as páginas do arquivo "${fileName}".
 ATENÇÃO MULTI-BOLETOS: Se o arquivo tiver múltiplos boletos (por exemplo, 9 boletos em 9 páginas diferentes), você DEVE extrair TODOS os 9 boletos, retornando exatamente 9 objetos no array "boletos".
@@ -227,14 +232,22 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
   let multa = parseNum(b.multa || rawObj.multa || rawObj.multa_atraso || rawObj.valor_multa);
   let jurosMulta = parseNum(b.jurosMulta || rawObj.jurosMulta || rawObj.juros_multa || rawObj.mora_multa || rawObj.moraMulta || rawObj.acrescimos || rawObj.outros_acrescimos);
 
-  // Financial cross-reconciliation
-  if (jurosMulta === 0 && (juros > 0 || multa > 0)) {
-    jurosMulta = Number((juros + multa).toFixed(2));
-  }
-  if (jurosMulta === 0 && valorCobrado > 0 && valor > 0 && valorCobrado > valor) {
+  // Financial cross-reconciliation:
+  // Juros/Multa efetivo a pagar só existe se o campo (+) Mora/Multa do recibo tiver valor,
+  // ou se Valor Cobrado > Valor Documento. Instruções de "Juros diário de R$..." ou "Cobrar multa de..."
+  // são taxas condicionais para após o vencimento e NUNCA devem ser somadas ao valor antes do vencimento.
+  if (valorCobrado > 0 && valor > 0 && valorCobrado > valor) {
     jurosMulta = Number((valorCobrado - valor + desconto).toFixed(2));
-  } else if (jurosMulta === 0 && valorCobrado > 0 && valorDocumento > 0 && valorCobrado > valorDocumento) {
+  } else if (valorCobrado > 0 && valorDocumento > 0 && valorCobrado > valorDocumento) {
     jurosMulta = Number((valorCobrado - valorDocumento + desconto).toFixed(2));
+  } else if (valorCobrado > 0 && valorDocumento > 0 && Math.abs(valorCobrado - valorDocumento) < 0.01) {
+    jurosMulta = 0;
+    juros = 0;
+    multa = 0;
+  } else if (valor > 0 && valorDocumento > 0 && Math.abs(valor - valorDocumento) < 0.01 && (valorCobrado === 0 || Math.abs(valorCobrado - valor) < 0.01)) {
+    jurosMulta = 0;
+    juros = 0;
+    multa = 0;
   }
 
   let dataVencimento = String(b.dataVencimento || rawObj.data_vencimento || rawObj.vencimento || rawObj.data_limite || "").trim();
@@ -401,3 +414,171 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
     observacoes: b.observacoes || "",
   };
 }
+
+/**
+ * Calculates string similarity (0.0 to 1.0) between two digit strings
+ */
+function digitStringSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const minLen = Math.min(a.length, b.length);
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+
+  let matchCount = 0;
+  for (let i = 0; i < minLen; i++) {
+    if (a[i] === b[i]) matchCount++;
+  }
+  return matchCount / maxLen;
+}
+
+/**
+ * Robust, multi-layer deduplication and consolidation engine.
+ * Ensures that identical boletos, multiple vias of the same tax slip (Via Usuário + Via Banco),
+ * or OCR minor digit variants are seamlessly merged without creating phantom duplicates.
+ */
+export function consolidateAndDeduplicateBoletos<T extends Record<string, any>>(boletos: T[]): T[] {
+  if (!Array.isArray(boletos) || boletos.length <= 1) {
+    return Array.isArray(boletos) ? boletos : [];
+  }
+
+  const consolidated: T[] = [];
+
+  for (const incoming of boletos) {
+    if (!incoming || typeof incoming !== 'object') continue;
+
+    const rawIncomingDigits = onlyNumbers(
+      String(incoming.linhaDigitavel || incoming.codigoBarras || incoming.linha || '')
+    );
+    const parsedIncoming = rawIncomingDigits.length >= 44 ? parseLinhaDigitavel(rawIncomingDigits) : null;
+    const incomingBarcode44 = parsedIncoming?.codigoBarras || (rawIncomingDigits.length === 44 ? rawIncomingDigits : '');
+    const incomingNosso = onlyNumbers(String(incoming.nossoNumero || incoming.seuNumero || incoming.numeroDocumento || ''));
+    const incomingVenc = String(incoming.dataVencimento || incoming.vencimento || '').trim();
+    const incomingValor = typeof incoming.valor === 'number' ? incoming.valor : parseFloat(String(incoming.valor || '0').replace(',', '.')) || 0;
+    const incomingPlaca = String(incoming.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const incomingRenavam = onlyNumbers(String(incoming.renavam || ''));
+
+    let duplicateIndex = -1;
+
+    for (let i = 0; i < consolidated.length; i++) {
+      const existing = consolidated[i];
+      const rawExistingDigits = onlyNumbers(
+        String(existing.linhaDigitavel || existing.codigoBarras || existing.linha || '')
+      );
+      const parsedExisting = rawExistingDigits.length >= 44 ? parseLinhaDigitavel(rawExistingDigits) : null;
+      const existingBarcode44 = parsedExisting?.codigoBarras || (rawExistingDigits.length === 44 ? rawExistingDigits : '');
+      const existingNosso = onlyNumbers(String(existing.nossoNumero || existing.seuNumero || existing.numeroDocumento || ''));
+      const existingVenc = String(existing.dataVencimento || existing.vencimento || '').trim();
+      const existingValor = typeof existing.valor === 'number' ? existing.valor : parseFloat(String(existing.valor || '0').replace(',', '.')) || 0;
+      const existingPlaca = String(existing.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const existingRenavam = onlyNumbers(String(existing.renavam || ''));
+
+      // Check 1: Exact 44-digit Barcode match or exact clean Linha match
+      const isExactBarcodeMatch =
+        (incomingBarcode44.length === 44 && existingBarcode44.length === 44 && incomingBarcode44 === existingBarcode44) ||
+        (rawIncomingDigits.length >= 44 && rawExistingDigits.length >= 44 && rawIncomingDigits === rawExistingDigits);
+
+      if (isExactBarcodeMatch) {
+        duplicateIndex = i;
+        break;
+      }
+
+      // Check 2: Same Nosso Número (at least 6 digits) + Same Vencimento + Same Valor
+      // Merges 'Via do Contribuinte/Usuário' and 'Via do Banco/Agente Arrecadador' of the EXACT SAME installment/page
+      const isSameNossoVencVal =
+        incomingNosso.length >= 6 &&
+        existingNosso.length >= 6 &&
+        incomingNosso === existingNosso &&
+        incomingVenc &&
+        existingVenc &&
+        incomingVenc === existingVenc &&
+        Math.abs(incomingValor - existingValor) < 0.01;
+
+      if (isSameNossoVencVal) {
+        duplicateIndex = i;
+        break;
+      }
+    }
+
+    if (duplicateIndex !== -1) {
+      const existing = consolidated[duplicateIndex];
+      const rawExistingDigits = onlyNumbers(
+        String(existing.linhaDigitavel || existing.codigoBarras || existing.linha || '')
+      );
+      const parsedExisting = rawExistingDigits.length >= 44 ? parseLinhaDigitavel(rawExistingDigits) : null;
+      const existingBarcode44 = parsedExisting?.codigoBarras || (rawExistingDigits.length === 44 ? rawExistingDigits : '');
+      const existingValor = typeof existing.valor === 'number' ? existing.valor : parseFloat(String(existing.valor || '0').replace(',', '.')) || 0;
+
+      // Merge incoming with existing, keeping the highest quality data
+      const merged: any = { ...existing, ...incoming };
+
+      // Linha Digitável: prefer valid 48-digit or 47-digit line over 44-digit or truncated line
+      const rawExistLinha = onlyNumbers(String(existing.linhaDigitavel || ''));
+      const rawInLinha = onlyNumbers(String(incoming.linhaDigitavel || ''));
+      if (rawInLinha.length === 48 || (rawInLinha.length === 47 && !rawInLinha.startsWith('8'))) {
+        merged.linhaDigitavel = incoming.linhaDigitavel;
+      } else if (rawExistLinha.length === 48 || (rawExistLinha.length === 47 && !rawExistLinha.startsWith('8'))) {
+        merged.linhaDigitavel = existing.linhaDigitavel;
+      }
+
+      // Codigo Barras: prefer 44-digit
+      if (incomingBarcode44.length === 44) {
+        merged.codigoBarras = incomingBarcode44;
+      } else if (existingBarcode44.length === 44) {
+        merged.codigoBarras = existingBarcode44;
+      }
+
+      // Valor: keep non-zero
+      merged.valor = incomingValor > 0 ? incomingValor : existingValor;
+      merged.valorCobrado = incomingValor > 0 ? incomingValor : existingValor;
+      merged.valorDocumento = incomingValor > 0 ? incomingValor : existingValor;
+
+      // Favorecido / Beneficiário
+      const existingFav = String(existing.favorecidoNome || existing.beneficiario || '');
+      const incomingFav = String(incoming.favorecidoNome || incoming.beneficiario || '');
+      if (incomingFav && incomingFav !== 'Beneficiário / Cedente' && incomingFav !== 'Não identificado com segurança') {
+        merged.favorecidoNome = incomingFav;
+        merged.beneficiario = incomingFav;
+      } else if (existingFav && existingFav !== 'Beneficiário / Cedente') {
+        merged.favorecidoNome = existingFav;
+        merged.beneficiario = existingFav;
+      }
+
+      // Favorecido CNPJ
+      const inBenCnpj = incoming.favorecidoCnpjCpf || incoming.beneficiarioCnpjCpf;
+      const existBenCnpj = existing.favorecidoCnpjCpf || existing.beneficiarioCnpjCpf;
+      merged.favorecidoCnpjCpf = inBenCnpj || existBenCnpj || '';
+      merged.beneficiarioCnpjCpf = inBenCnpj || existBenCnpj || '';
+
+      // Pagador
+      const inPag = incoming.pagador || incoming.pagadorNome;
+      const existPag = existing.pagador || existing.pagadorNome;
+      if (inPag && !inPag.includes('Não identificado')) {
+        merged.pagador = inPag;
+      } else if (existPag) {
+        merged.pagador = existPag;
+      }
+
+      // Pagador CNPJ
+      merged.pagadorCnpjCpf = incoming.pagadorCnpjCpf || existing.pagadorCnpjCpf || '';
+
+      // Vehicle identifiers
+      merged.placa = incoming.placa || existing.placa || '';
+      merged.renavam = incoming.renavam || existing.renavam || '';
+      merged.chassi = incoming.chassi || existing.chassi || '';
+      merged.autoInfracao = incoming.autoInfracao || existing.autoInfracao || '';
+      merged.nossoNumero = incoming.nossoNumero || existing.nossoNumero || '';
+      merged.seuNumero = incoming.seuNumero || existing.seuNumero || '';
+
+      // Confidence
+      merged.confianca = Math.max(existing.confianca || 0, incoming.confianca || 0, 95);
+
+      consolidated[duplicateIndex] = merged;
+    } else {
+      consolidated.push(incoming);
+    }
+  }
+
+  return consolidated;
+}
+

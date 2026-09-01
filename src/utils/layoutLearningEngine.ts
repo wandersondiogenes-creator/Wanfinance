@@ -1407,8 +1407,12 @@ export function extractViaLearnedLayout(
             const jurosVal = localDetected.juros || detectedGlobal.juros || 0;
             const multaVal = localDetected.multa || detectedGlobal.multa || 0;
             let jurosMultaVal = localDetected.jurosMulta || detectedGlobal.jurosMulta || 0;
-            if (jurosMultaVal === 0 && (jurosVal > 0 || multaVal > 0)) {
-              jurosMultaVal = Number((jurosVal + multaVal).toFixed(2));
+            const docVal = localDetected.valorDocumento || detectedGlobal.valorDocumento || extractedValue;
+            const cobVal = localDetected.valorCobrado || detectedGlobal.valorCobrado || extractedValue;
+            if (cobVal > 0 && docVal > 0 && cobVal > docVal) {
+              jurosMultaVal = Number((cobVal - docVal + descontoVal).toFixed(2));
+            } else if (cobVal > 0 && docVal > 0 && Math.abs(cobVal - docVal) < 0.01) {
+              jurosMultaVal = 0;
             }
 
             boletosFound.push({

@@ -11,6 +11,7 @@ import {
   PROMPT_BOLETO_EXTRACTION,
   GEMINI_BOLETO_SCHEMA,
   validateAndCrossCheckBoleto,
+  consolidateAndDeduplicateBoletos,
 } from "./src/utils/boletoExtractorEngine";
 
 // In-memory logs for bank transmission history
@@ -547,54 +548,8 @@ async function startServer() {
         boletosExtracted = validLinhaBoletos;
       }
 
-      // Deduplicate boletos strictly by 44-digit barcode key (unifying 47, 48, 44 digits)
-      const seenBarcodeKeys = new Map<string, typeof boletosExtracted[0]>();
-      const uniqueBoletos: typeof boletosExtracted = [];
-
-      for (const b of boletosExtracted) {
-        const rawDigits = String(b.linhaDigitavel || b.codigoBarras || "");
-        const cleanDigits = onlyNumbers(rawDigits);
-        
-        let cleanKey = cleanDigits;
-        if (cleanDigits.length === 47 || cleanDigits.length === 48) {
-          const parsed = parseLinhaDigitavel(cleanDigits);
-          if (parsed.codigoBarras) cleanKey = parsed.codigoBarras;
-          // Use barcode parsed valor if b.valor is not yet populated
-          if ((!b.valor || b.valor <= 0) && parsed.valor > 0) {
-            b.valor = parsed.valor;
-          }
-          if (parsed.dataVencimento && (!b.dataVencimento || b.dataVencimento.startsWith("Não"))) {
-            b.dataVencimento = parsed.dataVencimento;
-          }
-        }
-
-        const nosso = String(b.nossoNumero || "").replace(/\D/g, "");
-        const venc = String(b.dataVencimento || "").trim();
-
-        let uniqueKey = cleanKey.length >= 40 ? cleanKey : (nosso || venc ? `${nosso}_${venc}` : "");
-
-        if (uniqueKey) {
-          if (!seenBarcodeKeys.has(uniqueKey)) {
-            seenBarcodeKeys.set(uniqueKey, b);
-            uniqueBoletos.push(b);
-          } else {
-            const existing = seenBarcodeKeys.get(uniqueKey)!;
-            // Keep the one with highest valor or more complete data
-            if ((b.valor || 0) > (existing.valor || 0)) {
-              const idx = uniqueBoletos.indexOf(existing);
-              if (idx !== -1) {
-                uniqueBoletos[idx] = b;
-                seenBarcodeKeys.set(uniqueKey, b);
-              }
-            }
-            console.log(`[OCR Server] Consolidado boleto/via repetida com chave: ${uniqueKey}`);
-          }
-        } else {
-          uniqueBoletos.push(b);
-        }
-      }
-
-      boletosExtracted = uniqueBoletos;
+      // Robust multi-layer deduplication and consolidation
+      boletosExtracted = consolidateAndDeduplicateBoletos(boletosExtracted);
 
       return res.json({
         success: true,

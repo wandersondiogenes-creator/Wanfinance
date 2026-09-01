@@ -2,6 +2,7 @@ import { parseLinhaDigitavel, onlyNumbers, extractFavorecidoFromText, detectBole
 import { getBankInfo } from './banks.js';
 import { technicalLogger } from './technicalLogger.js';
 import { extractBoletoFromImageSource } from './imageOcrService.js';
+import { consolidateAndDeduplicateBoletos } from './boletoExtractorEngine.js';
 
 /**
  * Client-Side Browser Fallback for PDF & Image Boleto Data Extraction.
@@ -30,7 +31,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
     }
   }
 
-  const boletosFound: any[] = [];
+  let boletosFound: any[] = [];
   const seenLines = new Set<string>();
 
   try {
@@ -122,13 +123,14 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
                 canvas.height = viewport.height;
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
-                  await page.render({ canvasContext: ctx, viewport }).promise;
+                  await page.render({ canvasContext: ctx, viewport } as any).promise;
                   const ocrBoletos = await extractBoletoFromImageSource(canvas, `${fileName}_p${pageNum}`);
                   if (ocrBoletos && ocrBoletos.length > 0) {
-                    for (const ob of ocrBoletos) {
+                    for (let obIdx = 0; obIdx < ocrBoletos.length; obIdx++) {
+                      const ob = ocrBoletos[obIdx];
                       ob.observacoes = ob.observacoes || `Página ${pageNum} de ${pdfDoc.numPages}`;
                       const rawD = onlyNumbers(ob.linhaDigitavel || ob.codigoBarras || '');
-                      const k44 = rawD.length >= 44 ? rawD : `${ob.seuNumero}_${pageNum}`;
+                      const k44 = rawD.length >= 44 ? rawD : `${ob.seuNumero || 'DOC'}_p${pageNum}_b${obIdx + 1}`;
                       if (!seenLines.has(k44)) {
                         seenLines.add(k44);
                         boletosFound.push(ob);
@@ -371,8 +373,12 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
             const jurosVal = localDetected.juros || detectedGlobal.juros || 0;
             const multaVal = localDetected.multa || detectedGlobal.multa || 0;
             let jurosMultaVal = localDetected.jurosMulta || detectedGlobal.jurosMulta || 0;
-            if (jurosMultaVal === 0 && (jurosVal > 0 || multaVal > 0)) {
-              jurosMultaVal = Number((jurosVal + multaVal).toFixed(2));
+            const docVal = localDetected.valorDocumento || detectedGlobal.valorDocumento || extractedValue;
+            const cobVal = localDetected.valorCobrado || detectedGlobal.valorCobrado || extractedValue;
+            if (cobVal > 0 && docVal > 0 && cobVal > docVal) {
+              jurosMultaVal = Number((cobVal - docVal + descontoVal).toFixed(2));
+            } else if (cobVal > 0 && docVal > 0 && Math.abs(cobVal - docVal) < 0.01) {
+              jurosMultaVal = 0;
             }
 
             boletosFound.push({
@@ -418,7 +424,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
         canvas.height = viewport.height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          await firstPage.render({ canvasContext: ctx, viewport }).promise;
+          await firstPage.render({ canvasContext: ctx, viewport } as any).promise;
           const ocrBoletos = await extractBoletoFromImageSource(canvas, fileName);
           if (ocrBoletos && ocrBoletos.length > 0) {
             // Enhance OCR boletos with accurate text layer metadata if available
@@ -503,16 +509,20 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
     });
   }
 
+  boletosFound = consolidateAndDeduplicateBoletos(boletosFound);
+
   const duration = Math.round(performance.now() - startTime);
+  const finalBoletos = consolidateAndDeduplicateBoletos(boletosFound);
+
   technicalLogger.log({
     step: 'Conclusão Extração Local PDF',
     fileName,
     processingTimeMs: duration,
-    severity: boletosFound.length > 0 ? 'info' : 'warn',
-    errorMessage: `Encontrados ${boletosFound.length} boleto(s) localmente no navegador em ${duration}ms`,
+    severity: finalBoletos.length > 0 ? 'info' : 'warn',
+    errorMessage: `Encontrados ${finalBoletos.length} boleto(s) localmente no navegador em ${duration}ms`,
   });
 
-  return boletosFound;
+  return finalBoletos;
 }
 
 /**

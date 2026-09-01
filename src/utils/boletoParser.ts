@@ -164,32 +164,42 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     if (parsed >= 0) desconto = parsed;
   }
 
-  // 5.4 Mora / Multa / Juros / Outros Acréscimos
-  const moraMultaMatch = rawText.match(/(?:(?:\(\+\)|\+|\b)\s*Mora\s*(?:\/|\s+e\s+)?\s*Multa|(?:\(\+\)|\+|\b)\s*Juros\s*(?:\/|\s+e\s+)?\s*Multa|(?:\(\+\)|\+|\b)\s*Outros\s+Acr[eé]scimos|JUROS\/MULTA|MORA\/MULTA|VALOR\s+DA\s+MULTA|VALOR\s+DOS\s+JUROS)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
+  // 5.4 Mora / Multa / Juros / Outros Acréscimos (Campo formal do recibo/ficha de compensação)
+  const moraMultaMatch = rawText.match(/(?:(?:\(\+\)|\+|\b)\s*6\s*\(\+\)\s*Mora\s*(?:\/|\s+e\s+)?\s*Multa|(?:\(\+\)|\+|\b)\s*Mora\s*(?:\/|\s+e\s+)?\s*Multa|(?:\(\+\)|\+|\b)\s*Juros\s*(?:\/|\s+e\s+)?\s*Multa|(?:\(\+\)|\+|\b)\s*Outros\s+Acr[eé]scimos|JUROS\/MULTA|MORA\/MULTA)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
   if (moraMultaMatch && moraMultaMatch[1]) {
     const parsed = parseNumBR(moraMultaMatch[1]);
     if (parsed > 0) jurosMulta = parsed;
   }
 
-  // 5.5 Juros Diário / Instruções de Juros
+  // 5.5 Juros Diário / Instruções Condicionais de Juros (aplicáveis somente se vencido)
+  let instrucaoJurosDiario = 0;
   const jurosMatch = rawText.match(/(?:JUROS\s+DI[AÁ]RIO(?:\s+DE)?|JUROS\s+AO\s+DIA|JUROS\s+MORA|JUROS\s*[:\s]*R?\$?)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
   if (jurosMatch && jurosMatch[1]) {
     const parsed = parseNumBR(jurosMatch[1]);
-    if (parsed > 0) juros = parsed;
+    if (parsed > 0) instrucaoJurosDiario = parsed;
   }
 
-  // 5.6 Multa após vencimento / Instruções de Multa
+  // 5.6 Multa após vencimento / Instruções Condicionais de Multa (aplicáveis somente se vencido)
+  let instrucaoMultaAtraso = 0;
   const multaMatch = rawText.match(/(?:COBRAR\s+MULTA\s+DE|MULTA\s+DE|MULTA\s+AP[OÓ]S[^\r\n]*DE|MULTA\s*[:\s]*R?\$?)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
   if (multaMatch && multaMatch[1]) {
     const parsed = parseNumBR(multaMatch[1]);
-    if (parsed > 0) multa = parsed;
+    if (parsed > 0) instrucaoMultaAtraso = parsed;
   }
 
-  // Cross-reconcile jurosMulta
-  if ((!jurosMulta || jurosMulta === 0) && valorCobrado && valorDocumento && valorCobrado > valorDocumento) {
+  // Cross-reconcile jurosMulta:
+  // Acréscimo efetivo só existe se o valor cobrado do documento for estritamente superior ao valor do documento,
+  // ou se o campo (+) Mora/Multa impresso no recibo tiver valor maior que zero.
+  // Instruções de juros diário ou multa futura após o vencimento NUNCA devem ser somadas ao valor antes do vencimento.
+  if (valorCobrado && valorDocumento && valorCobrado > valorDocumento) {
     jurosMulta = Number((valorCobrado - valorDocumento + (desconto || 0)).toFixed(2));
-  } else if (!jurosMulta && (juros || multa)) {
-    jurosMulta = Number(((juros || 0) + (multa || 0)).toFixed(2));
+  } else if (valorCobrado && valorDocumento && Math.abs(valorCobrado - valorDocumento) < 0.01) {
+    // Valor Cobrado igual ao Valor do Documento: sem juros/multa efetivos
+    jurosMulta = 0;
+    juros = 0;
+    multa = 0;
+  } else if (!jurosMulta) {
+    jurosMulta = 0;
   }
 
   // Base valor calculation: Prioritize Valor Cobrado / Total a Pagar over Valor Documento
