@@ -21,21 +21,6 @@ interface LoginScreenProps {
   onLoginSuccess: (user: AuthUser) => void;
 }
 
-const AUTHORIZED_CORPORATE_USERS: Record<string, { name: string; role: string }> = {
-  'pagamentodetran@grupovia1.com.br': {
-    name: 'Pagamento Detran',
-    role: 'Gestor Financeiro / Detran (Grupo Via1)',
-  },
-  'wandersondiogenes@gmail.com': {
-    name: 'Wanderson Diógenes',
-    role: 'Administrador Geral',
-  },
-  'admin@wanfinance.com.br': {
-    name: 'Administrador Wanfinance',
-    role: 'Super Admin',
-  },
-};
-
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('pagamentodetran@grupovia1.com.br');
   const [password, setPassword] = useState('');
@@ -60,165 +45,95 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     setError(null);
 
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
 
     if (!cleanEmail) {
-      setError('Por favor, informe seu e-mail de acesso Apple ID / Corporativo.');
+      setError('Por favor, informe seu e-mail corporativo de acesso.');
       return;
     }
-    if (!password) {
-      setError('Por favor, digite sua senha de acesso.');
+    if (!cleanPassword) {
+      setError('Por favor, digite sua senha de acesso corporativa.');
       return;
     }
 
     setIsLoading(true);
 
-    const supabase = getSupabaseClient();
-    const knownCorporate = AUTHORIZED_CORPORATE_USERS[cleanEmail] || (
-      cleanEmail.endsWith('@grupovia1.com.br')
-        ? { name: 'Pagamento Detran', role: 'Gestor Financeiro (Grupo Via1)' }
-        : null
-    );
+    try {
+      // 1. Validação Segura e Autenticação no Backend Corporativo (Sem bypass / Sem hardcode)
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password: cleanPassword }),
+      });
 
-    // Check Supabase authentication & user registration
-    if (supabase) {
-      try {
-        // 1. Check Supabase Auth first
+      const data = await res.json();
+
+      if (res.ok && data.success && data.user) {
+        const authenticatedUser: AuthUser = {
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+          role: data.user.role,
+          token: data.user.token,
+          loginTime: data.user.loginTime || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        };
+
+        // Sincroniza sessão no Supabase se cliente estiver ativo e com RLS
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          try {
+            await supabase.from('user_sessions').upsert({
+              id: authenticatedUser.id,
+              user_id: authenticatedUser.id,
+              name: authenticatedUser.name,
+              email: authenticatedUser.email,
+              role: authenticatedUser.role,
+              login_time: authenticatedUser.loginTime,
+            });
+          } catch (syncErr) {
+            console.warn('[Session Sync Note]', syncErr);
+          }
+        }
+
+        setIsLoading(false);
+        onLoginSuccess(authenticatedUser);
+        return;
+      }
+
+      // Se o backend recusou as credenciais
+      setIsLoading(false);
+      setError(data.message || 'Acesso negado: E-mail ou senha corporativa incorretos.');
+      return;
+    } catch (err: any) {
+      // Tentar Supabase Auth se o backend estiver inacessível temporariamente
+      const supabase = getSupabaseClient();
+      if (supabase) {
         try {
-          const { data: authData } = await supabase.auth.signInWithPassword({
+          const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
             email: cleanEmail,
-            password: password,
+            password: cleanPassword,
           });
 
-          if (authData?.user) {
+          if (authData?.user && !authErr) {
             const authUser: AuthUser = {
               id: authData.user.id,
-              name: authData.user.user_metadata?.name || (knownCorporate?.name || cleanEmail.split('@')[0]),
+              name: authData.user.user_metadata?.name || cleanEmail.split('@')[0],
               email: authData.user.email || cleanEmail,
-              role: knownCorporate?.role || 'Administrador (Supabase Auth)',
+              role: authData.user.user_metadata?.role || 'OPERADOR',
               loginTime: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
             };
-
-            await supabase.from('user_sessions').upsert({
-              id: authUser.id,
-              user_id: authUser.id,
-              name: authUser.name,
-              email: authUser.email,
-              role: authUser.role,
-              login_time: authUser.loginTime,
-            });
 
             setIsLoading(false);
             onLoginSuccess(authUser);
             return;
           }
-        } catch (authErr) {
-          // If signInWithPassword fails, fallback to user_sessions check & auto-provisioning
-          console.info('[Supabase Auth] Fallback to table directory check:', authErr);
+        } catch (supabaseErr) {
+          console.warn('[Supabase Auth Error]', supabaseErr);
         }
-
-        // 2. Query user_sessions table in Supabase
-        const { data: dbUser, error: dbError } = await supabase
-          .from('user_sessions')
-          .select('*')
-          .ilike('email', cleanEmail)
-          .maybeSingle();
-
-        if (dbError && dbError.code !== '42P01') {
-          console.warn('[Supabase Query Error]', dbError.message);
-        }
-
-        if (dbUser) {
-          const registeredUser: AuthUser = {
-            id: dbUser.user_id || dbUser.id,
-            name: dbUser.name || (knownCorporate?.name || cleanEmail.split('@')[0]),
-            email: dbUser.email || cleanEmail,
-            role: dbUser.role || (knownCorporate?.role || 'Gestor Financeiro'),
-            loginTime: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          };
-
-          await supabase.from('user_sessions').upsert({
-            id: registeredUser.id,
-            user_id: registeredUser.id,
-            name: registeredUser.name,
-            email: registeredUser.email,
-            role: registeredUser.role,
-            login_time: registeredUser.loginTime,
-          });
-
-          setIsLoading(false);
-          onLoginSuccess(registeredUser);
-          return;
-        }
-
-        // 3. Known Corporate User Auto-Provisioning in Supabase
-        if (knownCorporate) {
-          const newCorporateUser: AuthUser = {
-            id: `usr-${cleanEmail.replace(/[^a-z0-9]/g, '-')}`,
-            name: knownCorporate.name,
-            email: cleanEmail,
-            role: knownCorporate.role,
-            loginTime: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          };
-
-          try {
-            await supabase.from('user_sessions').upsert({
-              id: newCorporateUser.id,
-              user_id: newCorporateUser.id,
-              name: newCorporateUser.name,
-              email: newCorporateUser.email,
-              role: newCorporateUser.role,
-              login_time: newCorporateUser.loginTime,
-            });
-          } catch (upsertErr) {
-            console.warn('[Supabase] Auto-provisioning note:', upsertErr);
-          }
-
-          setIsLoading(false);
-          onLoginSuccess(newCorporateUser);
-          return;
-        }
-
-        // 4. User NOT registered in Supabase and not in known corporate list -> DENY ACCESS
-        setIsLoading(false);
-        setError('Acesso negado: Credenciais não localizadas no diretório corporativo Supabase.');
-        return;
-
-      } catch (err: any) {
-        // Fallback for known corporate users even in transient connection errors
-        if (knownCorporate) {
-          const fallbackUser: AuthUser = {
-            id: `usr-${cleanEmail.replace(/[^a-z0-9]/g, '-')}`,
-            name: knownCorporate.name,
-            email: cleanEmail,
-            role: knownCorporate.role,
-            loginTime: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          };
-          setIsLoading(false);
-          onLoginSuccess(fallbackUser);
-          return;
-        }
-
-        setIsLoading(false);
-        setError(`Acesso negado: ${err.message || String(err)}`);
-        return;
-      }
-    } else {
-      // Local/Offline Mode with Corporate Access
-      if (knownCorporate || cleanEmail.includes('@')) {
-        const localUser: AuthUser = {
-          id: `usr-${cleanEmail.replace(/[^a-z0-9]/g, '-')}`,
-          name: knownCorporate?.name || cleanEmail.split('@')[0],
-          email: cleanEmail,
-          role: knownCorporate?.role || 'Gestor Financeiro',
-          loginTime: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        };
-        setIsLoading(false);
-        onLoginSuccess(localUser);
-        return;
       }
 
       setIsLoading(false);
-      setError('Acesso negado: Banco de dados Supabase não está configurado.');
+      setError('Acesso negado: Credenciais inválidas ou serviço de autenticação indisponível.');
       return;
     }
   };

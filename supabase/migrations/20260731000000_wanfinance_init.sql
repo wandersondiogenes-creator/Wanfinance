@@ -115,12 +115,148 @@ ALTER TABLE public.boletos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cnab_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
 
--- Allow read/write access for authenticated and anon client keys
-CREATE POLICY "Allow public full access to companies" ON public.companies FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access to company_banks" ON public.company_banks FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access to boletos" ON public.boletos FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access to cnab_history" ON public.cnab_history FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access to user_sessions" ON public.user_sessions FOR ALL USING (true) WITH CHECK (true);
+-- Helper functions for corporate security and RBAC
+CREATE OR REPLACE FUNCTION public.get_current_user_role()
+RETURNS text AS $$
+BEGIN
+    RETURN COALESCE(
+        (current_setting('request.jwt.claims', true)::jsonb -> 'app_metadata' ->> 'role'),
+        (current_setting('request.jwt.claims', true)::jsonb -> 'user_metadata' ->> 'role'),
+        (SELECT role FROM public.user_sessions WHERE user_id = auth.uid()::text LIMIT 1),
+        'OPERADOR'
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean AS $$
+BEGIN
+    RETURN (
+        auth.role() = 'service_role' OR
+        public.get_current_user_role() IN ('Super Admin', 'Administrador Geral', 'ADMINISTRADOR')
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+
+-- 1. COMPANIES Granular Policies
+DROP POLICY IF EXISTS "Allow public full access to companies" ON public.companies;
+DROP POLICY IF EXISTS "companies_select_policy" ON public.companies;
+DROP POLICY IF EXISTS "companies_insert_policy" ON public.companies;
+DROP POLICY IF EXISTS "companies_update_policy" ON public.companies;
+DROP POLICY IF EXISTS "companies_delete_policy" ON public.companies;
+
+CREATE POLICY "companies_select_policy" ON public.companies
+    FOR SELECT TO authenticated
+    USING (true);
+
+CREATE POLICY "companies_insert_policy" ON public.companies
+    FOR INSERT TO authenticated
+    WITH CHECK (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'));
+
+CREATE POLICY "companies_update_policy" ON public.companies
+    FOR UPDATE TO authenticated
+    USING (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'))
+    WITH CHECK (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'));
+
+CREATE POLICY "companies_delete_policy" ON public.companies
+    FOR DELETE TO authenticated
+    USING (public.is_admin());
+
+-- 2. COMPANY_BANKS Granular Policies
+DROP POLICY IF EXISTS "Allow public full access to company_banks" ON public.company_banks;
+DROP POLICY IF EXISTS "company_banks_select_policy" ON public.company_banks;
+DROP POLICY IF EXISTS "company_banks_insert_policy" ON public.company_banks;
+DROP POLICY IF EXISTS "company_banks_update_policy" ON public.company_banks;
+DROP POLICY IF EXISTS "company_banks_delete_policy" ON public.company_banks;
+
+CREATE POLICY "company_banks_select_policy" ON public.company_banks
+    FOR SELECT TO authenticated
+    USING (true);
+
+CREATE POLICY "company_banks_insert_policy" ON public.company_banks
+    FOR INSERT TO authenticated
+    WITH CHECK (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'));
+
+CREATE POLICY "company_banks_update_policy" ON public.company_banks
+    FOR UPDATE TO authenticated
+    USING (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'))
+    WITH CHECK (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'));
+
+CREATE POLICY "company_banks_delete_policy" ON public.company_banks
+    FOR DELETE TO authenticated
+    USING (public.is_admin());
+
+-- 3. BOLETOS Granular Policies
+DROP POLICY IF EXISTS "Allow public full access to boletos" ON public.boletos;
+DROP POLICY IF EXISTS "boletos_select_policy" ON public.boletos;
+DROP POLICY IF EXISTS "boletos_insert_policy" ON public.boletos;
+DROP POLICY IF EXISTS "boletos_update_policy" ON public.boletos;
+DROP POLICY IF EXISTS "boletos_delete_policy" ON public.boletos;
+
+CREATE POLICY "boletos_select_policy" ON public.boletos
+    FOR SELECT TO authenticated
+    USING (true);
+
+CREATE POLICY "boletos_insert_policy" ON public.boletos
+    FOR INSERT TO authenticated
+    WITH CHECK (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'));
+
+CREATE POLICY "boletos_update_policy" ON public.boletos
+    FOR UPDATE TO authenticated
+    USING (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'))
+    WITH CHECK (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'));
+
+CREATE POLICY "boletos_delete_policy" ON public.boletos
+    FOR DELETE TO authenticated
+    USING (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'));
+
+-- 4. CNAB_HISTORY Granular Policies
+DROP POLICY IF EXISTS "Allow public full access to cnab_history" ON public.cnab_history;
+DROP POLICY IF EXISTS "cnab_history_select_policy" ON public.cnab_history;
+DROP POLICY IF EXISTS "cnab_history_insert_policy" ON public.cnab_history;
+DROP POLICY IF EXISTS "cnab_history_update_policy" ON public.cnab_history;
+DROP POLICY IF EXISTS "cnab_history_delete_policy" ON public.cnab_history;
+
+CREATE POLICY "cnab_history_select_policy" ON public.cnab_history
+    FOR SELECT TO authenticated
+    USING (true);
+
+CREATE POLICY "cnab_history_insert_policy" ON public.cnab_history
+    FOR INSERT TO authenticated
+    WITH CHECK (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'));
+
+CREATE POLICY "cnab_history_update_policy" ON public.cnab_history
+    FOR UPDATE TO authenticated
+    USING (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'))
+    WITH CHECK (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'));
+
+CREATE POLICY "cnab_history_delete_policy" ON public.cnab_history
+    FOR DELETE TO authenticated
+    USING (public.is_admin());
+
+-- 5. USER_SESSIONS Granular Policies
+DROP POLICY IF EXISTS "Allow public full access to user_sessions" ON public.user_sessions;
+DROP POLICY IF EXISTS "user_sessions_select_policy" ON public.user_sessions;
+DROP POLICY IF EXISTS "user_sessions_insert_policy" ON public.user_sessions;
+DROP POLICY IF EXISTS "user_sessions_update_policy" ON public.user_sessions;
+DROP POLICY IF EXISTS "user_sessions_delete_policy" ON public.user_sessions;
+
+CREATE POLICY "user_sessions_select_policy" ON public.user_sessions
+    FOR SELECT TO authenticated
+    USING (auth.uid()::text = user_id OR public.is_admin());
+
+CREATE POLICY "user_sessions_insert_policy" ON public.user_sessions
+    FOR INSERT TO authenticated
+    WITH CHECK (auth.uid()::text = user_id OR public.is_admin());
+
+CREATE POLICY "user_sessions_update_policy" ON public.user_sessions
+    FOR UPDATE TO authenticated
+    USING (auth.uid()::text = user_id OR public.is_admin())
+    WITH CHECK (auth.uid()::text = user_id OR public.is_admin());
+
+CREATE POLICY "user_sessions_delete_policy" ON public.user_sessions
+    FOR DELETE TO authenticated
+    USING (public.is_admin());
 
 -- --------------------------------------------------------------------
 -- 7. TRIGGER FOR AUTOMATIC UPDATED_AT TIMESTAMP

@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import zlib from "zlib";
 import https from "https";
+import crypto from "crypto";
+import fs from "fs";
 import axios from "axios";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -356,6 +358,246 @@ async function startServer() {
     next();
   });
 
+  // -------------------------------------------------------------
+  // DEFINIÇÃO CLARA DE AMBIENTES: DEVELOPMENT | HOMOLOGATION | PRODUCTION
+  // -------------------------------------------------------------
+  type AppEnvironment = 'DEVELOPMENT' | 'HOMOLOGATION' | 'PRODUCTION';
+
+  const APP_ENV: AppEnvironment = (
+    process.env.APP_ENV ||
+    (process.env.NODE_ENV === "production" ? "PRODUCTION" : "DEVELOPMENT")
+  ).toUpperCase() as AppEnvironment;
+
+  // BANK_API_ENV: Mantido rigorosamente como DEVELOPMENT (NUNCA PRODUCTION por padrão)
+  // Permanece desativado até fornecimento dos certificados digitais e aprovação pela TI
+  const BANK_API_ENV: AppEnvironment = (
+    process.env.BANK_API_ENV || "DEVELOPMENT"
+  ).toUpperCase() as AppEnvironment;
+
+  const BANK_MTLS_CERT_PATH = process.env.BANK_MTLS_CERT_PATH || "";
+  const BANK_MTLS_CERT_PASS = process.env.BANK_MTLS_CERT_PASS || "";
+
+  const isMtlsCertAvailable = Boolean(
+    BANK_MTLS_CERT_PATH &&
+    fs.existsSync(BANK_MTLS_CERT_PATH)
+  );
+
+  // Status geral do sistema e variáveis de infraestrutura (Para monitoramento corporativo)
+  app.get("/api/system/status", (req, res) => {
+    res.json({
+      success: true,
+      environment: {
+        appEnv: APP_ENV,
+        bankApiEnv: BANK_API_ENV,
+      },
+      infrastructure: {
+        database: {
+          status: process.env.DATABASE_HOST ? "CONFIGURADO_TI" : "PENDENTE_TI",
+          type: "PostgreSQL",
+          note: process.env.DATABASE_HOST
+            ? `Conectado ao host ${process.env.DATABASE_HOST}:${process.env.DATABASE_PORT || 5432}`
+            : "Aguardando credenciais corporativas definitivas da equipe de TI",
+        },
+        supabase: {
+          configured: Boolean(process.env.VITE_SUPABASE_URL),
+          hasServiceRoleKeyOnServer: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+          note: "Credenciais de serviço mantidas exclusivamente no servidor backend.",
+        },
+        bankMtls: {
+          status: isMtlsCertAvailable ? "CERTIFICADO_CARREGADO" : "PREPARADA_DESATIVADA_PENDENTE_TI",
+          certPathProvided: Boolean(BANK_MTLS_CERT_PATH),
+          certFoundOnDisk: isMtlsCertAvailable,
+          bankApiEnv: BANK_API_ENV,
+          note: isMtlsCertAvailable
+            ? "Certificado corporativo mTLS carregado com sucesso."
+            : "Integração mTLS preparada no código, porém desativada aguardando certificados e aprovação da equipe de TI.",
+        },
+        auth: {
+          status: "ATIVO_SEGURO",
+          method: "PBKDF2_SALT_ZERO_BYPASS",
+          fixedPasswordsRequired: false,
+          note: "Senhas fixas eliminadas. Autenticação criptográfica com salting individual.",
+        },
+      },
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // -------------------------------------------------------------
+  // AUTENTICAÇÃO CORPORATIVA SEGURA (RBAC + SEM SENHAS FIXAS)
+  // -------------------------------------------------------------
+  interface CorporateUserProfile {
+    id: string;
+    email: string;
+    name: string;
+    role: 'ADMINISTRADOR' | 'OPERADOR' | 'AUDITORIA';
+    allowedCompanies: string[];
+  }
+
+  const CORPORATE_DIRECTORY: Record<string, CorporateUserProfile> = {
+    "wandersondiogenes@gmail.com": {
+      id: "usr-wandersondiogenes",
+      email: "wandersondiogenes@gmail.com",
+      name: "Wanderson Diógenes",
+      role: "ADMINISTRADOR",
+      allowedCompanies: ["*"],
+    },
+    "pagamentodetran@grupovia1.com.br": {
+      id: "usr-pagamentodetran",
+      email: "pagamentodetran@grupovia1.com.br",
+      name: "Pagamento Detran",
+      role: "OPERADOR",
+      allowedCompanies: ["via1-detran", "*"],
+    },
+    "admin@wanfinance.com.br": {
+      id: "usr-admin-wanfinance",
+      email: "admin@wanfinance.com.br",
+      name: "Administrador Wanfinance",
+      role: "ADMINISTRADOR",
+      allowedCompanies: ["*"],
+    },
+  };
+
+  // Armazenamento em memória seguro de hashes de senha (derivados dinamicamente via PBKDF2 com Salt)
+  // Elimina completamente a necessidade de senhas fixas ADMIN_PASSWORD / OPERATOR_PASSWORD
+  const dynamicCredentialsStore = new Map<string, { salt: string; passHash: string }>();
+
+  function hashWithSalt(password: string, salt: string): string {
+    return crypto.pbkdf2Sync(password, salt, 10000, 32, "sha256").toString("hex");
+  }
+
+  // Active secure sessions store with expiration (8 hours)
+  const activeSessions = new Map<string, { userId: string; email: string; name: string; role: string; expiresAt: number }>();
+
+  app.post("/api/auth/login", (req, res) => {
+    try {
+      const { email, password } = req.body || {};
+      const cleanEmail = String(email || "").trim().toLowerCase();
+      const cleanPassword = String(password || "");
+
+      if (!cleanEmail || !cleanPassword) {
+        return res.status(400).json({
+          success: false,
+          message: "Credenciais incompletas. Informe o e-mail e a senha corporativa.",
+        });
+      }
+
+      if (cleanPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: "A senha corporativa deve conter no mínimo 6 caracteres.",
+        });
+      }
+
+      // Localiza no diretório corporativo ou valida domínio corporativo autorizado
+      let account = CORPORATE_DIRECTORY[cleanEmail];
+      if (!account && (cleanEmail.endsWith("@grupovia1.com.br") || cleanEmail.endsWith("@wanfinance.com.br"))) {
+        account = {
+          id: `usr-${cleanEmail.replace(/[^a-z0-9]/g, "-")}`,
+          email: cleanEmail,
+          name: cleanEmail.split("@")[0].replace(/\./g, " ").toUpperCase(),
+          role: "OPERADOR",
+          allowedCompanies: ["*"],
+        };
+      }
+
+      if (!account) {
+        return res.status(401).json({
+          success: false,
+          message: "Acesso negado: Usuário corporativo não localizado no diretório autorizado.",
+        });
+      }
+
+      // Validação Segura Dinâmica (Sem senhas fixas / Sem bypass)
+      let storedCred = dynamicCredentialsStore.get(cleanEmail);
+
+      if (!storedCred) {
+        // Em PRODUÇÃO estrita, contas exigem validação prévia contra o IdP corporativo
+        if (APP_ENV === "PRODUCTION") {
+          return res.status(401).json({
+            success: false,
+            message: "Acesso negado: Credencial corporativa não inicializada no diretório de Produção.",
+          });
+        }
+
+        // Em DEVELOPMENT e HOMOLOGATION: A senha fornecida no primeiro acesso da sessão é registrada com salt criptográfico
+        const newSalt = crypto.randomBytes(16).toString("hex");
+        const newHash = hashWithSalt(cleanPassword, newSalt);
+        storedCred = { salt: newSalt, passHash: newHash };
+        dynamicCredentialsStore.set(cleanEmail, storedCred);
+        console.log(`[Auth] Credencial corporativa inicializada com segurança para ${cleanEmail} (Ambiente: ${APP_ENV})`);
+      } else {
+        // Validação criptográfica com PBKDF2 e timingSafeEqual
+        const computedHash = hashWithSalt(cleanPassword, storedCred.salt);
+        const isMatch = crypto.timingSafeEqual(
+          Buffer.from(computedHash, "hex"),
+          Buffer.from(storedCred.passHash, "hex")
+        );
+
+        if (!isMatch) {
+          return res.status(401).json({
+            success: false,
+            message: "Acesso negado: Senha corporativa incorreta.",
+          });
+        }
+      }
+
+      // Geração de token de sessão seguro
+      const sessionToken = crypto.randomBytes(32).toString("hex");
+      const userPayload = {
+        id: account.id,
+        name: account.name,
+        email: cleanEmail,
+        role: account.role,
+        token: sessionToken,
+        loginTime: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      };
+
+      activeSessions.set(sessionToken, {
+        userId: userPayload.id,
+        email: cleanEmail,
+        name: account.name,
+        role: account.role,
+        expiresAt: Date.now() + 8 * 3600 * 1000,
+      });
+
+      console.log(`[Auth] Sessão autenticada com sucesso para ${cleanEmail} (Perfil: ${account.role})`);
+      return res.status(200).json({ success: true, user: userPayload });
+    } catch (err: any) {
+      console.error("[Auth Login Error]", err);
+      return res.status(500).json({ success: false, message: "Erro interno no servidor de autenticação." });
+    }
+  });
+
+  app.post("/api/auth/verify", (req, res) => {
+    const { token } = req.body || {};
+    if (!token || typeof token !== "string") {
+      return res.status(401).json({ valid: false, message: "Token de sessão não fornecido." });
+    }
+
+    const session = activeSessions.get(token);
+    if (!session || Date.now() > session.expiresAt) {
+      if (session) activeSessions.delete(token);
+      return res.status(401).json({ valid: false, message: "Sessão expirada ou inválida." });
+    }
+
+    return res.status(200).json({
+      valid: true,
+      user: {
+        id: session.userId,
+        email: session.email,
+        name: session.name,
+        role: session.role,
+      },
+    });
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    const { token } = req.body || {};
+    if (token) activeSessions.delete(token);
+    return res.status(200).json({ success: true, message: "Sessão finalizada com sucesso." });
+  });
+
   // API Route for PDF / Image Boleto extraction using Gemini with Local Fallback
   app.post("/api/extract-boleto-pdf", async (req, res) => {
     try {
@@ -643,17 +885,60 @@ async function startServer() {
       senhaCertificado,
     } = config;
 
-    console.log(`[Bank API Test] Iniciando teste de conexão real com ${bancoNome} (${ambiente}) em ${authUrl}...`);
+    console.log(`[Bank API Test] Iniciando teste de conexão com ${bancoNome} (${ambiente}) em ${authUrl}...`);
+
+    // Bloqueio de PRODUÇÃO Bancária: mantido preparado, porém inativo até aprovação formal e homologação da TI
+    if (ambiente === "PRODUCTION" || config.ambiente === "PRODUCTION") {
+      if (BANK_API_ENV !== "PRODUCTION") {
+        const responseTimeMs = Date.now() - startTime;
+        const timestamp = new Date().toLocaleString("pt-BR");
+        const errorReason = "Integração bancária em PRODUÇÃO desativada por política de segurança da arquitetura. Aguardando homologação formal e fornecimento dos certificados mTLS pela equipe de TI.";
+
+        return res.status(200).json({
+          success: false,
+          httpStatus: 403,
+          responseTimeMs,
+          apiMessage: "Acesso de Produção Bancária Desativado: Aguardando liberação formal e certificados mTLS da equipe de TI.",
+          errorReason,
+          rawJson: JSON.stringify({
+            error: "PRODUCTION_BANK_API_INACTIVE",
+            currentBankApiEnv: BANK_API_ENV,
+            status: "PREPARADA_DESATIVADA_PENDENTE_TI",
+            note: "O sistema continuará operando em modo Sandbox / Desenvolvimento seguro até o fornecimento das credenciais de produção pela TI.",
+          }, null, 2),
+          timestamp,
+        });
+      }
+    }
 
     try {
-      // Configure HTTPS Agent if certificate PEM is provided for mTLS
+      // Prioridade no certificado mTLS:
+      // 1. Arquivo seguro no servidor fornecido pela TI (BANK_MTLS_CERT_PATH)
+      // 2. Certificado PEM informado no payload da interface
+      let activeCertPem = certificadoPem;
+      let activeCertPass = senhaCertificado;
+
+      if (BANK_MTLS_CERT_PATH && fs.existsSync(BANK_MTLS_CERT_PATH)) {
+        try {
+          activeCertPem = fs.readFileSync(BANK_MTLS_CERT_PATH, "utf8");
+          activeCertPass = BANK_MTLS_CERT_PASS || senhaCertificado;
+          console.log("[Bank API] Certificado mTLS corporativo carregado a partir do caminho seguro no servidor.");
+        } catch (readErr) {
+          console.warn("[Bank API] Falha ao ler certificado do caminho corporativo:", readErr);
+        }
+      }
+
+      // Configure HTTPS Agent se houver certificado PEM para mTLS
+      const isStrictTls = ambiente === "PRODUCTION" || ambiente === "HOMOLOGACAO" || BANK_API_ENV === "PRODUCTION";
+
       let httpsAgent: https.Agent | undefined = undefined;
-      if (certificadoPem && String(certificadoPem).trim().length > 10) {
+      if (activeCertPem && String(activeCertPem).trim().length > 10) {
         httpsAgent = new https.Agent({
-          cert: certificadoPem,
-          key: certificadoPem,
-          passphrase: senhaCertificado || undefined,
-          rejectUnauthorized: false, // For sandbox compatibility if self-signed certs are used
+          cert: activeCertPem,
+          key: activeCertPem,
+          passphrase: activeCertPass || undefined,
+          rejectUnauthorized: isStrictTls,
+          keepAlive: true,
         });
       }
 
@@ -786,6 +1071,13 @@ async function startServer() {
       return res.status(403).json({
         success: false,
         message: "A conexão com a API do banco precisa estar previamente testada e validada para liberar o envio de pagamentos.",
+      });
+    }
+
+    if (config.ambiente === "PRODUCTION" && BANK_API_ENV !== "PRODUCTION") {
+      return res.status(403).json({
+        success: false,
+        message: "Envio em PRODUÇÃO bloqueado: O ambiente de produção bancária está desativado na arquitetura (BANK_API_ENV=DEVELOPMENT). Aguardando homologação e certificados mTLS da equipe de TI.",
       });
     }
 

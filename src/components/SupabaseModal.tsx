@@ -260,28 +260,66 @@ ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,
     role = EXCLUDED.role;
 
--- Habilitar/Ajustar RLS (Row Level Security)
-ALTER TABLE public.companies DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.boletos DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.cnab_history DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_sessions DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.learned_layouts DISABLE ROW LEVEL SECURITY;
+-- Habilitar RLS (Row Level Security) Seguro Corporativo
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.boletos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cnab_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.learned_layouts ENABLE ROW LEVEL SECURITY;
 
--- Políticas de Acesso Público
-DROP POLICY IF EXISTS "Allow public all on companies" ON public.companies;
-CREATE POLICY "Allow public all on companies" ON public.companies FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+-- Funções de Apoio para RBAC
+CREATE OR REPLACE FUNCTION public.get_current_user_role()
+RETURNS text AS $$
+BEGIN
+    RETURN COALESCE(
+        (current_setting('request.jwt.claims', true)::jsonb -> 'app_metadata' ->> 'role'),
+        (current_setting('request.jwt.claims', true)::jsonb -> 'user_metadata' ->> 'role'),
+        (SELECT role FROM public.user_sessions WHERE user_id = auth.uid()::text LIMIT 1),
+        'OPERADOR'
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
-DROP POLICY IF EXISTS "Allow public all on boletos" ON public.boletos;
-CREATE POLICY "Allow public all on boletos" ON public.boletos FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean AS $$
+BEGIN
+    RETURN (
+        auth.role() = 'service_role' OR
+        public.get_current_user_role() IN ('Super Admin', 'Administrador Geral', 'ADMINISTRADOR')
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
-DROP POLICY IF EXISTS "Allow public all on cnab_history" ON public.cnab_history;
-CREATE POLICY "Allow public all on cnab_history" ON public.cnab_history FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+-- Políticas Granulares para Usuários Autenticados
+DROP POLICY IF EXISTS "companies_select_policy" ON public.companies;
+CREATE POLICY "companies_select_policy" ON public.companies FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "companies_insert_policy" ON public.companies;
+CREATE POLICY "companies_insert_policy" ON public.companies FOR INSERT TO authenticated WITH CHECK (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'));
+DROP POLICY IF EXISTS "companies_update_policy" ON public.companies;
+CREATE POLICY "companies_update_policy" ON public.companies FOR UPDATE TO authenticated USING (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'));
+DROP POLICY IF EXISTS "companies_delete_policy" ON public.companies;
+CREATE POLICY "companies_delete_policy" ON public.companies FOR DELETE TO authenticated USING (public.is_admin());
 
-DROP POLICY IF EXISTS "Allow public all on user_sessions" ON public.user_sessions;
-CREATE POLICY "Allow public all on user_sessions" ON public.user_sessions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "boletos_select_policy" ON public.boletos;
+CREATE POLICY "boletos_select_policy" ON public.boletos FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "boletos_insert_policy" ON public.boletos;
+CREATE POLICY "boletos_insert_policy" ON public.boletos FOR INSERT TO authenticated WITH CHECK (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'));
+DROP POLICY IF EXISTS "boletos_update_policy" ON public.boletos;
+CREATE POLICY "boletos_update_policy" ON public.boletos FOR UPDATE TO authenticated USING (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'));
+DROP POLICY IF EXISTS "boletos_delete_policy" ON public.boletos;
+CREATE POLICY "boletos_delete_policy" ON public.boletos FOR DELETE TO authenticated USING (public.is_admin() OR public.get_current_user_role() IN ('Gestor Financeiro', 'OPERADOR'));
 
-DROP POLICY IF EXISTS "Allow public all on learned_layouts" ON public.learned_layouts;
-CREATE POLICY "Allow public all on learned_layouts" ON public.learned_layouts FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
+DROP POLICY IF EXISTS "cnab_history_select_policy" ON public.cnab_history;
+CREATE POLICY "cnab_history_select_policy" ON public.cnab_history FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "cnab_history_insert_policy" ON public.cnab_history;
+CREATE POLICY "cnab_history_insert_policy" ON public.cnab_history FOR INSERT TO authenticated WITH CHECK (public.get_current_user_role() NOT IN ('CONSULTA', 'AUDITORIA'));
+DROP POLICY IF EXISTS "cnab_history_delete_policy" ON public.cnab_history;
+CREATE POLICY "cnab_history_delete_policy" ON public.cnab_history FOR DELETE TO authenticated USING (public.is_admin());
+
+DROP POLICY IF EXISTS "user_sessions_select_policy" ON public.user_sessions;
+CREATE POLICY "user_sessions_select_policy" ON public.user_sessions FOR SELECT TO authenticated USING (auth.uid()::text = user_id OR public.is_admin());
+DROP POLICY IF EXISTS "user_sessions_insert_policy" ON public.user_sessions;
+CREATE POLICY "user_sessions_insert_policy" ON public.user_sessions FOR INSERT TO authenticated WITH CHECK (auth.uid()::text = user_id OR public.is_admin());`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlMigrationCode);

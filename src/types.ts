@@ -128,6 +128,8 @@ export interface AuthUser {
   role: string;
   avatarUrl?: string;
   loginTime: string;
+  token?: string;
+  companyId?: string;
 }
 
 export interface BankApiTestResult {

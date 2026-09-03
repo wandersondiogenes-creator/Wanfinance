@@ -1,8 +1,62 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Funções de verificação e segurança corporativa
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Regras para perfil de usuários
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || (isAuthenticated() && request.auth.token.email in ['wandersondiogenes@gmail.com', 'pagamentodetran@grupovia1.com.br']);
+    }
+
+    // Regras para empresas e contas bancárias
+    match /companies/{companyId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated() && request.auth.token.email in ['wandersondiogenes@gmail.com', 'pagamentodetran@grupovia1.com.br'];
+    }
+
+    // Regras para boletos (isolamento e segurança de dados financeiros)
+    match /boletos/{boletoId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // Regras para histórico de remessas e lotes CNAB
+    match /cnab_history/{historyId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // Regras para layouts aprendidos e correções OCR
+    match /learned_layouts/{layoutId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /learned_corrections/{correctionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Health check do sistema
+    match /system/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Bloqueio padrão irrestrito para qualquer rota ou acesso público não autenticado
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
