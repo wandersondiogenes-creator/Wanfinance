@@ -31,6 +31,7 @@ export interface DetectedBoletoMetadata {
   renavam?: string;
   chassi?: string;
   autoInfracao?: string;
+  parcela?: string;
   dataVencimento?: string;
   dataEmissao?: string;
   numeroDocumento?: string;
@@ -121,7 +122,24 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     if (vencMatch) {
       const [d, m, y] = vencMatch[1].split(/[/-]/);
       dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    } else {
+      // Tabular header match (e.g. SEFAZ / DETRAN IPVA where VENCIMENTO is the last column header,
+      // and the date DD/MM/YYYY is at the end of the line following it)
+      const tabularVencMatch = rawText.match(/VENCIMENTO[^\r\n]*\r?\n[^\r\n]*?(\d{2}[/-]\d{2}[/-]\d{4})\s*(?:\r?\n|$)/i)
+        || rawText.match(/VENCIMENTO[\s\S]{1,120}?(\d{2}[/-]\d{2}[/-]\d{4})/i);
+      if (tabularVencMatch) {
+        const [d, m, y] = tabularVencMatch[1].split(/[/-]/);
+        dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      }
     }
+  }
+
+  // 4.1 Extracted Parcela / Cota (e.g. Parcela 8, Parcela 9, Cota Única)
+  let parcela = '';
+  const parcelaMatch = rawText.match(/(?:PARCELA|COTA|PARC\.)\s*[:\s\r\n]*(\d{1,2}|[ÚU]NICA)/i)
+    || rawText.match(/PARCELA[^\r\n]*\r?\n[^\r\n]*?\s+(\d{1,2}|[ÚU]NICA)\s*$/m);
+  if (parcelaMatch) {
+    parcela = parcelaMatch[1].trim().toUpperCase();
   }
 
   // 5. Extracted Financial Values (Valor Documento, Valor Cobrado, Desconto, Mora/Multa, Juros)
@@ -151,7 +169,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   }
 
   // 5.2 Valor Cobrado / Total a Pagar / Total
-  const cobradoValMatch = rawText.match(/(?:(?:\(\=\)|\=|\b)\s*6\s*\(\=\)\s*Valor\s+Cobrado|(?:\(\=\)|\=|\b)\s*Valor\s+Cobrado|VALOR\s+COBRADO|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+FINAL|VALOR\s+L[ÍI]QUIDO|TOTAL\s*:?|VALOR\s+TOTAL\s*:?)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
+  const cobradoValMatch = rawText.match(/(?:(?:\(\=\)|\=|\b)\s*6\s*\(\=\)\s*Valor\s+Cobrado|(?:\(\=\)|\=|\b)\s*Valor\s+Cobrado|VALOR\s+COBRADO|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+FINAL|VALOR\s+L[ÍI]QUIDO|TOTAL\s*:|VALOR\s+TOTAL\s*:?)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i);
   if (cobradoValMatch && cobradoValMatch[1]) {
     const parsed = parseNumBR(cobradoValMatch[1]);
     if (parsed > 0) valorCobrado = parsed;
@@ -211,8 +229,8 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     const valorPatterns = [
       /(?:(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Cobrado|Documento)|(?:=\s*)?Valor\s+Cobrado|VALOR\s+COBRADO|(?:=\s*)?Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|VALOR\s+L[ÍI]QUIDO|VALOR\s+FINAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i,
       /(?:(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Cobrado|Documento)|(?:=\s*)?Valor\s+Cobrado|VALOR\s+COBRADO|(?:=\s*)?Valor\s+do\s+Documento|VALOR\s+DO\s+DOCUMENTO|Valor\s+Documento|VALOR\s+DOCUMENTO|Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i,
-      /(?:VALOR\s+RECEBIDO|VALOR\s+TOTAL|VALOR\s+A\s+PAGAR|TOTAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i,
-      /(?:VALOR\s+RECEBIDO|VALOR\s+TOTAL|VALOR\s+A\s+PAGAR|TOTAL)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i,
+      /(?:VALOR\s+RECEBIDO|VALOR\s+TOTAL|VALOR\s+A\s+PAGAR|TOTAL\s*:)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i,
+      /(?:VALOR\s+RECEBIDO|VALOR\s+TOTAL|VALOR\s+A\s+PAGAR|TOTAL\s*:)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i,
     ];
 
     for (const vp of valorPatterns) {
@@ -226,6 +244,24 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
       }
     }
   }
+
+  // Cross-check with barcode/linha digitavel present in rawText to prevent sub-debit under-extraction
+  try {
+    const rawLinhaMatch = rawText.match(/\b(8\d{10}[\s-]?\d\s*\d{11}[\s-]?\d\s*\d{11}[\s-]?\d\s*\d{11}[\s-]?\d|\d{5}[.\s]?\d{5}\s*\d{5}[.\s]?\d{6}\s*\d{5}[.\s]?\d{6}\s*\d\s*\d{14}|8\d{43,47})\b/);
+    if (rawLinhaMatch) {
+      const cleanCandidate = rawLinhaMatch[0].replace(/\D/g, '');
+      if (cleanCandidate.length === 47 || cleanCandidate.length === 48) {
+        const parsedCandidate = parseLinhaDigitavel(cleanCandidate);
+        if (parsedCandidate.isValid && parsedCandidate.valor > 0) {
+          if (!valor || valor <= 0 || valor < parsedCandidate.valor) {
+            valor = parsedCandidate.valor;
+            if (!valorCobrado || valorCobrado <= 0 || valorCobrado < parsedCandidate.valor) valorCobrado = parsedCandidate.valor;
+            if (!valorDocumento || valorDocumento <= 0 || valorDocumento < parsedCandidate.valor) valorDocumento = parsedCandidate.valor;
+          }
+        }
+      }
+    }
+  } catch {}
 
   // GNRE / Control Number / Nosso Numero / Numero do Documento / Compromisso
   let gnomeNum = '';
@@ -625,6 +661,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   if (placa) obsParts.push(`Placa: ${placa}`);
   if (renavam) obsParts.push(`RENAVAM: ${renavam}`);
   if (chassi) obsParts.push(`Chassi: ${chassi}`);
+  if (parcela) obsParts.push(`Parcela: ${parcela}`);
   if (autoInfracao) obsParts.push(`Auto Infração: ${autoInfracao}`);
 
   return {
@@ -638,6 +675,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     placa: placa || undefined,
     renavam: renavam || undefined,
     chassi: chassi || undefined,
+    parcela: parcela || undefined,
     autoInfracao: autoInfracao || undefined,
     dataVencimento: dataVencimento || undefined,
     numeroDocumento: gnomeNum || seuNumero || undefined,

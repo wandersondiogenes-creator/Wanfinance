@@ -185,10 +185,22 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
           if (!seenLines.has(clean) && !seenLines.has(key44)) {
             seenLines.add(clean);
             seenLines.add(key44);
-            const detected = detectBoletoDetailsFromText(rawText, parsed.bancoNome);
+
+            const matchIdx = rawText.indexOf(matchStr);
+            const contextStart = matchIdx >= 0 ? Math.max(0, matchIdx - 800) : 0;
+            const contextEnd = matchIdx >= 0 ? Math.min(rawText.length, matchIdx + matchStr.length + 800) : rawText.length;
+            const localContext = rawText.substring(contextStart, contextEnd);
+            const detected = detectBoletoDetailsFromText(localContext, parsed.bancoNome);
+
             let extractedValue = 0;
             if (clean.length === 47 && !clean.startsWith('8') && parsed.valor > 0) {
               extractedValue = parsed.valor;
+            } else if (clean.startsWith('8') && parsed.valor > 0 && ['6', '8'].includes(clean[2])) {
+              if (detected.valor && detected.valor >= parsed.valor) {
+                extractedValue = detected.valor;
+              } else {
+                extractedValue = parsed.valor;
+              }
             } else if (detected.valor && detected.valor > 0) {
               extractedValue = detected.valor;
             } else if (parsed.valor > 0) {
@@ -196,7 +208,8 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
             }
 
             if (extractedValue <= 0) {
-              const valorMatch = rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+documento|Valor\s+do\s+[Dd]ocumento|VALOR\s+ORIGINAL|Valor\s+Original|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|\(=\)\s*Valor\s+documento|TOTAL\s*:?)\s*[:\s]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i);
+              const valorMatch = localContext.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+documento|Valor\s+do\s+[Dd]ocumento|VALOR\s+ORIGINAL|Valor\s+Original|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|\(=\)\s*Valor\s+documento|TOTAL\s*:?)\s*[:\s]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i)
+                || rawText.match(/(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+RECOLHER|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+documento|Valor\s+do\s+[Dd]ocumento|VALOR\s+ORIGINAL|Valor\s+Original|VALOR\s+PRINCIPAL|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|TOTAL\s+A\s+PAGAR|\(=\)\s*Valor\s+documento|TOTAL\s*:?)\s*[:\s]*R?\$?\s*([\d\.]+(?:[,\.]\d{2})?)/i);
               if (valorMatch) {
                 let valStr = valorMatch[1].trim();
                 if (valStr.includes(',')) {
@@ -208,9 +221,14 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
                 }
               }
             }
+
+            // Sub-item protection: never allow a sub-item from a breakdown table (e.g. 49.30 vs 240.35) to override barcode nominal
+            if (parsed.valor > 0 && (extractedValue <= 0 || extractedValue < parsed.valor)) {
+              extractedValue = parsed.valor;
+            }
             let favorecidoNome = detected.favorecidoNome && detected.favorecidoNome !== 'Beneficiário / Cedente'
               ? detected.favorecidoNome
-              : extractFavorecidoFromText(rawText, parsed.bancoNome);
+              : extractFavorecidoFromText(localContext || rawText, parsed.bancoNome);
 
             if (rawText.toUpperCase().includes('DETRAN') && (rawText.toUpperCase().includes('PARAÍBA') || rawText.toUpperCase().includes('PARAIBA') || rawText.toUpperCase().includes('DETRAN-PB') || rawText.toUpperCase().includes('DEMONSTRATIVO'))) {
               favorecidoNome = 'DETRAN - Departamento Estadual de Trânsito da Paraíba';
@@ -220,7 +238,36 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               favorecidoNome = 'Receita Federal - DARF';
             }
 
-            let docNum = detected.seuNumero || detected.autoInfracao || `PDF-TEXT-${boletosFound.length + 1}`;
+            // Localized Nosso Número
+            let nossoNum = detected.nossoNumero || "";
+            if (!nossoNum) {
+              const nossoNumMatch = localContext.match(/(?:NOSSO\s+N[UÚ]MERO|Nosso\s+N[uú]mero|Nº\s+do\s+Documento|Nº\s+de\s+Controle)\s*[:\s\r\n]*([\w\d\/\.-]{6,30})/i);
+              if (nossoNumMatch) nossoNum = nossoNumMatch[1].trim();
+            }
+            if (!nossoNum && clean.startsWith("8") && parsed.codigoBarras && parsed.codigoBarras.length === 44) {
+              const campoLivre = parsed.codigoBarras.substring(26, 44);
+              if (campoLivre && campoLivre.length >= 6) {
+                nossoNum = campoLivre;
+              }
+            }
+
+            // Localized Due Date (Vencimento)
+            let localVenc = detected.dataVencimento || "";
+            if (!localVenc) {
+              const tabVenc = localContext.match(/VENCIMENTO[^\r\n]*\r?\n[^\r\n]*?(\d{2}[/-]\d{2}[/-]\d{4})\s*(?:\r?\n|$)/i)
+                || localContext.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i)
+                || localContext.match(/VENCIMENTO[\s\S]{1,120}?(\d{2}[/-]\d{2}[/-]\d{4})/i);
+              if (tabVenc && tabVenc[1]) {
+                const [d, m, y] = tabVenc[1].split(/[/-]/);
+                localVenc = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+              }
+            }
+            if (!localVenc) {
+              localVenc = parsed.dataVencimento || new Date().toISOString().split("T")[0];
+            }
+
+            const parcelaInfo = detected.parcela ? ` - Parcela ${detected.parcela}` : "";
+            const docNum = (detected.placa ? `IPVA-${detected.placa}${parcelaInfo}` : "") || detected.seuNumero || detected.autoInfracao || nossoNum || `PDF-TEXT-${boletosFound.length + 1}`;
 
             boletosFound.push({
               linhaDigitavel: clean,
@@ -230,15 +277,15 @@ function extractBoletosLocallyFromBuffer(buffer: Buffer): any[] {
               pagador: detected.pagador || "Não identificado com segurança",
               pagadorCnpjCpf: detected.pagadorCnpjCpf || "",
               valor: extractedValue,
-              dataVencimento: detected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split("T")[0],
+              dataVencimento: localVenc,
               seuNumero: docNum,
-              nossoNumero: detected.nossoNumero || detected.seuNumero || "",
+              nossoNumero: nossoNum,
               bancoCodigo: detected.bancoCodigo || parsed.bancoCodigo,
               bancoNome: detected.bancoNome || parsed.bancoNome,
               tipoBoleto: detected.tipoBoleto,
               placa: detected.placa,
               renavam: detected.renavam,
-              observacoes: detected.observacoes || "Extraído do texto do PDF via leitor local",
+              observacoes: detected.observacoes || (detected.parcela ? `Parcela ${detected.parcela} do IPVA` : "Extraído do texto do PDF via leitor local"),
               confidence: 0.9,
             });
           }

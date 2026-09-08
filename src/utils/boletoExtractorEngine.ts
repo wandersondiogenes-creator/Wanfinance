@@ -70,8 +70,9 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
    - Em guias de arrecadação GNRE, DARF, DAE, Tributos Estaduais/Federais e Concessionárias: se o documento contiver o campo "Documento Válido para pagamento", "Válido para pagamento até" ou similar especificando uma data (exemplo: "Documento Válido para pagamento 07/08/2026"), CONSIDERE OBRIGATORIAMENTE ESTA DATA FINAL (ex: 2026-08-07) como a "dataVencimento" oficial do boleto.
    - Esta data limite de pagamento/validade TEM PRECEDÊNCIA ABSOLUTA sobre qualquer outra data presente no campo "Data de Vencimento" ou codificada no código de barras.
 8. TAXAS E SERVIÇOS DETRAN / DAE / TRIBUTOS (VALOR TOTAL DO BOLETO):
-   - Em documentos do DETRAN, DAE, SEFAZ ou Prefeituras com tabelas discriminando sub-serviços (ex: "6.2.13 INCLUSAO DE GRAVAME R$ 90,58", "6.2.1 1o. EMPLACAMENTO R$ 323,16", "7.1.9 CONSUMO DE DADOS R$ 7,90"), NUNCA extraia o valor de um item de serviço individual (ex: 323,16).
-   - O VALOR OFICIAL DO BOLETO é SEMPRE o VALOR TOTAL A PAGAR impresso nos campos "Valor a Pagar", "Valor Total" ou "Total a Recolher" (ex: R$ 421,64) e que deve corresponder exatamente ao valor codificado no código de barras.
+   - Em documentos do DETRAN (como DETRAN-PE DAE FEBRABAN), DAE, SEFAZ ou Prefeituras com tabelas discriminando sub-serviços/débitos (ex: cabeçalho "Discriminação dos Débitos" e coluna "Valor R$" listando "CONTROLE E EMISSÃO DE ORDEM DE EMPLACAMENTO 49,30", "TRANSFERÊNCIA 141,75", "AUTORIZAÇÃO DE QUALQUER NATUREZA 49,30", "6.2.13 INCLUSAO DE GRAVAME R$ 90,58", etc.):
+   - NUNCA extraia o valor de um item de serviço ou débito individual (ex: 49,30 ou 90,58).
+   - O VALOR OFICIAL DO BOLETO é SEMPRE o VALOR TOTAL A PAGAR impresso nos campos "TOTAL:", "Valor Cobrado", "Valor a Pagar", "Valor Total" ou "Total a Recolher" (ex: R$ 240,35) e que corresponde rigorosamente aos centavos codificados no código de barras / linha digitável (ex: 85880000002-4 4035... -> 00000024035 -> 240,35).
 9. BOLETOS FORMADOS POR AGLUTINAÇÃO COM RELAÇÃO DE COMPROMISSOS/NFs EM ANEXO:
    - Em boletos bancários (ex: Bradesco/Cobflex, Santander, FIDC Ford, FIDC Renault, FIDC Fidis, Banco Fidis) com relação de compromissos ou notas fiscais anexas listando múltiplos itens (ex: 0832852091 R$ 95,81, 0832886091 R$ 1.469,24, etc.):
    - O VALOR DO BOLETO é SEMPRE o valor total cobrado do documento principal (ex: R$ 4.868,40) codificado na linha digitável/código de barras. NUNCA extraia o valor parcial de uma única linha da tabela anexa (ex: 95,81).
@@ -287,7 +288,7 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
     // Value resolution:
     // For standard 47-digit bank slips (Títulos Bancários: Bradesco, Itaú, Santander, BB, etc.),
     // the value in the barcode is mathematically authoritative and represents the total aglutinated/official amount.
-    // For 48-digit concessionárias/tributos (starting with 8), text-detected amount takes priority.
+    // For 48-digit concessionárias/tributos (starting with 8), check FEBRABAN value identifier and sub-debit protection.
     if (parsed.tipo === 'titulo_bancario' && parsed.valor && parsed.valor > 0) {
       if (valor === 0 || isNaN(valor) || Math.abs(valor - parsed.valor) > 0.01) {
         if (valor > 0 && Math.abs(valor - parsed.valor) > 0.01) {
@@ -295,11 +296,30 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
         }
         valor = parsed.valor;
       }
-    } else if ((valor === 0 || isNaN(valor)) && parsed.valor && parsed.valor > 0) {
-      valor = parsed.valor;
-    } else if (parsed.valor && parsed.valor > 0 && valor > 0 && Math.abs(valor - parsed.valor) > 0.01) {
-      // Keep valor as official boleto value (Valor Cobrado / Total a Pagar do documento)
-      alertas.push(`ℹ️ Valor da guia/arrecadação (R$ ${valor.toFixed(2)}) mantido como valor oficial a pagar (Código de barras nominal: R$ ${parsed.valor.toFixed(2)}).`);
+    } else if (parsed.valor && parsed.valor > 0) {
+      const isEffectiveBRL = parsed.linhaDigitavelLimpa.length >= 3 && ['6', '8'].includes(parsed.linhaDigitavelLimpa[2]);
+      if (valor === 0 || isNaN(valor)) {
+        valor = parsed.valor;
+      } else if (valor > 0 && valor < parsed.valor) {
+        // Textual value is lower than barcode nominal value (e.g. 49.30 vs 240.35)
+        // This is a sub-item, installment or individual fee extracted from a table.
+        // Paying less than the barcode nominal for a DAE/guia is rejected by receiving banks.
+        alertas.push(`ℹ️ Valor ajustado para R$ ${parsed.valor.toFixed(2)} conforme código de barras oficial da guia (valor textual anterior de sub-débito/taxa individual: R$ ${valor.toFixed(2)}).`);
+        valor = parsed.valor;
+      } else if (isEffectiveBRL && Math.abs(valor - parsed.valor) > 0.01 && (!jurosMulta || jurosMulta <= 0)) {
+        // If 3rd digit is 6 or 8 (valor efetivo em reais) and there are no explicit late payment fees,
+        // barcode nominal value is authoritative.
+        alertas.push(`ℹ️ Valor ajustado para R$ ${parsed.valor.toFixed(2)} conforme código de barras oficial da guia de arrecadação (valor textual anterior: R$ ${valor.toFixed(2)}).`);
+        valor = parsed.valor;
+      } else if (valor > parsed.valor && Math.abs(valor - parsed.valor) > 0.01) {
+        // Keep valor as official boleto value (Valor Cobrado / Total a Pagar do documento com acréscimos)
+        alertas.push(`ℹ️ Valor da guia/arrecadação (R$ ${valor.toFixed(2)}) mantido como valor oficial a pagar (Código de barras nominal: R$ ${parsed.valor.toFixed(2)}).`);
+      }
+    }
+
+    if (parsed.valor && parsed.valor > 0 && valor === parsed.valor) {
+      if (valorCobrado > 0 && valorCobrado < parsed.valor) valorCobrado = valor;
+      if (valorDocumento > 0 && valorDocumento < parsed.valor) valorDocumento = valor;
     }
 
     if (parsed.isValid) {
@@ -481,6 +501,18 @@ export function consolidateAndDeduplicateBoletos<T extends Record<string, any>>(
       if (isExactBarcodeMatch) {
         duplicateIndex = i;
         break;
+      }
+
+      // Distinct Barcode Protection:
+      // If both incoming and existing have valid barcodes (44 digits) or valid lines (>=47 digits) and they are DIFFERENT,
+      // they represent distinct financial obligations (e.g., installments 8, 9, 10 of IPVA, or different municipal taxes)
+      // and MUST NEVER be merged as duplicates.
+      const hasDistinctValidBarcodes =
+        (incomingBarcode44.length === 44 && existingBarcode44.length === 44 && incomingBarcode44 !== existingBarcode44) ||
+        (rawIncomingDigits.length >= 47 && rawExistingDigits.length >= 47 && rawIncomingDigits !== rawExistingDigits);
+
+      if (hasDistinctValidBarcodes) {
+        continue;
       }
 
       // Check 2: Same Nosso Número (at least 6 digits) + Same Vencimento + Same Valor

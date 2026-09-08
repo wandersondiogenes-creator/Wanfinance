@@ -950,6 +950,9 @@ const DEFAULT_METRICS: LayoutLearningMetrics = {
  */
 export function loadLearnedLayouts(): LearnedLayoutPattern[] {
   try {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return [...DEFAULT_LEARNED_LAYOUTS];
+    }
     const raw = localStorage.getItem(STORAGE_KEY_LAYOUTS);
     if (raw) {
       const parsed = JSON.parse(raw);
@@ -1011,7 +1014,9 @@ import {
  */
 export function saveLearnedLayouts(patterns: LearnedLayoutPattern[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(patterns));
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_LAYOUTS, JSON.stringify(patterns));
+    }
 
     // Supabase cloud persistence asynchronously
     syncLearnedLayoutsToSupabase(patterns).catch((err) => {
@@ -1344,9 +1349,19 @@ export function extractViaLearnedLayout(
             let extractedValue = 0;
             if (clean.length === 47 && !clean.startsWith('8') && parsed.valor > 0) {
               extractedValue = parsed.valor;
+            } else if (clean.startsWith('8') && parsed.valor > 0 && ['6', '8'].includes(clean[2])) {
+              if (localDetected.valor && localDetected.valor >= parsed.valor) {
+                extractedValue = localDetected.valor;
+              } else {
+                extractedValue = parsed.valor;
+              }
             } else if (localDetected.valor && localDetected.valor > 0) {
               extractedValue = localDetected.valor;
             } else if (parsed.valor > 0) {
+              extractedValue = parsed.valor;
+            }
+
+            if (parsed.valor > 0 && (extractedValue <= 0 || extractedValue < parsed.valor)) {
               extractedValue = parsed.valor;
             }
             if (extractedValue <= 0 && pattern.fieldExtractors.valorRegex) {
@@ -1360,12 +1375,12 @@ export function extractViaLearnedLayout(
               } catch {}
             }
 
-            // 3. Extração rápida de Vencimento
-            let extractedVenc = localDetected.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0];
-            if (pattern.fieldExtractors.vencimentoRegex) {
+            // 3. Extração rápida de Vencimento (prioritário por contexto local do boleto)
+            let extractedVenc = localDetected.dataVencimento || '';
+            if (!extractedVenc && pattern.fieldExtractors.vencimentoRegex) {
               try {
                 const rx = new RegExp(pattern.fieldExtractors.vencimentoRegex, 'i');
-                const vencMatch = localContext.match(rx) || rawText.match(rx);
+                const vencMatch = localContext.match(rx);
                 if (vencMatch && vencMatch[1]) {
                   const rawV = vencMatch[1].trim();
                   const ddmmyyyy = rawV.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
@@ -1375,13 +1390,26 @@ export function extractViaLearnedLayout(
                 }
               } catch {}
             }
+            if (!extractedVenc) {
+              // Tabular vencimento or direct label in localContext
+              const tabVenc = localContext.match(/VENCIMENTO[^\r\n]*\r?\n[^\r\n]*?(\d{2}[/-]\d{2}[/-]\d{4})\s*(?:\r?\n|$)/i)
+                || localContext.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i)
+                || localContext.match(/VENCIMENTO[\s\S]{1,120}?(\d{2}[/-]\d{2}[/-]\d{4})/i);
+              if (tabVenc && tabVenc[1]) {
+                const [d, m, y] = tabVenc[1].split(/[/-]/);
+                extractedVenc = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+              }
+            }
+            if (!extractedVenc) {
+              extractedVenc = parsed.dataVencimento || (boletosFound.length === 0 ? detectedGlobal.dataVencimento : '') || new Date().toISOString().split('T')[0];
+            }
 
-            // 4. Extração de Seu Número / Documento
+            // 4. Extração de Seu Número / Documento / Parcela
             let seuNumero = localDetected.autoInfracao || localDetected.seuNumero || '';
             if (!seuNumero && pattern.fieldExtractors.seuNumeroRegex) {
               try {
                 const rx = new RegExp(pattern.fieldExtractors.seuNumeroRegex, 'i');
-                const docMatch = localContext.match(rx) || rawText.match(rx);
+                const docMatch = localContext.match(rx);
                 if (docMatch && docMatch[1]) seuNumero = docMatch[1].trim();
               } catch {}
             }
@@ -1391,14 +1419,33 @@ export function extractViaLearnedLayout(
             if (!nossoNumero && pattern.fieldExtractors.nossoNumeroRegex) {
               try {
                 const rx = new RegExp(pattern.fieldExtractors.nossoNumeroRegex, 'i');
-                const nMatch = localContext.match(rx) || rawText.match(rx);
+                const nMatch = localContext.match(rx);
                 if (nMatch && nMatch[1]) nossoNumero = nMatch[1].trim();
               } catch {}
             }
+            if (!nossoNumero && pattern.fieldExtractors.seuNumeroRegex) {
+              try {
+                const rx = new RegExp(pattern.fieldExtractors.seuNumeroRegex, 'i');
+                const nMatch = localContext.match(rx);
+                if (nMatch && nMatch[1]) nossoNumero = nMatch[1].trim();
+              } catch {}
+            }
+            if (!nossoNumero) {
+              const directNosso = localContext.match(/(?:NOSSO\s+N[UÚ]MERO|Nosso\s+N[uú]mero|N[oº°]\.?\s*de\s+Controle)\s*[:\s\r\n]*([\w\d\/\.-]{6,30})/i);
+              if (directNosso && directNosso[1]) nossoNumero = directNosso[1].trim();
+            }
+            // For concessionária / arrecadação (starts with 8), extract from barcode campo livre (last 18 digits) if still empty
+            if (!nossoNumero && clean.startsWith('8') && parsed.codigoBarras && parsed.codigoBarras.length === 44) {
+              const campoLivre = parsed.codigoBarras.substring(26, 44);
+              if (campoLivre && campoLivre.length >= 6) {
+                nossoNumero = campoLivre;
+              }
+            }
 
             const bankInfo = getBankInfo(pattern.bankCode || parsed.bancoCodigo);
-            const finalDocNumber = seuNumero || localDetected.seuNumero || detectedGlobal.seuNumero || nossoNumero || '';
-            const finalNossoNumero = nossoNumero || localDetected.nossoNumero || detectedGlobal.nossoNumero || '';
+            const parcelaStr = localDetected.parcela ? ` - Parcela ${localDetected.parcela}` : '';
+            const finalDocNumber = seuNumero || (localDetected.placa ? `IPVA-${localDetected.placa}${parcelaStr}` : '') || localDetected.seuNumero || (boletosFound.length === 0 ? detectedGlobal.seuNumero : '') || nossoNumero || '';
+            const finalNossoNumero = nossoNumero || localDetected.nossoNumero || (boletosFound.length === 0 ? detectedGlobal.nossoNumero : '') || '';
             const finalFavorecido = (localDetected.favorecidoNome && localDetected.favorecidoNome !== 'Beneficiário / Cedente' ? localDetected.favorecidoNome : null)
               || pattern.issuerName
               || (detectedGlobal.favorecidoNome && detectedGlobal.favorecidoNome !== 'Beneficiário / Cedente' ? detectedGlobal.favorecidoNome : 'Beneficiário');

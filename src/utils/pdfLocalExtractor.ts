@@ -304,10 +304,17 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
             // Priority:
             // For standard 47-digit bank slips (Títulos Bancários: Bradesco, Itaú, Santander, BB, etc.),
             // the value encoded in the barcode (parsed.valor) is mathematically authoritative and represents the total aglutinated amount.
-            // For 48-digit concessionárias/tributos (starting with 8), prioritize text-detected value (Valor Cobrado / Total a Recolher).
+            // For 48-digit concessionárias/tributos (starting with 8), if 3rd digit is 6 or 8 (FEBRABAN: valor efetivo),
+            // barcode value is authoritative unless text has explicit greater total with late fees.
             let extractedValue = 0;
             if (clean.length === 47 && !clean.startsWith('8') && parsed.valor > 0) {
               extractedValue = parsed.valor;
+            } else if (clean.startsWith('8') && parsed.valor > 0 && ['6', '8'].includes(clean[2])) {
+              if (localDetected.valor && localDetected.valor >= parsed.valor) {
+                extractedValue = localDetected.valor;
+              } else {
+                extractedValue = parsed.valor;
+              }
             } else if (localDetected.valor && localDetected.valor > 0) {
               extractedValue = localDetected.valor;
             } else if (detectedGlobal.valor && detectedGlobal.valor > 0) {
@@ -319,7 +326,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
             if (extractedValue <= 0) {
               const valorPatterns = [
                 /(?:Valor\s+a\s+[Pp]agar|VALOR\s+A\s+PAGAR|VALOR\s+COBRADO|Valor\s+Cobrado|VALOR\s+DOCUMENTO|Valor\s+Documento|VALOR\s+ORIGINAL|Valor\s+Original|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+TOTAL(?:\s+A\s+RECOLHER)?|VALOR\s+PRINCIPAL|VALOR\s+COM\s+DESCONTO|VALOR\s+L[ÍI]QUIDO|(?:1|6)\s*\([^)]*\)\s*Valor\s*(?:Documento|Cobrado))\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i,
-                /(?:TOTAL|Valor)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i,
+                /(?:VALOR\s+TOTAL|TOTAL\s+A\s+RECOLHER|TOTAL\s+A\s+PAGAR|VALOR\s+COBRADO|TOTAL\s*:)\s*[:\s\r\n]*R?\$?\s*([\d\.]+(?:[,\.]\d{2}))/i,
               ];
               for (const vp of valorPatterns) {
                 const vm = localContextText.match(vp) || blockText.match(vp);
@@ -337,18 +344,51 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
               }
             }
 
-            let docNumber = localDetected.autoInfracao || localDetected.seuNumero || detectedGlobal.autoInfracao || '';
-            let nossoNum = localDetected.nossoNumero || detectedGlobal.nossoNumero || '';
+            // Sub-item protection: If barcode has an authoritative nominal value, never allow
+            // a sub-item from a debit breakdown table (e.g. 49.30 vs 240.35) to override the total.
+            if (parsed.valor > 0 && (extractedValue <= 0 || extractedValue < parsed.valor)) {
+              extractedValue = parsed.valor;
+            }
 
-            // Capture document number with support for No. do Documento, Nº Doc, Número do Documento
+            let docNumber = localDetected.autoInfracao || localDetected.seuNumero || (totalPages === 1 ? detectedGlobal.autoInfracao : '') || '';
+
+            // Capture document number with support for No. do Documento, Nº Doc, Número do Documento in current context/page
             const numDocMatch = localContextText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|N[oº°]\.?\s*Doc|N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Seu\s+Número|Compromisso|Fatura|Nota\s+Fiscal|NF)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i)
               || blockText.match(/(?:N[oº°]\.?\s*(?:do\s*)?Documento|Número\s+do\s+Documento|N[oº°]\.?\s*Doc|N[oº°]\.?\s*de\s+Controle|Número\s+de\s+Controle|Seu\s+Número|Compromisso|Fatura|Nota\s+Fiscal|NF)\s*[:\s\r\n]*([\w\/\.-]{5,30})/i);
             if (numDocMatch && !docNumber) docNumber = numDocMatch[1].trim();
 
-            // Capture Nosso Número
-            const nossoNumMatch = localContextText.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+N[uú]mero|Nosso\s+Numero|Nosso\s+N[oº°]\.?)\s*[:\s\r\n]*([\w\/\.-]{5,25})/i)
-              || blockText.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+N[uú]mero|Nosso\s+Numero|Nosso\s+N[oº°]\.?)\s*[:\s\r\n]*([\w\/\.-]{5,25})/i);
-            if (nossoNumMatch && !nossoNum) nossoNum = nossoNumMatch[1].trim();
+            // Capture Nosso Número scoped strictly to current context / page first
+            let nossoNum = localDetected.nossoNumero || '';
+            if (!nossoNum) {
+              const nossoNumMatch = localContextText.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+N[uú]mero|Nosso\s+Numero|Nosso\s+N[oº°]\.?)\s*[:\s\r\n]*([\w\/\.-]{5,25})/i)
+                || blockText.match(/(?:Nosso\s+N[uú]mero|NOSSO\s+N[UÚ]MERO|Cart\.\s*\/\s*Nosso\s+N[uú]mero|Nosso\s+Numero|Nosso\s+N[oº°]\.?)\s*[:\s\r\n]*([\w\/\.-]{5,25})/i);
+              if (nossoNumMatch) nossoNum = nossoNumMatch[1].trim();
+            }
+            if (!nossoNum && clean.startsWith('8') && parsed.codigoBarras && parsed.codigoBarras.length === 44) {
+              const campoLivre = parsed.codigoBarras.substring(26, 44);
+              if (campoLivre && campoLivre.length >= 6) {
+                nossoNum = campoLivre;
+              }
+            }
+            if (!nossoNum && totalPages === 1) {
+              nossoNum = detectedGlobal.nossoNumero || '';
+            }
+
+            // Capture Due Date (Vencimento) strictly scoped to current context / page first
+            let localVenc = localDetected.dataVencimento || '';
+            if (!localVenc) {
+              const tabVenc = localContextText.match(/VENCIMENTO[^\r\n]*\r?\n[^\r\n]*?(\d{2}[/-]\d{2}[/-]\d{4})\s*(?:\r?\n|$)/i)
+                || blockText.match(/VENCIMENTO[^\r\n]*\r?\n[^\r\n]*?(\d{2}[/-]\d{2}[/-]\d{4})\s*(?:\r?\n|$)/i)
+                || localContextText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i)
+                || blockText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+              if (tabVenc && tabVenc[1]) {
+                const [d, m, y] = tabVenc[1].split(/[/-]/);
+                localVenc = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+              }
+            }
+            if (!localVenc) {
+              localVenc = parsed.dataVencimento || (totalPages === 1 ? detectedGlobal.dataVencimento : '') || new Date().toISOString().split('T')[0];
+            }
 
             let finalFavorecido = (localDetected.favorecidoNome && localDetected.favorecidoNome !== 'Beneficiário / Cedente' ? localDetected.favorecidoNome : null)
               || (detectedGlobal.favorecidoNome && detectedGlobal.favorecidoNome !== 'Beneficiário / Cedente' ? detectedGlobal.favorecidoNome : null)
@@ -367,7 +407,8 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
             const finalBeneficiarioCnpj = localDetected.favorecidoCnpjCpf || detectedGlobal.favorecidoCnpjCpf || '';
 
             const detectedPlaca = localDetected.placa || detectedGlobal.placa || '';
-            const uniqueRef = docNumber || nossoNum || localDetected.seuNumero || detectedGlobal.seuNumero || (detectedPlaca ? `PLACA-${detectedPlaca}-P${pageNum}` : `PAG-${pageNum}-${clean.substring(33, 47) || Date.now()}`);
+            const parcelaInfo = localDetected.parcela ? ` - Parcela ${localDetected.parcela}` : (totalPages > 1 ? ` - Pág. ${pageNum}` : '');
+            const uniqueRef = docNumber || (detectedPlaca ? `PLACA-${detectedPlaca}${parcelaInfo}` : '') || nossoNum || localDetected.seuNumero || (detectedPlaca ? `PLACA-${detectedPlaca}-P${pageNum}` : `PAG-${pageNum}-${clean.substring(33, 47) || Date.now()}`);
 
             const descontoVal = localDetected.desconto || detectedGlobal.desconto || 0;
             const jurosVal = localDetected.juros || detectedGlobal.juros || 0;
@@ -396,7 +437,7 @@ export async function extractBoletosLocallyInBrowser(fileBase64: string, fileNam
               juros: jurosVal,
               multa: multaVal,
               jurosMulta: jurosMultaVal,
-              dataVencimento: localDetected.dataVencimento || detectedGlobal.dataVencimento || parsed.dataVencimento || new Date().toISOString().split('T')[0],
+              dataVencimento: localVenc,
               numeroDocumento: docNumber || nossoNum || uniqueRef,
               seuNumero: uniqueRef,
               nossoNumero: nossoNum,

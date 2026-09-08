@@ -478,16 +478,26 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
         
         // Value resolution:
         // 1. For 47-digit bank boletos with parsedCheck.valor > 0, barcode nominal value is authoritative
-        // 2. For 48-digit concessionárias/tributos or when barcode has no value, use extracted.valor
+        // 2. For 48-digit concessionárias/tributos (starting with 8):
+        //    - If 3rd digit is 6 or 8 (FEBRABAN: effective value in BRL), parsedCheck.valor is authoritative unless late fees apply
+        //    - If extracted.valor is lower than parsedCheck.valor (e.g. 49.30 vs 240.35), it is a sub-item from a table and parsedCheck.valor must be used
         let finalValor = 0;
         if (cleanLinha.length === 47 && !cleanLinha.startsWith('8') && parsedCheck.valor > 0) {
           finalValor = parsedCheck.valor;
+        } else if (cleanLinha.startsWith('8') && parsedCheck.valor > 0 && ['6', '8'].includes(cleanLinha[2])) {
+          const rawVal = typeof extracted.valor === 'number' ? extracted.valor : (typeof extracted.valor === 'string' ? parseExtractedValor(extracted.valor, 0) : 0);
+          if (rawVal >= parsedCheck.valor) {
+            finalValor = rawVal;
+          } else {
+            finalValor = parsedCheck.valor;
+          }
         } else if (typeof extracted.valor === 'number' && extracted.valor > 0) {
           finalValor = extracted.valor;
         } else if (typeof extracted.valor === 'string') {
           finalValor = parseExtractedValor(extracted.valor, 0);
         }
-        if (finalValor <= 0 && parsedCheck.valor > 0) {
+
+        if (parsedCheck.valor > 0 && (finalValor <= 0 || finalValor < parsedCheck.valor)) {
           finalValor = parsedCheck.valor;
         }
 
@@ -797,7 +807,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
           if (field === 'linhaDigitavel') {
             const parsed = parseLinhaDigitavel(value);
             if (parsed.isValid) {
-              if (!updatedData.valor) updatedData.valor = parsed.valor;
+              if (!updatedData.valor || (parsed.valor > 0 && updatedData.valor < parsed.valor)) updatedData.valor = parsed.valor;
               if (parsed.dataVencimento) {
                 updatedData.dataVencimento = parsed.dataVencimento;
                 updatedData.dataPagamento = validateAndClampPaymentDate(

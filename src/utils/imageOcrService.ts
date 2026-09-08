@@ -123,9 +123,19 @@ export async function extractBoletoFromImageSource(
           let extractedValue = 0;
           if (clean.length === 47 && !clean.startsWith('8') && parsed.valor > 0) {
             extractedValue = parsed.valor;
+          } else if (clean.startsWith('8') && parsed.valor > 0 && ['6', '8'].includes(clean[2])) {
+            if (detectedGlobal.valor && detectedGlobal.valor >= parsed.valor) {
+              extractedValue = detectedGlobal.valor;
+            } else {
+              extractedValue = parsed.valor;
+            }
           } else if (detectedGlobal.valor && detectedGlobal.valor > 0) {
             extractedValue = detectedGlobal.valor;
           } else if (parsed.valor > 0) {
+            extractedValue = parsed.valor;
+          }
+
+          if (parsed.valor > 0 && (extractedValue <= 0 || extractedValue < parsed.valor)) {
             extractedValue = parsed.valor;
           }
           let vencimentoFinal = (clean.length === 47 && !clean.startsWith('8') && parsed.dataVencimento)
