@@ -49,8 +49,6 @@ export function parseAutomotiveDocument(text: string, fileName: string = ''): Pa
     favorecidoCnpjCpf = '050.095.909/0001-49';
     bancoCodigo = '237';
     bancoNome = 'Banco Bradesco S.A.';
-    pagadorNome = 'VIA SUL VEICULOS S/A';
-    pagadorCnpjCpf = '040.841.736/0002-98';
   } else if (textUpper.includes('LEAPMOTOR') || textUpper.includes('LEAP MOTOR') || textUpper.includes('STELLANTIS')) {
     brand = 'LEAPMOTOR (Stellantis)';
     favorecidoNome = 'BANCO FIDIS S/A - LEAPMOTOR / STELLANTIS';
@@ -74,7 +72,7 @@ export function parseAutomotiveDocument(text: string, fileName: string = ''): Pa
     favorecidoCnpjCpf = '062.237.425/0001-76';
     bancoCodigo = '237';
     bancoNome = 'Banco Bradesco S.A.';
-  } else if (textUpper.includes('FIDC COMPLEMENTAR AUTO FORD') || textUpper.includes('FIDC AUTO FORD') || textUpper.includes('043.489.824/0001-80') || textUpper.includes('GRANVIA')) {
+  } else if (textUpper.includes('FIDC COMPLEMENTAR AUTO FORD') || textUpper.includes('FIDC AUTO FORD') || textUpper.includes('043.489.824/0001-80')) {
     brand = 'FORD (FIDC Complementar Auto Ford)';
     favorecidoNome = 'FIDC COMPLEMENTAR AUTO FORD';
     favorecidoCnpjCpf = '043.489.824/0001-80';
@@ -104,9 +102,6 @@ export function parseAutomotiveDocument(text: string, fileName: string = ''): Pa
     favorecidoCnpjCpf = '21.126.275/0001-46';
     bancoCodigo = '033';
     bancoNome = 'Banco Santander (Brasil) S.A.';
-  } else if (textUpper.includes('NEWVIA')) {
-    brand = 'NEWVIA Veículos';
-    favorecidoNome = 'NEWVIA COMERCIO DE VEICULOS LTDA';
   } else if (textUpper.includes('TOYOTA')) {
     brand = 'TOYOTA';
     favorecidoNome = 'BANCO TOYOTA DO BRASIL S.A.';
@@ -226,7 +221,7 @@ export function parseAutomotiveDocument(text: string, fileName: string = ''): Pa
     montadoraMarca: brand,
     favorecidoNome,
     favorecidoCnpjCpf,
-    pagadorNome: pagadorNome || 'VIA SUL VEÍCULOS S/A',
+    pagadorNome: pagadorNome || 'EMPRESA MODELO CNAB LTDA',
     pagadorCnpjCpf,
     valor: valor || valorCobrado || valorOriginal,
     valorOriginal: valorOriginal || valor,

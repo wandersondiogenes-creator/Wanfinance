@@ -317,46 +317,6 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   if (/BYD\s+DO\s+BRASIL/i.test(rawText) || rawText.includes('17.140.820/0007-77') || rawText.includes('17140820000777')) {
     favorecidoCnpjCpf = '17.140.820/0007-77';
   }
-  if (/NEWVIA\s+MOTOS/i.test(rawText) || rawText.includes('51.478.180/0003-14') || rawText.includes('51478180000314')) {
-    pagador = 'NEWVIA MOTOS LTDA';
-    pagadorCnpjCpf = '51.478.180/0003-14';
-  }
-  if (/GRANVIA\s+VEICULOS/i.test(rawText) || rawText.includes('012.946.886/0001-40') || rawText.includes('012946886000140')) {
-    pagador = 'GRANVIA VEICULOS S/A';
-    pagadorCnpjCpf = '012.946.886/0001-40';
-  }
-  if (/EUROVIA\s+VEICULOS/i.test(rawText) || rawText.includes('02.671.595') || rawText.includes('02671595')) {
-    pagador = 'EUROVIA VEICULOS S.A.';
-    const euroviaCnpj = rawText.match(/02\.671\.595\/\d{4}-\d{2}|02671595\d{6}/);
-    if (euroviaCnpj) {
-      const rawCnpj = euroviaCnpj[0].replace(/\D/g, '');
-      if (rawCnpj.length === 14) {
-        pagadorCnpjCpf = `${rawCnpj.slice(0, 2)}.${rawCnpj.slice(2, 5)}.${rawCnpj.slice(5, 8)}/${rawCnpj.slice(8, 12)}-${rawCnpj.slice(12, 14)}`;
-      } else {
-        pagadorCnpjCpf = euroviaCnpj[0];
-      }
-    }
-  } else if (/EUROVIA\s+AUTO/i.test(rawText) || rawText.includes('60.933.323/0002-40') || rawText.includes('60933323000240')) {
-    pagador = 'EUROVIA AUTO LTDA';
-    pagadorCnpjCpf = '60.933.323/0002-40';
-  }
-  if (/VIA\s+SUL\s+AUTO/i.test(rawText) || rawText.includes('54.122.933/0001-80') || rawText.includes('54122933000180')) {
-    pagador = 'VIA SUL AUTO LTDA';
-    pagadorCnpjCpf = '54.122.933/0001-80';
-  } else if (/VIA\s+SUL\s+VEICULOS/i.test(rawText) || rawText.includes('040.841.736') || rawText.includes('040841736')) {
-    pagador = 'VIA SUL VEICULOS S/A';
-    const viaSulCnpjMatch = rawText.match(/040\.841\.736\/\d{4}-\d{2}|040841736\d{6}/);
-    if (viaSulCnpjMatch) {
-      const rawC = viaSulCnpjMatch[0].replace(/\D/g, '');
-      if (rawC.length === 14) {
-        pagadorCnpjCpf = `${rawC.slice(0, 2)}.${rawC.slice(2, 5)}.${rawC.slice(5, 8)}/${rawC.slice(8, 12)}-${rawC.slice(12, 14)}`;
-      } else {
-        pagadorCnpjCpf = viaSulCnpjMatch[0];
-      }
-    } else {
-      pagadorCnpjCpf = '040.841.736/0010-06';
-    }
-  }
 
   // Extract Pagador / Proprietário (including format: "065.881.184-30 ODENIA KEZIA DA SILVA" or "03637911400 MARIA CECILIA CARTAXO...")
   if (!pagadorCnpjCpf || !pagador) {
@@ -505,7 +465,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   const isBYDAuto = textUpper.includes('BYD AUTO DO BRASIL') || textUpper.includes('50.351.104/0001-19') || textUpper.includes('03399.05481');
   const isBYDBrasil = textUpper.includes('BYD DO BRASIL') || textUpper.includes('17.140.820/0007-77') || textUpper.includes('03399.01241');
   const isFIDCVendaVeiculos = textUpper.includes('VENDA DE VEICULOS FUNDO') || textUpper.includes('VENDA DE VEÍCULOS FUNDO') || textUpper.includes('FIDC VENDA DE VEÍCULOS') || textUpper.includes('FIDC VENDA DE VEICULOS') || textUpper.includes('21.126.275/0001-46') || textUpper.includes('03399.42294');
-  const isFIDCAutoFord = textUpper.includes('FIDC COMPLEMENTAR AUTO FORD') || textUpper.includes('FIDC AUTO FORD') || textUpper.includes('043.489.824/0001-80') || textUpper.includes('043489824000180') || textUpper.includes('GRANVIA VEICULOS') || textUpper.includes('23792.85634') || textUpper.includes('02856-COBFLEX');
+  const isFIDCAutoFord = textUpper.includes('FIDC COMPLEMENTAR AUTO FORD') || textUpper.includes('FIDC AUTO FORD') || textUpper.includes('043.489.824/0001-80') || textUpper.includes('043489824000180') || textUpper.includes('23792.85634') || textUpper.includes('02856-COBFLEX');
   const isFIDCVitaAuto = textUpper.includes('FIDC VITA AUTO') || textUpper.includes('VITA AUTO') || textUpper.includes('050.095.909/0001-49') || textUpper.includes('050095909000149') || (textUpper.includes('FIAT') && (textUpper.includes('02856-COBFLEX') || textUpper.includes('BETIM-MG') || textUpper.includes('PAULO CAMILO')));
   const isBancoFidis = textUpper.includes('BANCO FIDIS') || textUpper.includes('062.237.425/0001-76') || textUpper.includes('062237425000176') || textUpper.includes('23792.01102') || textUpper.includes('2379201102') || textUpper.includes('02011-COBFLEX') || textUpper.includes('02011 - COBFLEX');
 
@@ -527,55 +487,30 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
     favorecidoCnpjCpf = '050.095.909/0001-49';
     bancoCodigo = '237';
     bancoNome = 'Banco Bradesco S.A.';
-    if (!pagador || pagador.includes('Não identificado')) {
-      pagador = 'VIA SUL VEICULOS S/A';
-      pagadorCnpjCpf = '040.841.736/0002-98';
-    }
   } else if (isBancoFidis) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BANCO FIDIS S/A.';
     favorecidoCnpjCpf = '062.237.425/0001-76';
     bancoCodigo = '237';
     bancoNome = 'Banco Bradesco S.A.';
-    if (!pagador || pagador.includes('Não identificado')) {
-      pagador = 'VIA SUL VEICULOS S/A';
-      pagadorCnpjCpf = '040.841.736/0010-06';
-    }
   } else if (isBajaj) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BAJAJ DO BRASIL COMERCIO DE MOTOCICLETAS LTDA';
     favorecidoCnpjCpf = '45.859.932/0001-22';
     bancoCodigo = '376';
     bancoNome = 'Banco J.P. Morgan S.A.';
-    if (!pagador || pagador.includes('Não identificado')) {
-      pagador = 'NEWVIA MOTOS LTDA';
-      pagadorCnpjCpf = '51.478.180/0003-14';
-    }
   } else if (isFIDCAutoFord) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'FIDC COMPLEMENTAR AUTO FORD';
     favorecidoCnpjCpf = '043.489.824/0001-80';
     bancoCodigo = '237';
     bancoNome = 'Banco Bradesco S.A.';
-    if (!pagador || pagador.includes('Não identificado')) {
-      pagador = 'GRANVIA VEICULOS S/A';
-      pagadorCnpjCpf = '012.946.886/0001-40';
-    }
   } else if (isFIDCVendaVeiculos) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'VENDA DE VEICULOS FUNDO DE INVESTIMENTO';
     favorecidoCnpjCpf = '21.126.275/0001-46';
     bancoCodigo = '033';
     bancoNome = 'Banco Santander Brasil S.A.';
-    if (!pagador || pagador.includes('Não identificado')) {
-      if (rawText.includes('02.671.595') || /EUROVIA\s+VEICULOS/i.test(rawText)) {
-        pagador = 'EUROVIA VEICULOS S.A.';
-        const euroCnpj = rawText.match(/02\.671\.595\/\d{4}-\d{2}/);
-        if (euroCnpj) pagadorCnpjCpf = euroCnpj[0];
-      } else {
-        pagador = 'EUROVIA VEICULOS S.A.';
-      }
-    }
   } else if (isBYDAuto) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BYD AUTO DO BRASIL LTDA';
