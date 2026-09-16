@@ -64,6 +64,7 @@ export interface BankAccountProfile {
   nsa: number; // Número Sequencial do Arquivo
   padraoCNAB: '240' | '400';
   layoutVersaoLote: string; // ex: '040' ou '046' ou '081'
+  formaLancamentoLote?: string; // ex: '30' títulos próprio banco, '31' outros bancos
 }
 
 export interface CompanyProfile {
@@ -106,6 +107,7 @@ export interface CompanySettings {
   nsa: number; // Número Sequencial do Arquivo
   padraoCNAB: '240' | '400';
   layoutVersaoLote: string; // ex: '040' ou '046' ou '081'
+  formaLancamentoLote?: string; // ex: '30' títulos próprio banco, '31' outros bancos
 }
 
 export interface CNABLineHighlight {

@@ -1,10 +1,11 @@
 import { resetToDefaultCompanies } from '../utils/storage';
 import { SANTANDER_PAGFOR_DATA } from '../data/defaultCompanies';
 import { downloadCompaniesExcel } from '../utils/exportCompaniesExcel';
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { CompanyProfile, BankAccountProfile } from '../types';
 import { BRAZILIAN_BANKS, getBankInfo } from '../utils/banks';
-import { Building2, CreditCard, Plus, Trash2, Edit3, CheckCircle2, Shield, RefreshCw, Save, Check, FileText, Info, Sparkles, Building, ChevronRight, Star, Table, Search, Copy, FileSpreadsheet, Download } from 'lucide-react';
+import { CompanyImportModal } from './CompanyImportModal';
+import { Building2, CreditCard, Plus, Trash2, Edit3, CheckCircle2, Shield, RefreshCw, Save, Check, FileText, Info, Sparkles, Building, ChevronRight, Star, Table, Search, Copy, FileSpreadsheet, Download, Upload, FileUp, Layers } from 'lucide-react';
 
 interface CompanySettingsProps {
   companies: CompanyProfile[];
@@ -28,6 +29,12 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
   const [isViewingSantanderTable, setIsViewingSantanderTable] = useState(false);
   const [santanderSearch, setSantanderSearch] = useState('');
   const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // Import modal & attachment dropzone state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [initialImportFile, setInitialImportFile] = useState<File | null>(null);
+  const [isAttachmentDragOver, setIsAttachmentDragOver] = useState(false);
+  const attachmentFileInputRef = useRef<HTMLInputElement>(null);
 
   // Modals / Editors state
   const [isEditingCompany, setIsEditingCompany] = useState(false);
@@ -198,6 +205,111 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
         )}
       </div>
 
+      {/* Attachment Upload Card for Direct Spreadsheet Registration */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 space-y-4 shadow-lg relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
+              <FileUp className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                Anexo para Cadastro Direto via Planilha
+                <span className="bg-blue-500/20 text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-500/30">
+                  Excel (.xlsx) / CSV
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Envie a planilha de empresas e contas para que o cadastro seja automático e direto na plataforma, sem necessidade de digitação manual.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setInitialImportFile(null);
+                setIsImportModalOpen(true);
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center space-x-1.5 shrink-0"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Anexar Planilha</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadCompaniesExcel(companies)}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-2 rounded-xl border border-slate-700 transition-colors flex items-center space-x-1.5 shrink-0"
+              title="Baixar modelo de planilha preenchido com as empresas atuais"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Baixar Modelo</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Drop zone inside the card */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsAttachmentDragOver(true);
+          }}
+          onDragLeave={() => setIsAttachmentDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsAttachmentDragOver(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) {
+              setInitialImportFile(file);
+              setIsImportModalOpen(true);
+            }
+          }}
+          onClick={() => attachmentFileInputRef.current?.click()}
+          className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-all flex flex-col sm:flex-row items-center justify-between gap-4 ${
+            isAttachmentDragOver
+              ? 'border-blue-500 bg-blue-600/10'
+              : 'border-slate-700/80 hover:border-slate-500 bg-slate-950/40 hover:bg-slate-950/70'
+          }`}
+        >
+          <input
+            ref={attachmentFileInputRef}
+            type="file"
+            accept=".xlsx, .xls, .csv"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                setInitialImportFile(file);
+                setIsImportModalOpen(true);
+              }
+              e.target.value = '';
+            }}
+            className="hidden"
+          />
+
+          <div className="flex items-center space-x-3 text-left">
+            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-200">
+                Arraste e solte sua planilha aqui ou clique para selecionar o arquivo
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Reconhece automaticamente Razão Social, CNPJ, Banco, Agência, Conta Corrente, Convênio e Estação Pagfor
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0">
+            <span className="bg-slate-800 text-slate-300 border border-slate-700 text-[11px] px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 hover:text-white">
+              <FileUp className="w-3.5 h-3.5 text-blue-400" />
+              Selecionar Arquivo (.xlsx / .csv)
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Companies Bar / Tabs */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
@@ -209,6 +321,18 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => {
+                setInitialImportFile(null);
+                setIsImportModalOpen(true);
+              }}
+              className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-semibold text-xs px-3.5 py-2 rounded-xl transition-all border border-blue-500/40 flex items-center space-x-1.5 shadow-sm"
+              title="Importar planilha Excel (.xlsx) ou CSV para cadastrar empresas e contas"
+            >
+              <FileUp className="w-4 h-4 text-blue-400" />
+              <span>Importar Planilha</span>
+            </button>
+
             <button
               onClick={() => downloadCompaniesExcel(companies)}
               className="bg-emerald-950/50 hover:bg-emerald-900/70 text-emerald-300 font-semibold text-xs px-3.5 py-2 rounded-xl transition-all border border-emerald-700/60 flex items-center space-x-1.5 shadow-sm"
@@ -1233,6 +1357,27 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal to Import Companies & Bank Accounts Spreadsheet */}
+      <CompanyImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setInitialImportFile(null);
+        }}
+        existingCompanies={companies}
+        initialFile={initialImportFile}
+        onApplyImport={(updatedCompanies, newActiveCompanyId) => {
+          onSaveCompanyProfiles(updatedCompanies, newActiveCompanyId);
+          if (newActiveCompanyId) {
+            setSelectedCompanyId(newActiveCompanyId);
+          } else if (updatedCompanies.length > 0) {
+            setSelectedCompanyId(updatedCompanies[0].id);
+          }
+          setSavedSuccess(true);
+          setTimeout(() => setSavedSuccess(false), 3000);
+        }}
+      />
     </div>
   );
 };
