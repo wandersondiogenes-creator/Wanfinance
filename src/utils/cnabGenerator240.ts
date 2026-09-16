@@ -1,5 +1,5 @@
 import { BoletoItem, CompanySettings, CNABLineHighlight } from '../types';
-import { dateToCNAB, onlyNumbers } from './boletoParser.js';
+import { dateToCNAB, onlyNumbers, linhaDigitavelToCodigoBarras } from './boletoParser.js';
 
 /**
  * Normalizes text to uppercase ASCII without accents or special characters
@@ -162,7 +162,19 @@ export function generateCNAB240(
   // 2. HEADER DE LOTE (Tipo Registro 1 - Pagamento de Títulos / Boletos)
   const loteServico = '0001';
   const tipoServicoLote = isBancoDoBrasil ? '98' : (isSantander ? '20' : '30'); // '98' = Pagamentos Diversos (BB p. 9), '20' = Fornecedor
-  const formaLancamentoLote = '31'; // '31' = Boleto de Outros Bancos / Pagamentos Gerais de Títulos
+  // Santander / FEBRABAN: '30' = Títulos do Próprio Banco (033), '31' = Títulos de Outros Bancos
+  let formaLancamentoLote = '31';
+  if (company.formaLancamentoLote) {
+    formaLancamentoLote = company.formaLancamentoLote;
+  } else if (isSantander && boletos.length > 0) {
+    const allSantander = boletos.every((b) => {
+      const bcode = onlyNumbers(b.codigoBarras || b.linhaDigitavel || '');
+      return bcode.startsWith('033');
+    });
+    if (allSantander) {
+      formaLancamentoLote = '30';
+    }
+  }
   const versaoLayoutLote = isBancoDoBrasil ? '000' : (isSantander ? '030' : (company.layoutVersaoLote || '046'));
 
   const headerLoteParts = [
@@ -223,7 +235,15 @@ export function generateCNAB240(
     sequencialRegistroNoLote += 1;
     const seqStr = padLeftZeros(sequencialRegistroNoLote, 5);
 
-    const codigoBarras = padLeftZeros(boleto.codigoBarras, 44);
+    // Ensure 44 digits barcode: convert 47/48-digit linha digitavel to 44-digit barcode
+    let rawBarcode = onlyNumbers(boleto.codigoBarras || '');
+    if (rawBarcode.length !== 44) {
+      const converted = linhaDigitavelToCodigoBarras(boleto.linhaDigitavel || boleto.codigoBarras || '');
+      if (converted.codigoBarras && converted.codigoBarras.length === 44) {
+        rawBarcode = converted.codigoBarras;
+      }
+    }
+    const codigoBarras = padLeftZeros(rawBarcode, 44);
     const favorecidoNome = padRightSpaces(boleto.favorecidoNome || 'BENEFICIARIO BOLETO', 30);
     const dataVencimento = dateToCNAB(boleto.dataVencimento);
     const valorTitulo = formatValueCNAB(boleto.valor, 15);

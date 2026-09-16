@@ -115,7 +115,7 @@ export async function fetchCompanyProfilesFromSupabase(): Promise<CompanyProfile
       return null;
     }
     if (data && data.length > 0) {
-      const mapped: CompanyProfile[] = data.map((row: any) => ({
+      return data.map((row: any) => ({
         id: row.id,
         nomeFantasia: row.nome_fantasia || row.razao_social || '',
         razaoSocial: row.razao_social || '',
@@ -130,25 +130,6 @@ export async function fetchCompanyProfilesFromSupabase(): Promise<CompanyProfile
         bancos: Array.isArray(row.bancos) ? row.bancos : [],
         activeBankId: Array.isArray(row.bancos) && row.bancos.length > 0 ? row.bancos[0].id : '',
       }));
-
-      // Filter out legacy real companies
-      const cleaned = mapped.filter((c) => {
-        const nome = (c.razaoSocial || '').toUpperCase();
-        const fantasia = (c.nomeFantasia || '').toUpperCase();
-        return (
-          !nome.includes('VIA SUL') &&
-          !nome.includes('EUROVIA') &&
-          !nome.includes('GRANVIA') &&
-          !nome.includes('INTERVIA') &&
-          !nome.includes('NEWVIA') &&
-          !nome.includes('INVESTPARTS') &&
-          !nome.includes('PROJETO PARTICIPACOES') &&
-          !fantasia.includes('VIA SUL') &&
-          !fantasia.includes('EUROVIA')
-        );
-      });
-
-      return cleaned.length > 0 ? cleaned : null;
     }
   } catch (e) {
     console.error('[Supabase] Exception fetching companies:', e);

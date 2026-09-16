@@ -1,0 +1,702 @@
+
+### EMPRESA 1: VIA SUL VEICULOS S/A (VIA SUL MATRIZ)
+CNPJ: 40841736000107
+Endereço: AVENIDA MARECHAL MASCARENHAS DE MORAIS, 1700 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4903471219 (YY38)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 3749 / 0
+    * Conta / DV: 13000653 / 5
+    * Código de Convênio no Banco: 4903471219
+    * Código de Estação (Santander): YY38
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30231
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30231
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30231
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30234
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30234
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30234
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30241
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30241
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30241
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 2: EUROVIA VEICULOS S/A (RENAULT PIEDADE)
+CNPJ: 02671595000132
+Endereço: AVENIDA BERNARDO VIEIRA DE MELO, 1400 - JABOATAO DOS GUARARAPES/PE - CEP 54410010
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4902987495 (04UP)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13000563 / 7
+    * Código de Convênio no Banco: 4902987495
+    * Código de Estação (Santander): 04UP
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30255
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30255
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30255
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30248
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30248
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30248
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30263
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30263
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30263
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 3: INTERVIA VEICULOS S A (KIA PIEDADE)
+CNPJ: 08315588000184
+Endereço: AVENIDA BERNARDO VIEIRA DE MELO, 1200 - JABOATAO DOS GUARARAPES/PE - CEP 54410010
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4902991591 (05CE)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13003914 / 0
+    * Código de Convênio no Banco: 4902991591
+    * Código de Estação (Santander): 05CE
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30201
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30201
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30201
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30204
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30204
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30204
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30203
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30203
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30203
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 4: NEWVIA MOTOS LTDA (NEWVIA IMBIRIBEIRA)
+CNPJ: 51478180000152
+Endereço: AVENIDA MASCARENHAS DE MORAIS, 1500 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4907396423 (X7NS)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 3886 / 0
+    * Conta / DV: 13047880 / 0
+    * Código de Convênio no Banco: 4907396423
+    * Código de Estação (Santander): X7NS
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30271
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30271
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30271
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30615
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30615
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30615
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30261
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30261
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30261
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 5: VIA 1 CORRETORA DE SEGUROS LTDA (VIA 1 CORRETORA)
+CNPJ: 40855748000190
+Endereço: AVENIDA MARECHAL MASCARENHAS DE MORAIS, 1900 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4906698021 (JYHP)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13067288 / 0
+    * Código de Convênio no Banco: 4906698021
+    * Código de Estação (Santander): JYHP
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - Conta Principal
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 40855
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 40855
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30250
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30250
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30250
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 000
+    * Próximo NSA: 1
+
+### EMPRESA 6: EUROVIA AUTOMOVEIS E UTILITARIOS S/A (NISSAN IMBIRIBEIRA)
+CNPJ: 04109834000190
+Endereço: AVENIDA MARECHAL MASCARENHAS DE MORAIS, 2700 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4902992091 (05ER)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13000102 / 8
+    * Código de Convênio no Banco: 4902992091
+    * Código de Estação (Santander): 05ER
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30285
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30285
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30285
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30270
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30270
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30270
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30286
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30286
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30286
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 7: VIA SUL VEICULOS S/A (JEEP IMBIRIBEIRA)
+CNPJ: 40841736001006
+Endereço: AVENIDA MARECHAL MASCARENHAS DE MORAIS, 1800 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4903471190 (YY36)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13023301 / 4
+    * Código de Convênio no Banco: 4903471190
+    * Código de Estação (Santander): YY36
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30232
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30232
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30232
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30232
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30232
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30232
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 000
+    * Próximo NSA: 1
+
+### EMPRESA 8: GRANVIA VEICULOS S A (FORD IMBIRIBEIRA)
+CNPJ: 12946886000140
+Endereço: AVENIDA MARECHAL MASCARENHAS DE MORAIS, 2000 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - Ag 4661
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13001229 / 6
+    * Código de Convênio no Banco: (em branco)
+    * Código de Estação (Santander): (em branco)
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30224
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30224
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30224
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30221
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30221
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30221
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30227
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30227
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30227
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 9: EUROVIA COMERCIO DE VEICULOS LTDA (OMODA ABDIAS)
+CNPJ: 55479113000103
+Endereço: AVENIDA GENERAL SAN MARTIN, 1000 - RECIFE/PE - CEP 50761000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4907532879 (CKZP)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13006978 / 3
+    * Código de Convênio no Banco: 4907532879
+    * Código de Estação (Santander): CKZP
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30613
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30613
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30613
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30616
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30616
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30616
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30618
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30618
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30618
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 10: VIA 1 LOCADORA DE VEICULOS LTDA (VIA 1 LOCADORA)
+CNPJ: 40539927000119
+Endereço: AVENIDA MARECHAL MASCARENHAS DE MORAIS, 1950 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4907275299 (V1DB)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13036996 / 6
+    * Código de Convênio no Banco: 4907275299
+    * Código de Estação (Santander): V1DB
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - Conta Principal
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 40539
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 40539
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30290
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30290
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30290
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 000
+    * Próximo NSA: 1
+
+### EMPRESA 11: VIA SUL AUTO LTDA (BYD ARRUDA)
+CNPJ: 54122933000180
+Endereço: AVENIDA PROFESSOR ARRUDA CAMARA, 100 - RECIFE/PE - CEP 52070000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4907456277 (APUX)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13006825 / 6
+    * Código de Convênio no Banco: 4907456277
+    * Código de Estação (Santander): APUX
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30279
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30279
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30279
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30612
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30612
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30612
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30300
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30300
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30300
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 12: INVESTPARTS PARTIC E EMPREENDI (INVESTPARTS)
+CNPJ: 71919770000182
+Endereço: AVENIDA PAULISTA, 1500 - SAO PAULO/SP - CEP 01310200
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4906557762 (EF05)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13065487 / 7
+    * Código de Convênio no Banco: 4906557762
+    * Código de Estação (Santander): EF05
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30216
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30216
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30216
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30218
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30218
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30218
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30219
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30219
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30219
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 000
+    * Próximo NSA: 1
+
+### EMPRESA 13: VIA SUL VEICULOS S/A (LEAP IMBIRIBEIRA)
+CNPJ: 40841736002312
+Endereço: AVENIDA MARECHAL MASCARENHAS DE MORAIS, 2100 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4908325512 (G7GC)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 3749 / 0
+    * Conta / DV: 13005485 / 1
+    * Código de Convênio no Banco: 4908325512
+    * Código de Estação (Santander): G7GC
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30626
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30626
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30626
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30628
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30628
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30628
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 000
+    * Próximo NSA: 1
+
+### EMPRESA 14: PROJETO PARTICIPACOES E EMPREENDIMENTOSS A (PROJETO PARTICIPACOES)
+CNPJ: 01800826000106
+Endereço: AVENIDA REBOUCAS, 2500 - SAO PAULO/SP - CEP 05402000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - Ag 3749
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 3749 / 0
+    * Conta / DV: 13000208 / 1
+    * Código de Convênio no Banco: (em branco)
+    * Código de Estação (Santander): (em branco)
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30245
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30245
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30245
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30246
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30246
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30246
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 000
+    * Próximo NSA: 1
+
+### EMPRESA 15: EUROVIA AUTO LTDA (GEELY IMBIRIBEIRA)
+CNPJ: 60933323000160
+Endereço: AVENIDA MARECHAL MASCARENHAS DE MORAIS, 2500 - RECIFE/PE - CEP 51170000
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - 4908000001 (F9J4)
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 3749 / 0
+    * Conta / DV: 13005439 / 4
+    * Código de Convênio no Banco: 4908000001
+    * Código de Estação (Santander): F9J4
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - 30621
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 30621
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30621
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [237] Banco Bradesco S.A.
+    * Apelido: Bradesco - 30620
+    * Banco: [237] Banco Bradesco S.A.
+    * Agência / DV: 2960 / 0
+    * Conta / DV: 3171 / 2
+    * Código de Convênio no Banco: 30620
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30620
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 4: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30623
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30623
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30623
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+
+### EMPRESA 16: INTERVIA VEICULOS S.A (INTERVIA FILIAL)
+CNPJ: 08315588000265
+Endereço: AVENIDA BERNARDO VIEIRA DE MELO, 1250 - JABOATAO DOS GUARARAPES/PE - CEP 54410010
+  - Conta 1: [033] Banco Santander Brasil S.A.
+    * Apelido: Santander - Ag 4661
+    * Banco: [033] Banco Santander Brasil S.A.
+    * Agência / DV: 4661 / 0
+    * Conta / DV: 13021587 / 4
+    * Código de Convênio no Banco: (em branco)
+    * Código de Estação (Santander): (em branco)
+    * Cód. Transmissão (Outros): (não se aplica)
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 030
+    * Próximo NSA: 1
+  - Conta 2: [341] Itaú Unibanco S.A.
+    * Apelido: Itaú - Conta Principal
+    * Banco: [341] Itaú Unibanco S.A.
+    * Agência / DV: 0877 / 0
+    * Conta / DV: 98958 / 2
+    * Código de Convênio no Banco: 08315
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 08315
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 046
+    * Próximo NSA: 1
+  - Conta 3: [001] Banco do Brasil S.A.
+    * Apelido: Banco do Brasil - 30205
+    * Banco: [001] Banco do Brasil S.A.
+    * Agência / DV: 3434 / 0
+    * Conta / DV: 6931 / 0
+    * Código de Convênio no Banco: 30205
+    * Código de Estação (Santander): (não se aplica)
+    * Cód. Transmissão (Outros): 30205
+    * Padrão CNAB: CNAB 240
+    * Versão Layout Lote: 000
+    * Próximo NSA: 1

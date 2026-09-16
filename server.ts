@@ -470,6 +470,18 @@ async function startServer() {
     });
   });
 
+  // Download do relatório em planilha Excel (.xlsx) das empresas e contas bancárias
+  app.get("/api/download-cadastro-excel", (req, res) => {
+    const filePath = path.resolve(process.cwd(), "public", "Cadastro_Empresas_e_Contas_Bancarias.xlsx");
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Disposition", "attachment; filename=\"Cadastro_Empresas_e_Contas_Bancarias.xlsx\"");
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      res.status(404).json({ error: "Arquivo Excel ainda não foi gerado no servidor." });
+    }
+  });
+
   // -------------------------------------------------------------
   // AUTENTICAÇÃO CORPORATIVA SEGURA (RBAC + SEM SENHAS FIXAS)
   // -------------------------------------------------------------

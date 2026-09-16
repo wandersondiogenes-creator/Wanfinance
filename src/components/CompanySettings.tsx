@@ -1,9 +1,10 @@
 import { resetToDefaultCompanies } from '../utils/storage';
 import { SANTANDER_PAGFOR_DATA } from '../data/defaultCompanies';
+import { downloadCompaniesExcel } from '../utils/exportCompaniesExcel';
 import React, { useState } from 'react';
 import { CompanyProfile, BankAccountProfile } from '../types';
 import { BRAZILIAN_BANKS, getBankInfo } from '../utils/banks';
-import { Building2, CreditCard, Plus, Trash2, Edit3, CheckCircle2, Shield, RefreshCw, Save, Check, FileText, Info, Sparkles, Building, ChevronRight, Star, Table, Search, Copy } from 'lucide-react';
+import { Building2, CreditCard, Plus, Trash2, Edit3, CheckCircle2, Shield, RefreshCw, Save, Check, FileText, Info, Sparkles, Building, ChevronRight, Star, Table, Search, Copy, FileSpreadsheet, Download } from 'lucide-react';
 
 interface CompanySettingsProps {
   companies: CompanyProfile[];
@@ -209,9 +210,18 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
 
           <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
             <button
+              onClick={() => downloadCompaniesExcel(companies)}
+              className="bg-emerald-950/50 hover:bg-emerald-900/70 text-emerald-300 font-semibold text-xs px-3.5 py-2 rounded-xl transition-all border border-emerald-700/60 flex items-center space-x-1.5 shadow-sm"
+              title="Baixar planilha Excel completa (.xlsx) com todas as empresas e contas bancárias cadastradas"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span>Exportar Excel (.xlsx)</span>
+            </button>
+
+            <button
               onClick={() => setIsViewingSantanderTable(true)}
               className="bg-red-950/40 hover:bg-red-900/60 text-red-300 font-semibold text-xs px-3.5 py-2 rounded-xl transition-all border border-red-800/60 flex items-center space-x-1.5 shadow-sm"
-              title="Visualizar códigos de convênio e estação das empresas modelo Santander"
+              title="Visualizar códigos de convênio e estação de todas as 16 empresas Santander"
             >
               <Table className="w-4 h-4 text-red-400" />
               <span>Convênios Santander Pagfor ({SANTANDER_PAGFOR_DATA.length})</span>
@@ -219,7 +229,7 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
 
             <button
               onClick={() => {
-                if (confirm('Deseja restaurar e atualizar todas as empresas e contas bancárias com a tabela padrão de dados fictícios do sistema?')) {
+                if (confirm('Deseja restaurar e atualizar todas as 16 empresas e contas bancárias com a tabela padrão do sistema?')) {
                   const updated = resetToDefaultCompanies();
                   onSaveCompanyProfiles(updated, updated[0].id, updated[0].bancos[0].id);
                   setSelectedCompanyId(updated[0].id);
@@ -228,10 +238,10 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                 }
               }}
               className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-3.5 py-2 rounded-xl transition-all border border-slate-700 flex items-center space-x-1.5"
-              title="Restaurar lista de empresas e contas com dados fictícios"
+              title="Restaurar lista de 16 empresas e contas atualizadas"
             >
               <RefreshCw className="w-4 h-4 text-amber-400" />
-              <span>Restaurar Empresas Fictícias</span>
+              <span>Restaurar 16 Empresas Padrão</span>
             </button>
 
             <button
@@ -1079,7 +1089,7 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
         </div>
       )}
 
-      {/* Modal: Tabela de Convênios Santander Pagfor (Empresas Modelo) */}
+      {/* Modal: Tabela Completa de Convênios Santander Pagfor (16 Empresas) */}
       {isViewingSantanderTable && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl p-6 space-y-5">
@@ -1096,7 +1106,7 @@ export const CompanySettingsComponent: React.FC<CompanySettingsProps> = ({
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Convênios e Códigos de Estação cadastrados para as empresas modelo (dados fictícios)
+                    Convênios e Códigos de Estação cadastrados para as 16 empresas do grupo
                   </p>
                 </div>
               </div>

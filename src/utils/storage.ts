@@ -25,8 +25,6 @@ export function cleanFirestoreData<T>(data: T): any {
 }
 
 const STORAGE_KEYS = {
-  COMPANIES_V6: 'gerador_cnab_companies_v6',
-  ACTIVE_SELECTION_V6: 'gerador_cnab_active_selection_v6',
   COMPANIES_V5: 'gerador_cnab_companies_v5',
   ACTIVE_SELECTION_V5: 'gerador_cnab_active_selection_v5',
   COMPANIES_V4: 'gerador_cnab_companies_v4',
@@ -39,48 +37,6 @@ const STORAGE_KEYS = {
   HISTORY: 'gerador_cnab_history_v1',
   USER_SESSION: 'wanfinance_user_session_v1',
 };
-
-const OLD_REAL_COMPANY_IDS = [
-  'comp-viasul-matriz',
-  'comp-eurovia-renault',
-  'comp-intervia-kia',
-  'comp-newvia-motos',
-  'comp-via1-corretora',
-  'comp-eurovia-nissan',
-  'comp-viasul-jeep',
-  'comp-granvia-ford',
-  'comp-eurovia-omoda',
-  'comp-via1-locadora',
-  'comp-viasul-auto-byd',
-  'comp-investparts',
-  'comp-viasul-leap',
-  'comp-projeto-part',
-  'comp-eurovia-geely',
-  'comp-intervia-filial',
-];
-
-export function cleanupOldRealCompanies(): void {
-  try {
-    // Clear old localStorage keys
-    localStorage.removeItem('gerador_cnab_companies_v5');
-    localStorage.removeItem('gerador_cnab_companies_v4');
-    localStorage.removeItem('gerador_cnab_companies_v3');
-    localStorage.removeItem('gerador_cnab_companies_v2');
-    localStorage.removeItem('gerador_cnab_company_v1');
-    localStorage.removeItem('gerador_cnab_active_selection_v5');
-    localStorage.removeItem('gerador_cnab_active_selection_v4');
-    localStorage.removeItem('gerador_cnab_active_selection_v3');
-
-    // Remove old docs from Firestore if available
-    if (!isFirestoreQuotaExceeded()) {
-      OLD_REAL_COMPANY_IDS.forEach((id) => {
-        safeDeleteDoc(doc(db, 'companies', id)).catch(() => {});
-      });
-    }
-  } catch (err) {
-    console.warn('[Storage] Cleanup old real companies warning:', err);
-  }
-}
 
 /**
  * Deduplicate and sanitize company profiles list
@@ -151,75 +107,100 @@ function sanitizeAndDeduplicateCompanies(companiesList: CompanyProfile[]): Compa
 
 export function loadCompanyProfiles(): CompanyProfile[] {
   try {
-    // If old versions exist in localStorage, purge them completely
-    if (
-      localStorage.getItem(STORAGE_KEYS.COMPANIES_V5) ||
-      localStorage.getItem(STORAGE_KEYS.COMPANIES_V4) ||
-      localStorage.getItem(STORAGE_KEYS.COMPANIES_V3)
-    ) {
-      cleanupOldRealCompanies();
-    }
-
-    const data = localStorage.getItem(STORAGE_KEYS.COMPANIES_V6);
+    const data = localStorage.getItem(STORAGE_KEYS.COMPANIES_V5) || localStorage.getItem(STORAGE_KEYS.COMPANIES_V4);
     if (data) {
       const parsed: CompanyProfile[] = JSON.parse(data);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Detect if loaded companies contain old real dealership or corporate data
-        const hasOldRealData = parsed.some((c) => {
-          const nome = (c.razaoSocial || '').toUpperCase();
-          const fantasia = (c.nomeFantasia || '').toUpperCase();
-          const cleanCnpj = (c.cnpjCpf || '').replace(/\D/g, '');
-          return (
-            nome.includes('VIA SUL') ||
-            nome.includes('EUROVIA') ||
-            nome.includes('GRANVIA') ||
-            nome.includes('INTERVIA') ||
-            nome.includes('NEWVIA') ||
-            nome.includes('INVESTPARTS') ||
-            nome.includes('PROJETO PARTICIPACOES') ||
-            fantasia.includes('VIA SUL') ||
-            fantasia.includes('EUROVIA') ||
-            cleanCnpj === '40841736000107' ||
-            cleanCnpj === '02671595000132' ||
-            cleanCnpj === '08315588000184' ||
-            cleanCnpj === '51478180000314' ||
-            cleanCnpj === '012946886000140' ||
-            cleanCnpj === '043489824000180'
+        // First deduplicate parsed by id and CNPJ
+        const cleanParsed = sanitizeAndDeduplicateCompanies(parsed);
+
+        // Merge official Santander and Banco do Brasil bank profiles into parsed profiles
+        const merged = cleanParsed.map((comp) => {
+          const defaultMatch = DEFAULT_COMPANIES.find(
+            (dc) => (dc.cnpjCpf || '').replace(/\D/g, '') === (comp.cnpjCpf || '').replace(/\D/g, '') || dc.id === comp.id
           );
+          if (!defaultMatch) return comp;
+
+          // Merge or update Santander (033)
+          const defaultSantander = defaultMatch.bancos.find((b) => b.bancoCodigo === '033');
+          if (defaultSantander) {
+            const existingSantanderIdx = comp.bancos.findIndex((b) => b.bancoCodigo === '033');
+            if (existingSantanderIdx >= 0) {
+              const existingSantander = comp.bancos[existingSantanderIdx];
+              comp.bancos[existingSantanderIdx] = {
+                ...existingSantander,
+                agencia: existingSantander.agencia || defaultSantander.agencia || '',
+                conta: existingSantander.conta || defaultSantander.conta || '',
+                contaDV: existingSantander.contaDV || defaultSantander.contaDV || '0',
+                convenio: defaultSantander.convenio || existingSantander.convenio || '',
+                codigoTransmissao: defaultSantander.codigoTransmissao || existingSantander.codigoTransmissao || '',
+                codigoEstacao: defaultSantander.codigoEstacao || existingSantander.codigoEstacao || '',
+                apelido: defaultSantander.apelido || existingSantander.apelido || 'Santander',
+                layoutVersaoLote: '030',
+              };
+            } else {
+              comp.bancos.push(defaultSantander);
+            }
+          }
+
+          // Merge or update Banco do Brasil (001)
+          const defaultBB = defaultMatch.bancos.find((b) => b.bancoCodigo === '001');
+          if (defaultBB) {
+            const existingBBIdx = comp.bancos.findIndex((b) => b.bancoCodigo === '001');
+            if (existingBBIdx >= 0) {
+              const existingBB = comp.bancos[existingBBIdx];
+              comp.bancos[existingBBIdx] = {
+                ...existingBB,
+                bancoNome: 'Banco do Brasil S.A.',
+                agencia: existingBB.agencia || defaultBB.agencia || '3434',
+                conta: existingBB.conta || defaultBB.conta || '6931',
+                contaDV: existingBB.contaDV || defaultBB.contaDV || '0',
+                convenio: defaultBB.convenio || existingBB.convenio || '',
+                codigoTransmissao: defaultBB.codigoTransmissao || existingBB.codigoTransmissao || '',
+                apelido: defaultBB.apelido || existingBB.apelido || `Banco do Brasil - ${defaultBB.convenio}`,
+                layoutVersaoLote: '000',
+              };
+            } else {
+              comp.bancos.push(defaultBB);
+            }
+          }
+
+          return comp;
         });
 
-        if (!hasOldRealData) {
-          const cleanParsed = sanitizeAndDeduplicateCompanies(parsed);
+        // Ensure all 16 companies from DEFAULT_COMPANIES are present
+        const currentIds = new Set(merged.map((c) => c.id));
+        const currentCnpjs = new Set(merged.map((c) => (c.cnpjCpf || '').replace(/\D/g, '')).filter(Boolean));
 
-          // Ensure default fictional companies are present
-          const currentIds = new Set(cleanParsed.map((c) => c.id));
-          DEFAULT_COMPANIES.forEach((defComp) => {
-            if (!currentIds.has(defComp.id)) {
-              cleanParsed.push(defComp);
-              currentIds.add(defComp.id);
-            }
-          });
+        DEFAULT_COMPANIES.forEach((defComp) => {
+          const cleanDefCnpj = (defComp.cnpjCpf || '').replace(/\D/g, '');
+          if (!currentIds.has(defComp.id) && !currentCnpjs.has(cleanDefCnpj)) {
+            merged.push(defComp);
+            currentIds.add(defComp.id);
+            currentCnpjs.add(cleanDefCnpj);
+          }
+        });
 
-          const finalCompanies = sanitizeAndDeduplicateCompanies(cleanParsed);
-          localStorage.setItem(STORAGE_KEYS.COMPANIES_V6, JSON.stringify(finalCompanies));
-          return finalCompanies;
-        }
+        const finalCompanies = sanitizeAndDeduplicateCompanies(merged);
+        localStorage.setItem(STORAGE_KEYS.COMPANIES_V5, JSON.stringify(finalCompanies));
+        localStorage.setItem(STORAGE_KEYS.COMPANIES_V4, JSON.stringify(finalCompanies));
+        return finalCompanies;
       }
     }
   } catch (e) {
     console.error('Failed to load company profiles:', e);
   }
 
-  // Fallback: strictly initialize with fictional companies
-  cleanupOldRealCompanies();
-  localStorage.setItem(STORAGE_KEYS.COMPANIES_V6, JSON.stringify(DEFAULT_COMPANIES));
+  localStorage.setItem(STORAGE_KEYS.COMPANIES_V5, JSON.stringify(DEFAULT_COMPANIES));
+  localStorage.setItem(STORAGE_KEYS.COMPANIES_V4, JSON.stringify(DEFAULT_COMPANIES));
   return DEFAULT_COMPANIES;
 }
 
 export function saveCompanyProfiles(companies: CompanyProfile[]): void {
   try {
     const cleanList = sanitizeAndDeduplicateCompanies(companies);
-    localStorage.setItem(STORAGE_KEYS.COMPANIES_V6, JSON.stringify(cleanList));
+    localStorage.setItem(STORAGE_KEYS.COMPANIES_V5, JSON.stringify(cleanList));
+    localStorage.setItem(STORAGE_KEYS.COMPANIES_V4, JSON.stringify(cleanList));
 
     if (!isFirestoreQuotaExceeded()) {
       cleanList.forEach((c) => {
@@ -237,7 +218,6 @@ export function saveCompanyProfiles(companies: CompanyProfile[]): void {
 }
 
 export function resetToDefaultCompanies(): CompanyProfile[] {
-  cleanupOldRealCompanies();
   saveCompanyProfiles(DEFAULT_COMPANIES);
   saveActiveSelection(DEFAULT_COMPANIES[0].id, DEFAULT_COMPANIES[0].bancos[0].id);
   return DEFAULT_COMPANIES;
@@ -245,7 +225,7 @@ export function resetToDefaultCompanies(): CompanyProfile[] {
 
 export function loadActiveSelection(): { companyId: string; bankId: string } {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_SELECTION_V6);
+    const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_SELECTION_V5) || localStorage.getItem(STORAGE_KEYS.ACTIVE_SELECTION_V4);
     if (data) {
       const parsed = JSON.parse(data);
       if (parsed.companyId && parsed.bankId) {
@@ -263,7 +243,8 @@ export function loadActiveSelection(): { companyId: string; bankId: string } {
 
 export function saveActiveSelection(companyId: string, bankId: string): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.ACTIVE_SELECTION_V6, JSON.stringify({ companyId, bankId }));
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_SELECTION_V5, JSON.stringify({ companyId, bankId }));
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_SELECTION_V4, JSON.stringify({ companyId, bankId }));
   } catch (e) {
     console.error('Failed to save active selection:', e);
   }

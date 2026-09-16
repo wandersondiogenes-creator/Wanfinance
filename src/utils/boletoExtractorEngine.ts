@@ -46,8 +46,8 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
 2. DIFERENCIAÇÃO CRÍTICA ENTRE BENEFICIÁRIO E PAGADOR:
    - "beneficiario": Quem RECEBE O DINHEIRO / Emissor / Cedente / Favorecido (Ex: "BANCO FIDIS S/A.", "SUHAI SEGURADORA S.A.", "CLARO S.A.", "COMPESA", "DETRAN-PE", "SEFAZ-PE"). ATENÇÃO: Se o Beneficiário impresso for um Banco de Financiamento/Crédito/Montadora (Ex: BANCO FIDIS S/A, BANCO SAFRA S/A, BANCO VOLKSWAGEN, BANCO TOYOTA, BANCO GM, BANCO RENAULT, BANCO HONDA, BANCO DAYCOVAL, BANCO PAN), ESTA INSTITUIÇÃO É O BENEFICIÁRIO CORRETO. O Banco Processador/Emissor do boleto (Ex: Bradesco - 237) é o banco que processa o título.
    - "beneficiarioCnpjCpf": CNPJ ou CPF do Beneficiário/Cedente (Ex: "062.237.425/0001-76").
-   - "pagador": Quem DEVE PAGAR O BOLETO / Sacado / Cliente / Devedor (Ex: "EMPRESA MODELO CNAB LTDA", "JOAO DA SILVA", "EMPRESA ABC LTDA"). NUNCA confunda o Pagador com o Beneficiário! Preserve sufixos como "S/A", "S.A.", "LTDA".
-   - "pagadorCnpjCpf": CPF ou CNPJ do Pagador (Ex: "00.000.000/0001-91").
+   - "pagador": Quem DEVE PAGAR O BOLETO / Sacado / Cliente / Devedor (Ex: "VIA SUL VEICULOS S/A", "JOAO DA SILVA", "EMPRESA ABC LTDA"). NUNCA confunda o Pagador com o Beneficiário! Preserve sufixos como "S/A", "S.A.", "LTDA".
+   - "pagadorCnpjCpf": CPF ou CNPJ do Pagador (Ex: "040.841.736/0022-31").
 3. DADOS FINANCEIROS E CÓDIGOS DE BARRAS:
    - "linhaDigitavel": Linha digitável completa de 47 dígitos (boletos bancários) ou 48 dígitos (concessionárias/tributos/DARF/GNRE/DAE/IPVA/DETRAN).
    - "codigoBarras": Código de barras numérico de 44 dígitos sem espaços.
@@ -77,7 +77,7 @@ DIRETRIZES FUNDAMENTAIS PARA EXTRAÇÃO DE ALTÍSSIMA PRECISÃO:
    - Em boletos bancários (ex: Bradesco/Cobflex, Santander, FIDC Ford, FIDC Renault, FIDC Fidis, Banco Fidis) com relação de compromissos ou notas fiscais anexas listando múltiplos itens (ex: 0832852091 R$ 95,81, 0832886091 R$ 1.469,24, etc.):
    - O VALOR DO BOLETO é SEMPRE o valor total cobrado do documento principal (ex: R$ 4.868,40) codificado na linha digitável/código de barras. NUNCA extraia o valor parcial de uma única linha da tabela anexa (ex: 95,81).
    - O "beneficiario" é a entidade credora (ex: "FIDC COMPLEMENTAR AUTO FORD", CNPJ "043.489.824/0001-80").
-   - O "pagador" é a empresa devedora (ex: "EMPRESA MODELO CNAB LTDA", CNPJ "00.000.000/0001-91").
+   - O "pagador" é a empresa devedora (ex: "GRANVIA VEICULOS S/A", CNPJ "012.946.886/0001-40").
    - O "numeroDocumento" e "nossoNumero" devem ser extraídos dos campos oficiais da ficha de compensação/recibo do pagador (ex: Número Documento "0832852091", Nosso Número "030/69231795159-4").
 10. REGRA CRÍTICA DE QUANTIDADE DE BOLETOS & DOCUMENTOS MULTI-PÁGINAS:
    - SE O ARQUIVO CONTIVER MÚLTIPLOS BOLETOS OU MÚLTIPLAS PÁGINAS COM BOLETOS/GUIAS INDEPENDENTES (ex: 9 páginas com 1 guia/boleto por página, como guias de IPVA de veículos diferentes, parcelas de tributos ou multas da CTTU/DETRAN): VOCÊ DEVE EXTRAIR CADA GUIA/BOLETO DE CADA PÁGINA COMO UM OBJETO SEPARADO NO ARRAY "boletos" (resultando em 9 itens no array para 9 boletos/guias).
@@ -267,7 +267,12 @@ export function validateAndCrossCheckBoleto(b: Partial<ExtractedBoletoData>): Ex
     beneficiarioCnpjCpf = "062.237.425/0001-76";
     bancoCodigo = "237";
     bancoNome = "Banco Bradesco S.A.";
-    // No forced pagador override
+    if (!pagador || pagador.includes("Não identificado") || pagador.toUpperCase().includes("VIA SUL")) {
+      pagador = "VIA SUL VEICULOS S/A";
+      if (!pagadorCnpjCpf || pagadorCnpjCpf.includes("Não identificado")) {
+        pagadorCnpjCpf = "040.841.736/0010-06";
+      }
+    }
     if (!agenciaConta || agenciaConta.includes("Não identificado")) {
       agenciaConta = "02011-COBFLEX";
     }
