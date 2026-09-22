@@ -258,46 +258,16 @@ export default function App() {
     setEditingBoleto(null);
   };
 
-  // Import batch boletos with automatic deduplication
+  // Import batch boletos (allowing duplicates with warning, not blocking)
   const handleImportBatchBoletos = (imported: BoletoItem[]) => {
-    // 1. Internal deduplication of the imported batch
-    const seenKeys = new Set<string>();
-    const uniqueImported: BoletoItem[] = [];
-
-    for (const item of imported) {
-      const cleanKey = item.linhaDigitavel ? item.linhaDigitavel.replace(/\D/g, '') : '';
-      if (cleanKey && cleanKey.length >= 40) {
-        if (!seenKeys.has(cleanKey)) {
-          seenKeys.add(cleanKey);
-          uniqueImported.push(item);
-        }
-      } else {
-        uniqueImported.push(item);
-      }
-    }
-
-    const importedWithSelection = uniqueImported.map((b) => ({ ...b, selected: true }));
+    const importedWithSelection = imported.map((b) => ({ ...b, selected: true }));
 
     setBoletos((prev) => {
-      // 2. Filter out items that are exact duplicate of already existing boletos
-      const existingKeys = new Set(
-        prev
-          .map((b) => (b.linhaDigitavel ? b.linhaDigitavel.replace(/\D/g, '') : ''))
-          .filter((k) => k.length >= 40)
-      );
-
-      const nonDuplicateImported = importedWithSelection.filter((b) => {
-        const key = b.linhaDigitavel ? b.linhaDigitavel.replace(/\D/g, '') : '';
-        if (key && key.length >= 40) {
-          return !existingKeys.has(key);
-        }
-        return true;
-      });
-
-      return [...nonDuplicateImported, ...prev];
+      // Add all imported boletos into the active batch without blocking duplicates
+      return [...importedWithSelection, ...prev];
     });
 
-    showToast(`${uniqueImported.length} boleto(s) unificado(s) e incluído(s) no lote!`);
+    showToast(`${imported.length} boleto(s) incluído(s) no lote!`);
   };
 
   // Edit / Duplicate

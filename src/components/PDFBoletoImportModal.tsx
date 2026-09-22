@@ -1202,7 +1202,7 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                       Atenção: {duplicateCount} boleto(s) repetido(s) identificado(s) no lote!
                     </p>
                     <p className="text-amber-800 font-medium mt-0.5">
-                      Linhas digitáveis duplicadas foram identificadas em relação a outros boletos do arquivo ou do sistema.
+                      Boletos já gerados anteriormente ou repetidos foram detectados. Eles serão importados normalmente e marcados com aviso, sem bloqueio. Se desejar descartá-los, clique em excluir repetidos.
                     </p>
                   </div>
                   <button
