@@ -72,6 +72,7 @@ export interface PDFExtractedItem {
   errorMessage?: string;
   detailedError?: DetailedErrorInfo;
   processingTimeMs?: number;
+  rawExtractedText?: string;
   data?: {
     linhaDigitavel: string;
     codigoBarras: string;
@@ -173,14 +174,20 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
     try {
       const d = item.data;
       const cleanLinha = onlyNumbers(d.linhaDigitavel || d.codigoBarras || '');
-      const textToLearn = `${d.favorecidoNome || ''} ${d.bancoNome || ''} ${cleanLinha} ${item.fileName || ''} ${d.seuNumero || ''} ${d.nossoNumero || ''}`;
+      const rawText = item.rawExtractedText || `${d.favorecidoNome || ''} ${d.bancoNome || ''} ${cleanLinha} ${item.fileName || ''} ${d.seuNumero || ''} ${d.nossoNumero || ''}`;
       
-      const learnRes = learnNewLayoutPattern(textToLearn, {
+      const learnRes = learnNewLayoutPattern(rawText, {
         linhaDigitavel: cleanLinha,
         bancoCodigo: d.bancoCodigo,
+        bancoNome: d.bancoNome,
         favorecidoNome: d.favorecidoNome,
+        beneficiario: d.favorecidoNome,
         valor: d.valor,
         dataVencimento: d.dataVencimento,
+        seuNumero: d.seuNumero,
+        nossoNumero: d.nossoNumero,
+        pagadorNome: d.pagadorNome,
+        favorecidoCnpjCpf: d.favorecidoCnpjCpf,
       });
 
       setSavedModelIds((prev) => new Set([...prev, item.id]));
@@ -1408,14 +1415,30 @@ export const PDFBoletoImportModal: React.FC<PDFBoletoImportModalProps> = ({
                                 {item.data?.valor ? formatCurrencyBRL(item.data.valor) : '—'}
                               </td>
                               <td className="py-2 px-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveItem(item.id)}
-                                  className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 transition-colors"
-                                  title="Remover este boleto"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                <div className="flex items-center justify-center gap-1">
+                                  {item.data && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveLayoutModel(item)}
+                                      className={`p-1 rounded transition-colors ${
+                                        savedModelIds.has(item.id) || item.layoutRecognized
+                                          ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
+                                          : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'
+                                      }`}
+                                      title={savedModelIds.has(item.id) || item.layoutRecognized ? 'Modelo já salvo na memória' : 'Adicionar layout aos modelos salvos'}
+                                    >
+                                      <Brain className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveItem(item.id)}
+                                    className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-slate-100 transition-colors"
+                                    title="Remover este boleto"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );

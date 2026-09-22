@@ -4,6 +4,65 @@ import { CompanyProfile, BoletoItem, CNABBatchHistory, LearnedLayoutPattern } fr
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
 
+const SUPABASE_STORAGE_URL_KEY = 'sb_project_url';
+const SUPABASE_STORAGE_ANON_KEY = 'sb_anon_key';
+
+export function getStoredSupabaseCredentials(): { url: string; anonKey: string } | null {
+  try {
+    const url = localStorage.getItem(SUPABASE_STORAGE_URL_KEY) || SUPABASE_URL;
+    const anonKey = localStorage.getItem(SUPABASE_STORAGE_ANON_KEY) || SUPABASE_ANON_KEY;
+    if (url && anonKey) {
+      return { url, anonKey };
+    }
+  } catch (e) {
+    // Ignore localStorage errors
+  }
+  return null;
+}
+
+export function saveSupabaseCredentials(creds: { url: string; anonKey: string }): void {
+  try {
+    localStorage.setItem(SUPABASE_STORAGE_URL_KEY, creds.url);
+    localStorage.setItem(SUPABASE_STORAGE_ANON_KEY, creds.anonKey);
+    supabaseClient = null; // Reset singleton to force re-creation with new credentials
+  } catch (e) {
+    // Ignore localStorage errors
+  }
+}
+
+export function reinitSupabaseClient(): SupabaseClient | null {
+  supabaseClient = null;
+  return getSupabaseClient();
+}
+
+export async function testSupabaseConnection(creds?: { url: string; anonKey: string }): Promise<{ success: boolean; message: string }> {
+  try {
+    const urlToUse = creds?.url || localStorage.getItem(SUPABASE_STORAGE_URL_KEY) || SUPABASE_URL;
+    const keyToUse = creds?.anonKey || localStorage.getItem(SUPABASE_STORAGE_ANON_KEY) || SUPABASE_ANON_KEY;
+
+    if (!urlToUse || !keyToUse) {
+      return { success: false, message: 'URL ou Anon Key do Supabase não configuradas.' };
+    }
+
+    const client = createClient(urlToUse, keyToUse);
+    const { error } = await client.from('companies').select('count', { count: 'exact', head: true });
+
+    if (error) {
+      if (error.code === '42P01') {
+        return {
+          success: true,
+          message: 'Conectado com sucesso ao Supabase! (Nota: Execute o script de SQL Migration para criar as tabelas).',
+        };
+      }
+      return { success: false, message: `Erro ao conectar: ${error.message}` };
+    }
+
+    return { success: true, message: 'Conexão com o Supabase estabelecida com sucesso!' };
+  } catch (err: any) {
+    return { success: false, message: `Falha na conexão: ${err?.message || String(err)}` };
+  }
+}
+
 let supabaseClient: SupabaseClient | null = null;
 
 /**
@@ -12,11 +71,15 @@ let supabaseClient: SupabaseClient | null = null;
  */
 export function getSupabaseClient(): SupabaseClient {
   if (!supabaseClient) {
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    const creds = getStoredSupabaseCredentials();
+    const url = creds?.url || SUPABASE_URL;
+    const anonKey = creds?.anonKey || SUPABASE_ANON_KEY;
+
+    if (!url || !anonKey) {
       console.error('[supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
       throw new Error('Supabase environment variables are not set. See README-SUPABASE-SETUP.md');
     }
-    supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    supabaseClient = createClient(url, anonKey, {
       // increase visibility for debugging in Cloud Run logs
       // do not enable any sensitive logging in production
     });
@@ -68,7 +131,7 @@ export async function subscribeWithFallback<T = any>(
 
   // attempt realtime subscription
   try {
-    channel = sb
+    channel = (sb as any)
       .channel(`table-changes:${schema}.${table}`)
       .on('postgres_changes', { event: event, schema, table }, (payload: any) => {
         try {
@@ -93,12 +156,6 @@ export async function subscribeWithFallback<T = any>(
         }
       } catch (err) {
         console.warn('[supabase][realtime] unsubscribe error', err);
-    if (error) {
-      if (error.code === '42P01') {
-        return {
-          success: true,
-          message: 'Conectado com sucesso ao Supabase! (Nota: Execute o script de SQL Migration para criar as tabelas).',
-        };
       }
     };
   } catch (err) {
@@ -119,15 +176,15 @@ export async function subscribeWithFallback<T = any>(
 /**
  * Utility: fetch a table once (simple wrapper with error logs)
  */
-export async function fetchTableOnce<T = any>(table: string) {
+export async function fetchTableOnce<T = any>(table: string): Promise<T[] | null> {
   const sb = getSupabaseClient();
   try {
-    const { data, error } = await sb.from<T>(table).select('*');
+    const { data, error } = await sb.from(table).select('*');
     if (error) {
       console.error('[supabase] fetchTableOnce error', table, error.message || error);
       throw error;
     }
-    return data;
+    return data as T[];
   } catch (err) {
     console.error('[supabase] fetchTableOnce unexpected error', err);
     throw err;

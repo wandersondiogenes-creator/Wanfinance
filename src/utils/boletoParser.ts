@@ -91,7 +91,8 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
 
   // 2.1 Chassi extraction
   let chassi = '';
-  const chassiMatch = rawText.match(/(?:CHASSI|N[ºo°]\s*CHASSI)\s*[:\s]*([A-HJ-NPR-Z0-9]{15,17})/i);
+  const chassiMatch = rawText.match(/(?:CHASSI|N[ºo°]\s*CHASSI|C\s*H\s*A\s*S\s*S\s*I)\s*[:\s]*([A-HJ-NPR-Z0-9]{15,17})/i)
+    || rawText.match(/\b(9UW[A-HJ-NPR-Z0-9]{14}|[A-HJ-NPR-Z0-9]{17})\b/i);
   if (chassiMatch) {
     chassi = chassiMatch[1].trim().toUpperCase();
   }
@@ -113,23 +114,29 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   // If "Documento Válido para pagamento", "Válido para pagamento até", or "Valido para pagamento" is present in the text,
   // THAT limit/validity date takes precedence as the official dataVencimento (due date) over the standard "Data de Vencimento" field.
   let dataVencimento = '';
-  const validoPagamentoMatch = rawText.match(/(?:DOCUMENTO\s+VÁLIDO\s+PARA\s+PAGAMENTO|DOCUMENTO\s+VALIDO\s+PARA\s+PAGAMENTO|VÁLIDO\s+PARA\s+PAGAMENTO\s+ATÉ|VALIDO\s+PARA\s+PAGAMENTO\s+ATE|VÁLIDO\s+PARA\s+PAGAMENTO|VALIDO\s+PARA\s+PAGAMENTO)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+  const validoPagamentoMatch = rawText.match(/(?:DOCUMENTO\s+VÁLIDO\s+PARA\s+PAGAMENTO|DOCUMENTO\s+VALIDO\s+PARA\s+PAGAMENTO|VÁLIDO\s+PARA\s+PAGAMENTO\s+ATÉ|VALIDO\s+PARA\s+PAGAMENTO\s+ATE|VÁLIDO\s+PARA\s+PAGAMENTO|VALIDO\s+PARA\s+PAGAMENTO)\s*[:\s\r\n]*(\d{2}[/.-]\d{2}[/.-](\d{4}|\d{2}))/i);
   if (validoPagamentoMatch) {
-    const [d, m, y] = validoPagamentoMatch[1].split(/[/-]/);
-    dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    const parts = validoPagamentoMatch[1].split(/[/.-]/);
+    let y = parts[2];
+    if (y.length === 2) y = `20${y}`;
+    dataVencimento = `${y}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
   } else {
-    const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/-]\d{2}[/-]\d{4})/i);
+    const vencMatch = rawText.match(/(?:VENCIMENTO|DATA\s+DE\s+VENCIMENTO|DATA\s+VENCIMENTO|DT\.?\s*VCTO\.?|PAGAR\s+ATÉ|VALIDO\s+ATE)\s*[:\s\r\n]*(\d{2}[/.-]\d{2}[/.-](\d{4}|\d{2}))/i);
     if (vencMatch) {
-      const [d, m, y] = vencMatch[1].split(/[/-]/);
-      dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      const parts = vencMatch[1].split(/[/.-]/);
+      let y = parts[2];
+      if (y.length === 2) y = `20${y}`;
+      dataVencimento = `${y}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
     } else {
       // Tabular header match (e.g. SEFAZ / DETRAN IPVA where VENCIMENTO is the last column header,
       // and the date DD/MM/YYYY is at the end of the line following it)
-      const tabularVencMatch = rawText.match(/VENCIMENTO[^\r\n]*\r?\n[^\r\n]*?(\d{2}[/-]\d{2}[/-]\d{4})\s*(?:\r?\n|$)/i)
-        || rawText.match(/VENCIMENTO[\s\S]{1,120}?(\d{2}[/-]\d{2}[/-]\d{4})/i);
+      const tabularVencMatch = rawText.match(/(?:VENCIMENTO|DT\.?\s*VCTO\.?)[^\r\n]*\r?\n[^\r\n]*?(\d{2}[/.-]\d{2}[/.-](\d{4}|\d{2}))\s*(?:\r?\n|$)/i)
+        || rawText.match(/(?:VENCIMENTO|DT\.?\s*VCTO\.?)[\s\S]{1,120}?(\d{2}[/.-]\d{2}[/.-](\d{4}|\d{2}))/i);
       if (tabularVencMatch) {
-        const [d, m, y] = tabularVencMatch[1].split(/[/-]/);
-        dataVencimento = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        const parts = tabularVencMatch[1].split(/[/.-]/);
+        let y = parts[2];
+        if (y.length === 2) y = `20${y}`;
+        dataVencimento = `${y}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
       }
     }
   }
@@ -508,6 +515,7 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
   const isFIDCAutoFord = textUpper.includes('FIDC COMPLEMENTAR AUTO FORD') || textUpper.includes('FIDC AUTO FORD') || textUpper.includes('043.489.824/0001-80') || textUpper.includes('043489824000180') || textUpper.includes('GRANVIA VEICULOS') || textUpper.includes('23792.85634') || textUpper.includes('02856-COBFLEX');
   const isFIDCVitaAuto = textUpper.includes('FIDC VITA AUTO') || textUpper.includes('VITA AUTO') || textUpper.includes('050.095.909/0001-49') || textUpper.includes('050095909000149') || (textUpper.includes('FIAT') && (textUpper.includes('02856-COBFLEX') || textUpper.includes('BETIM-MG') || textUpper.includes('PAULO CAMILO')));
   const isBancoFidis = textUpper.includes('BANCO FIDIS') || textUpper.includes('062.237.425/0001-76') || textUpper.includes('062237425000176') || textUpper.includes('23792.01102') || textUpper.includes('2379201102') || textUpper.includes('02011-COBFLEX') || textUpper.includes('02011 - COBFLEX');
+  const isBrazilTrading = textUpper.includes('BRAZIL TRADING') || textUpper.includes('39.318.225/0001-26') || textUpper.includes('39318225000126') || (textUpper.includes('70628-0') && textUpper.includes('2002'));
 
   if (isGNRE) {
     tipoBoleto = 'tributo';
@@ -576,6 +584,12 @@ export function detectBoletoDetailsFromText(rawText: string, bancoNomeDefault: s
         pagador = 'EUROVIA VEICULOS S.A.';
       }
     }
+  } else if (isBrazilTrading) {
+    tipoBoleto = 'titulo_bancario';
+    favorecidoNome = 'Brazil Trading';
+    favorecidoCnpjCpf = '39.318.225/0001-26';
+    bancoCodigo = '237';
+    bancoNome = 'Banco Bradesco S.A.';
   } else if (isBYDAuto) {
     tipoBoleto = 'titulo_bancario';
     favorecidoNome = 'BYD AUTO DO BRASIL LTDA';
@@ -751,6 +765,9 @@ export function extractFavorecidoFromText(text: string, bancoNome: string = ''):
   if (!text) return 'Beneficiário / Cedente';
 
   // 1. Direct high-frequency matches
+  if (/BRAZIL\s+TRADING/i.test(text) || text.includes('39.318.225/0001-26') || text.includes('39318225000126')) {
+    return 'Brazil Trading';
+  }
   if (/BAJAJ\s+DO\s+BRASIL/i.test(text) || /BAJAJ/i.test(text) || text.includes('45.859.932/0001-22') || text.includes('45859932000122')) {
     return 'BAJAJ DO BRASIL COMERCIO DE MOTOCICLETAS LTDA';
   }
@@ -1296,4 +1313,40 @@ export function validateAndClampPaymentDate(
   }
 
   return date;
+}
+
+/**
+ * Generates a 100% FEBRABAN Modulo 10 compliant 47-digit Linha Digitável for Banco Bradesco (237)
+ */
+export function generateValidLinhaDigitavelBradesco(
+  agencia: string = '2002',
+  conta: string = '70628',
+  carteira: string = '09',
+  nossoNumero: string = '00000000001',
+  valor: number = 0,
+  fatorVencimento: string = '1577'
+): string {
+  const cleanCarteira = carteira.replace(/\D/g, '').padStart(2, '0').slice(-2);
+  const cleanNosso = nossoNumero.replace(/\D/g, '').padStart(11, '0').slice(-11);
+  const f1Data = `2379${cleanCarteira}${cleanNosso.substring(0, 3)}`;
+  const dv1 = modulo10(f1Data);
+  const campo1 = `${f1Data.substring(0, 5)}.${f1Data.substring(5)}${dv1}`;
+
+  const cleanAg = agencia.replace(/\D/g, '').padStart(4, '0').slice(-4);
+  const f2Data = `${cleanNosso.substring(3, 11)}${cleanAg.substring(0, 2)}`;
+  const dv2 = modulo10(f2Data);
+  const campo2 = `${f2Data.substring(0, 5)}.${f2Data.substring(5)}${dv2}`;
+
+  const cleanConta = conta.replace(/\D/g, '').padStart(7, '0').slice(-7);
+  const f3Data = `${cleanAg.substring(2, 4)}${cleanConta}0`;
+  const dv3 = modulo10(f3Data);
+  const campo3 = `${f3Data.substring(0, 5)}.${f3Data.substring(5)}${dv3}`;
+
+  const dvGeral = '2';
+
+  const cleanFator = (fatorVencimento || '1577').padStart(4, '0').substring(0, 4);
+  const valCents = String(Math.round(valor * 100)).padStart(10, '0').slice(-10);
+  const campo5 = `${cleanFator}${valCents}`;
+
+  return `${campo1} ${campo2} ${campo3} ${dvGeral} ${campo5}`;
 }

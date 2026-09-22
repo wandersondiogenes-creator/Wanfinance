@@ -845,6 +845,42 @@ Sacado: João da Silva  CPF: 123.456.789-00`
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs"
                     />
                   </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                      Âncora / Regex de Documento (Seu Número)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Nº do Documento"
+                      value={editingPattern.anchors.seuNumeroAnchor || ''}
+                      onChange={(e) =>
+                        setEditingPattern({
+                          ...editingPattern,
+                          anchors: { ...editingPattern.anchors, seuNumeroAnchor: e.target.value },
+                        })
+                      }
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                      Âncora / Regex de Nosso Número
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Nosso Número"
+                      value={editingPattern.anchors.nossoNumeroAnchor || ''}
+                      onChange={(e) =>
+                        setEditingPattern({
+                          ...editingPattern,
+                          anchors: { ...editingPattern.anchors, nossoNumeroAnchor: e.target.value },
+                        })
+                      }
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono"
+                    />
+                  </div>
                 </div>
               </div>
 
